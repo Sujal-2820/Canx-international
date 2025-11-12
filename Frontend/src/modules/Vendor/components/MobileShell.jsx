@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { cn } from '../../../lib/cn'
 import { CloseIcon, MenuIcon } from './icons'
+import iraSathiLogo from '../../../assets/IRA Sathi.png'
 
 export function MobileShell({ title, subtitle, children, navigation, menuContent }) {
   const [open, setOpen] = useState(false)
@@ -8,8 +9,8 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
   return (
     <div className="relative mx-auto flex min-h-screen w-full max-w-md flex-col bg-[#f5f7f3] text-surface-foreground">
       <header className="sticky top-0 z-30 flex items-center justify-between rounded-b-3xl bg-white px-4 pb-3 pt-5 shadow-[0_12px_30px_-26px_rgba(15,23,42,0.35)]">
-        <div className="flex items-center gap-2 rounded-full border border-muted/40 bg-white px-3 py-1.5 shadow-sm">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">IRA Sathi</span>
+        <div className="flex items-center gap-2 px-1.5">
+          <img src={iraSathiLogo} alt="IRA Sathi" className="vendor-logo" />
         </div>
         <button
           type="button"
@@ -22,15 +23,15 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
       </header>
 
       <main className="flex-1 px-4 pb-28">
-        <div className="mb-5 pt-4">
+        <div className="mb-6 pt-4">
           <h1 className="text-xl font-semibold text-surface-foreground">{title}</h1>
           {subtitle ? <p className="mt-1 text-xs text-muted-foreground leading-snug">{subtitle}</p> : null}
         </div>
-        <div className="rounded-3xl bg-[#f0f2ed] p-4">{children}</div>
+        <div className="space-y-6 pb-4">{children}</div>
       </main>
 
-      <nav className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 rounded-t-3xl bg-white px-4 py-3">
-        <div className="flex justify-between gap-3">{navigation}</div>
+      <nav className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 rounded-t-3xl bg-white px-4 py-2.5">
+        <div className="flex justify-between gap-4">{navigation}</div>
       </nav>
 
       <div
