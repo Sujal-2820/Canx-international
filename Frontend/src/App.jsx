@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button, FAQAccordion, FeatureGrid, Footer, Navbar } from './components'
 import { Card, CardContent, CardFooter, CardHeader } from './components'
 import { AdminApp } from './modules/Admin'
+import { VendorApp } from './modules/Vendor'
 
 const features = [
   {
@@ -39,7 +40,7 @@ const faqs = [
   },
 ]
 
-function Hero({ onLaunchAdmin }) {
+function Hero({ onLaunchAdmin, onLaunchVendor }) {
   return (
     <section className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-16 sm:px-6 lg:flex-row lg:items-center lg:gap-16">
       <div className="flex-1 space-y-6">
@@ -59,6 +60,11 @@ function Hero({ onLaunchAdmin }) {
           {onLaunchAdmin ? (
             <Button variant="subtle" size="lg" onClick={onLaunchAdmin}>
               Launch Admin Console
+            </Button>
+          ) : null}
+          {onLaunchVendor ? (
+            <Button variant="subtle" size="lg" onClick={onLaunchVendor}>
+              Launch Vendor App
             </Button>
           ) : null}
         </div>
@@ -152,12 +158,12 @@ function Testimonials() {
   )
 }
 
-function MarketingExperience({ onLaunchAdmin }) {
+function MarketingExperience({ onLaunchAdmin, onLaunchVendor }) {
   return (
     <>
       <Navbar />
       <main className="space-y-16 pb-20">
-        <Hero onLaunchAdmin={onLaunchAdmin} />
+        <Hero onLaunchAdmin={onLaunchAdmin} onLaunchVendor={onLaunchVendor} />
         <FeatureGrid
           title="Everything you need for farm-to-market success"
           description="A unified toolkit for procurement teams, farmer collectives, and agri-entrepreneurs to collaborate and scale."
@@ -191,7 +197,16 @@ function App() {
     return <AdminApp onExit={() => setMode('marketing')} />
   }
 
-  return <MarketingExperience onLaunchAdmin={() => setMode('admin')} />
+  if (mode === 'vendor') {
+    return <VendorApp />
+  }
+
+  return (
+    <MarketingExperience
+      onLaunchAdmin={() => setMode('admin')}
+      onLaunchVendor={() => setMode('vendor')}
+    />
+  )
 }
 
 export default App
