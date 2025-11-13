@@ -61,6 +61,10 @@ export function VendorDashboard({ onLogout }) {
     onLogout?.()
   }
 
+  const navigateTo = (target) => {
+    setActiveTab(target)
+  }
+
   const buildMenuItems = (close) => [
     ...NAV_ITEMS.map((item) => ({
       id: item.id,
@@ -98,8 +102,8 @@ export function VendorDashboard({ onLogout }) {
       menuContent={({ close }) => <MenuList items={buildMenuItems(close)} active={activeTab} />}
     >
       <section className="space-y-6">
-        {activeTab === 'overview' && <OverviewView />}
-        {activeTab === 'inventory' && <InventoryView />}
+        {activeTab === 'overview' && <OverviewView onNavigate={navigateTo} />}
+        {activeTab === 'inventory' && <InventoryView onNavigate={navigateTo} />}
         {activeTab === 'orders' && <OrdersView />}
         {activeTab === 'credit' && <CreditView />}
         {activeTab === 'reports' && <ReportsView />}
@@ -108,22 +112,58 @@ export function VendorDashboard({ onLogout }) {
   )
 }
 
-function OverviewView() {
+function OverviewView({ onNavigate }) {
+  const [showActivitySheet, setShowActivitySheet] = useState(false)
+
   const services = [
-    { label: 'Reorder', note: 'Credit order', tone: 'success' },
-    { label: 'Adjust price', note: 'Update MRP', tone: 'warn' },
-    { label: 'Dispatch', note: 'Arrange truck', tone: 'success' },
-    { label: 'Wallet', note: 'View payouts', tone: 'success' },
-    { label: 'Performance', note: 'Reports', tone: 'success' },
-    { label: 'Support', note: 'Raise ticket', tone: 'warn' },
-    { label: 'Network', note: 'Partner list', tone: 'success' },
-    { label: 'Settings', note: 'Profile & KYC', tone: 'success' },
+    { label: 'Inventory', note: 'Reorder stock', tone: 'success', target: 'inventory', icon: BoxIcon },
+    { label: 'Pricing', note: 'Update MRP', tone: 'warn', target: 'inventory', icon: ReportIcon },
+    { label: 'Dispatch', note: 'Arrange truck', tone: 'success', target: 'orders', icon: TruckIcon },
+    { label: 'Wallet', note: 'View payouts', tone: 'success', target: 'credit', icon: WalletIcon },
+    { label: 'Performance', note: 'Reports', tone: 'success', target: 'reports', icon: ChartIcon },
+    { label: 'Support', note: 'Raise ticket', tone: 'warn', target: 'orders', icon: MenuIcon },
+    { label: 'Network', note: 'Partner list', tone: 'success', target: 'reports', icon: HomeIcon },
+    { label: 'Settings', note: 'Profile & KYC', tone: 'success', target: 'credit', icon: CreditIcon },
   ]
 
   const transactions = [
     { name: 'Farm Fresh Traders', action: 'Order accepted', amount: '+₹86,200', status: 'Completed', avatar: 'FF' },
     { name: 'Green Valley Hub', action: 'Credit repayment', amount: '-₹40,000', status: 'Pending', avatar: 'GV' },
     { name: 'HarvestLink Pvt Ltd', action: 'Dispatch scheduled', amount: '+₹21,500', status: 'Scheduled', avatar: 'HL' },
+  ]
+
+  const heroActions = [
+    { label: 'Inventory', icon: BoxIcon, target: 'inventory' },
+    { label: 'Orders', icon: CartIcon, target: 'orders' },
+    { label: 'Credit', icon: CreditIcon, target: 'credit' },
+    { label: 'Reports', icon: ReportIcon, target: 'reports' },
+    { label: 'Logistics', icon: TruckIcon, target: 'orders' },
+  ]
+
+  const walletBalance = vendorSnapshot.credit.remaining || '₹0'
+
+  const quickActions = [
+    {
+      label: 'Confirm delivery slot',
+      description: 'Assign logistics window',
+      target: 'orders',
+      icon: TruckIcon,
+      tone: 'green',
+    },
+    {
+      label: 'Update inventory batch',
+      description: 'Add new GRN / update stock',
+      target: 'inventory',
+      icon: BoxIcon,
+      tone: 'orange',
+    },
+    {
+      label: 'Raise credit order',
+      description: 'Request refill from admin',
+      target: 'credit',
+      icon: CreditIcon,
+      tone: 'teal',
+    },
   ]
 
   return (
@@ -136,13 +176,31 @@ function OverviewView() {
             </span>
             <span className="vendor-chip warn uppercase tracking-wide">Today {new Date().toLocaleDateString()}</span>
           </div>
-          <h2 className="text-2xl font-semibold text-surface-foreground">
+          <h2 className="vendor-hero-title">
             Morning brief, {vendorSnapshot.welcome.name.split(' ')[0]}
           </h2>
-          <p className="text-sm text-surface-foreground/70">
-            You have {vendorSnapshot.orders.length} new orders to review, {vendorSnapshot.highlights[1].value} items
-            nearing low stock, and credit repayments due on {vendorSnapshot.credit.due}. Keep the day running smoothly.
-          </p>
+          <div className="vendor-hero-balance">
+            <div>
+              <p className="vendor-hero-label">Wallet balance</p>
+              <p className="vendor-hero-value">{walletBalance}</p>
+            </div>
+            <button type="button" onClick={() => onNavigate('credit')} className="vendor-hero-cta">
+              Credit center
+            </button>
+          </div>
+          <div className="vendor-hero-actions">
+            {heroActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                onClick={() => onNavigate(action.target)}
+                className="vendor-hero-action"
+              >
+                <action.icon className="h-5 w-5" />
+                <span>{action.label}</span>
+              </button>
+            ))}
+          </div>
           <div className="grid gap-3 sm:grid-cols-3">
             {[
               { label: 'Order confirmations pending', value: '02', tone: 'warn' },
@@ -163,17 +221,22 @@ function OverviewView() {
 
       <section className="space-y-4">
         <h3 className="vendor-section-title">Other services</h3>
-        <div className="vendor-service-grid">
+        <div className="vendor-service-carousel">
           {services.map((service) => (
-            <div key={service.label} className="vendor-service-card">
+            <button
+              key={service.label}
+              type="button"
+              onClick={() => service.target && onNavigate(service.target)}
+              className="vendor-service-card"
+            >
               <div className={cn('vendor-service-icon', service.tone === 'warn' ? 'warn' : 'success')}>
-                {service.label.substring(0, 2)}
+                <service.icon className="h-5 w-5" />
               </div>
-              <div>
+              <div className="text-center">
                 <p className="font-semibold text-surface-foreground">{service.label}</p>
                 <p className="text-xs text-muted-foreground">{service.note}</p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </section>
@@ -181,7 +244,9 @@ function OverviewView() {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="vendor-section-title">Recent activity</h3>
-          <button className="text-xs font-semibold text-brand">See all</button>
+          <button type="button" onClick={() => setShowActivitySheet(true)} className="text-xs font-semibold text-brand">
+            See all
+          </button>
         </div>
         <div className="space-y-2">
           {transactions.map((item) => (
@@ -204,6 +269,44 @@ function OverviewView() {
         </div>
       </section>
 
+      {showActivitySheet ? (
+        <div className="vendor-activity-sheet">
+          <div className="vendor-activity-sheet__overlay" onClick={() => setShowActivitySheet(false)} />
+          <div className="vendor-activity-sheet__panel">
+            <div className="vendor-activity-sheet__header">
+              <h4>All activity</h4>
+              <button type="button" onClick={() => setShowActivitySheet(false)}>
+                Close
+              </button>
+            </div>
+            <div className="vendor-activity-sheet__body">
+              {[...transactions, ...transactions].map((item, idx) => (
+                <div key={`${item.name}-${idx}`} className="vendor-transaction-card">
+                  <div className="vendor-transaction-avatar">{item.avatar}</div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-surface-foreground">{item.name}</p>
+                      <p
+                        className={cn(
+                          'text-sm font-semibold',
+                          item.amount.startsWith('-') ? 'text-accent' : 'text-brand',
+                        )}
+                      >
+                        {item.amount}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{item.action}</span>
+                      <span>{item.status}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <section className="space-y-4">
         <h3 className="vendor-section-title">Snapshot</h3>
         <div className="grid gap-4 sm:grid-cols-3">
@@ -225,18 +328,23 @@ function OverviewView() {
       <section className="space-y-3">
         <h3 className="vendor-section-title">Quick actions</h3>
         <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { label: 'Confirm delivery slot', description: 'Assign logistics window', tone: 'success' },
-            { label: 'Update inventory batch', description: 'Add new GRN / update stock', tone: 'warn' },
-            { label: 'Raise credit order', description: 'Request refill from admin', tone: 'success' },
-          ].map((action) => (
+          {quickActions.map((action, idx) => (
             <button
               key={action.label}
               type="button"
-              className="rounded-3xl border border-muted/40 bg-white px-4 py-4 text-left shadow-card transition hover:-translate-y-1 hover:border-brand/40"
+              onClick={() => onNavigate(action.target)}
+              className={cn(
+                'vendor-action-card text-left transition hover:-translate-y-1',
+                action.tone === 'orange'
+                  ? 'vendor-action-card--orange'
+                  : action.tone === 'teal'
+                  ? 'vendor-action-card--teal'
+                  : 'vendor-action-card--green',
+              )}
             >
+              <action.icon className="mb-3 h-5 w-5 text-brand" />
               <p className="text-sm font-semibold text-surface-foreground">{action.label}</p>
-              <p className="text-xs text-muted-foreground">{action.description}</p>
+              <p className="text-xs text-surface-foreground/70">{action.description}</p>
             </button>
           ))}
         </div>
@@ -262,6 +370,9 @@ function InventoryView() {
     <div className="space-y-6">
       <header className="space-y-2">
         <h2 className="vendor-section-title">Your Inventory</h2>
+        <p className="vendor-section-subtitle">
+          Keep fulfilment ready by tracking safety buffers, pricing and replenishment in one place.
+        </p>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -372,6 +483,9 @@ function OrdersView() {
     <div className="space-y-6">
       <header className="space-y-3">
         <h2 className="vendor-section-title">Orders workflow</h2>
+        <p className="vendor-section-subtitle">
+          Confirm availability, keep dispatches on schedule, and maintain top-tier service ratings.
+        </p>
         <div className="flex flex-wrap gap-2">
           {filterChips.map((chip) => (
             <span
@@ -557,6 +671,9 @@ function ReportsView() {
     <div className="space-y-6">
       <header className="space-y-2">
         <h2 className="vendor-section-title">Reports & insights</h2>
+        <p className="vendor-section-subtitle">
+          Weekly snapshot of revenue, order velocity, partner performance, and fulfilment quality.
+        </p>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-3">
