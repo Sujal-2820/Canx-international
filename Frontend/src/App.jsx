@@ -8,7 +8,7 @@ import {
   VendorLanguagePage,
   VendorRolePage,
 } from './modules/Vendor'
-import { SellerDashboard, SellerLogin } from './modules/Seller'
+import { SellerDashboardPage, SellerLogin } from './modules/Seller'
 
 function Home() {
   const links = [
@@ -91,7 +91,7 @@ function App() {
         </Route>
 
         <Route path="/seller/login" element={<SellerLoginRoute />} />
-        <Route path="/seller/dashboard" element={<SellerDashboard />} />
+        <Route path="/seller/dashboard" element={<SellerDashboardPage />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
