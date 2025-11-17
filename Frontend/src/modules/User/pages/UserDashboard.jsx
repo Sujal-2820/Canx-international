@@ -422,7 +422,7 @@ function UserDashboardContent({ onLogout }) {
             </>
           )}
           {activeTab === 'orders' && <OrdersView />}
-          {activeTab === 'account' && <AccountView />}
+          {activeTab === 'account' && <AccountView onNavigate={setActiveTab} />}
         </section>
       </MobileShell>
 
