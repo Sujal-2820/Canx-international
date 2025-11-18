@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import { useVendorDispatch } from '../../context/VendorContext'
+import { useVendorApi } from '../../hooks/useVendorApi'
+import { useToast } from '../../components/ToastNotification'
 
 export function VendorLogin({ onBack, onRegister, onSuccess }) {
   const dispatch = useVendorDispatch()
+  const { login, loading, error } = useVendorApi()
+  const { success, error: showError } = useToast()
   const [form, setForm] = useState({ email: '', password: '' })
   const [remember, setRemember] = useState(true)
 
@@ -11,11 +15,31 @@ export function VendorLogin({ onBack, onRegister, onSuccess }) {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
-    // Stubbed auth success
-    dispatch({ type: 'AUTH_LOGIN', payload: { name: 'Suresh Patel', email: form.email } })
-    onSuccess?.()
+    const result = await login(form)
+    if (result.data) {
+      // Store token
+      if (result.data.token) {
+        localStorage.setItem('vendor_token', result.data.token)
+      }
+      // Update context with vendor profile
+      dispatch({
+        type: 'AUTH_LOGIN',
+        payload: {
+          id: result.data.vendor.id,
+          name: result.data.vendor.name,
+          email: result.data.vendor.email,
+          phone: result.data.vendor.phone,
+          location: result.data.vendor.location,
+          coverageRadius: result.data.vendor.coverageRadius,
+        },
+      })
+      success('Login successful!')
+      onSuccess?.()
+    } else if (result.error) {
+      showError(result.error.message || 'Login failed. Please check your credentials.')
+    }
   }
 
   return (
@@ -80,8 +104,17 @@ export function VendorLogin({ onBack, onRegister, onSuccess }) {
                 Forgot?
               </button>
             </div>
-            <button type="submit" className="w-full rounded-full bg-brand px-6 py-3 text-sm font-semibold text-brand-foreground">
-              Sign In
+            {error && (
+              <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-600">
+                {error.message || 'An error occurred'}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-full bg-brand px-6 py-3 text-sm font-semibold text-brand-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </div>
         </form>

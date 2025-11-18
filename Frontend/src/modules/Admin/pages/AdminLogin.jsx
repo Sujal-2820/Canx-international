@@ -1,6 +1,10 @@
 import { useState } from 'react'
+import { useAdminDispatch } from '../context/AdminContext'
+import { useAdminApi } from '../hooks/useAdminApi'
 
 export function AdminLogin({ onSubmit }) {
+  const dispatch = useAdminDispatch()
+  const { login, loading, error } = useAdminApi()
   const [form, setForm] = useState({ email: '', password: '' })
 
   const handleChange = (event) => {
@@ -8,9 +12,29 @@ export function AdminLogin({ onSubmit }) {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
-    onSubmit?.(form)
+    const result = await login(form)
+    if (result.data) {
+      // Store token
+      if (result.data.token) {
+        localStorage.setItem('admin_token', result.data.token)
+      }
+      // Update context with admin profile
+      dispatch({
+        type: 'AUTH_LOGIN',
+        payload: {
+          id: result.data.admin.id,
+          name: result.data.admin.name,
+          email: result.data.admin.email,
+          role: result.data.admin.role,
+        },
+      })
+      onSubmit?.(form)
+    } else if (result.error) {
+      // Error is handled by the hook and displayed via error state
+      console.error('Login failed:', result.error)
+    }
   }
 
   return (
@@ -49,11 +73,17 @@ export function AdminLogin({ onSubmit }) {
               className="w-full rounded-2xl border border-muted/40 bg-muted/10 px-4 py-3 text-sm text-surface-foreground transition-all duration-200 focus:border-brand focus:bg-muted/20 focus:outline-none focus:ring-2 focus:ring-brand/40"
             />
           </div>
+          {error && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-600">
+              {error.message || 'An error occurred'}
+            </div>
+          )}
           <button
             type="submit"
-            className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-brand-foreground transition-all duration-200 hover:bg-brand-light hover:scale-105 hover:shadow-lg"
+            disabled={loading}
+            className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-brand-foreground transition-all duration-200 hover:bg-brand-light hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Login
+            {loading ? 'Signing in...' : 'Login'}
           </button>
         </form>
       </div>

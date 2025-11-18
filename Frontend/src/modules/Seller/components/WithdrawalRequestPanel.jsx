@@ -1,18 +1,25 @@
 import { useState } from 'react'
+import { useSellerState } from '../context/SellerContext'
+import { useSellerApi } from '../hooks/useSellerApi'
 import { sellerSnapshot } from '../services/sellerData'
 import { cn } from '../../../lib/cn'
 import { WalletIcon, CloseIcon } from './icons'
+import { useToast } from './ToastNotification'
 
 export function WithdrawalRequestPanel({ isOpen, onClose, onSuccess }) {
+  const { dashboard } = useSellerState()
+  const { requestWithdrawal, loading } = useSellerApi()
+  const { success, error: showError } = useToast()
   const [amount, setAmount] = useState('')
   const [accountNumber, setAccountNumber] = useState('')
   const [ifscCode, setIfscCode] = useState('')
   const [accountName, setAccountName] = useState('')
   const [errors, setErrors] = useState({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const wallet = sellerSnapshot.wallet
-  const availableBalance = parseFloat(wallet.balance.replace(/[₹,\s]/g, '')) || 0
+  const wallet = dashboard?.wallet || sellerSnapshot.wallet
+  const availableBalance = typeof wallet.balance === 'number' 
+    ? wallet.balance 
+    : parseFloat(wallet.balance?.replace(/[₹,\s]/g, '') || '0')
   const minWithdrawal = 5000
 
   const validateForm = () => {
@@ -44,18 +51,30 @@ export function WithdrawalRequestPanel({ isOpen, onClose, onSuccess }) {
     e.preventDefault()
     if (!validateForm()) return
 
-    setIsSubmitting(true)
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false)
-      onSuccess?.({
-        amount: parseFloat(amount),
-        accountNumber,
-        ifscCode,
-        accountName,
-      })
-      onClose()
-    }, 1500)
+    const withdrawalData = {
+      amount: parseFloat(amount),
+      accountNumber,
+      ifscCode,
+      accountName,
+    }
+
+    const result = await requestWithdrawal(withdrawalData)
+    
+    if (result.error) {
+      showError(result.error.message || 'Failed to submit withdrawal request')
+      return
+    }
+
+    success(`Withdrawal request of ₹${parseFloat(amount).toLocaleString('en-IN')} submitted successfully!`)
+    onSuccess?.(withdrawalData)
+    
+    // Reset form
+    setAmount('')
+    setAccountNumber('')
+    setIfscCode('')
+    setAccountName('')
+    setErrors({})
+    onClose()
   }
 
   const handleAmountChange = (value) => {
@@ -91,7 +110,11 @@ export function WithdrawalRequestPanel({ isOpen, onClose, onSuccess }) {
           <div className="seller-panel__balance-info">
             <div className="seller-panel__balance-item">
               <span className="seller-panel__balance-label">Available Balance</span>
-              <span className="seller-panel__balance-value">{wallet.balance}</span>
+              <span className="seller-panel__balance-value">
+                {typeof wallet.balance === 'number' 
+                  ? `₹${wallet.balance.toLocaleString('en-IN')}` 
+                  : wallet.balance}
+              </span>
             </div>
             <div className="seller-panel__balance-item">
               <span className="seller-panel__balance-label">Minimum Withdrawal</span>
@@ -190,10 +213,10 @@ export function WithdrawalRequestPanel({ isOpen, onClose, onSuccess }) {
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={loading}
               className="seller-panel__button seller-panel__button--primary"
             >
-              {isSubmitting ? 'Processing...' : 'Submit Request'}
+              {loading ? 'Processing...' : 'Submit Request'}
             </button>
           </div>
         </form>

@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useReducer } from 'react'
+import { createContext, useContext, useMemo, useReducer, useEffect } from 'react'
+import { initializeRealtimeConnection, handleRealtimeNotification } from '../services/userApi'
 
 const UserStateContext = createContext(null)
 const UserDispatchContext = createContext(() => {})
@@ -9,6 +10,7 @@ const initialState = {
     name: 'Guest User',
     email: '',
     phone: '',
+    sellerId: null, // Seller ID linked to user
     location: {
       address: '',
       city: '',
@@ -23,6 +25,8 @@ const initialState = {
   paymentMethods: [],
   favourites: [],
   notifications: [],
+  assignedVendor: null, // Vendor assigned based on location (20km radius)
+  realtimeConnected: false,
 }
 
 function reducer(state, action) {
@@ -34,7 +38,26 @@ function reducer(state, action) {
         profile: {
           ...state.profile,
           ...action.payload,
+          sellerId: action.payload.sellerId || state.profile.sellerId, // Preserve sellerId if not provided
         },
+      }
+    case 'UPDATE_SELLER_ID':
+      return {
+        ...state,
+        profile: {
+          ...state.profile,
+          sellerId: action.payload,
+        },
+      }
+    case 'SET_ASSIGNED_VENDOR':
+      return {
+        ...state,
+        assignedVendor: action.payload,
+      }
+    case 'SET_REALTIME_CONNECTED':
+      return {
+        ...state,
+        realtimeConnected: action.payload,
       }
     case 'AUTH_LOGOUT':
       return { ...state, authenticated: false, profile: initialState.profile, cart: [] }
@@ -156,6 +179,129 @@ function reducer(state, action) {
 
 export function UserProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState)
+  
+  // Initialize real-time connection when authenticated
+  useEffect(() => {
+    if (state.authenticated && state.profile.phone) {
+      const cleanup = initializeRealtimeConnection((notification) => {
+        const processedNotification = handleRealtimeNotification(notification)
+        
+        // Handle different notification types
+        switch (processedNotification.type) {
+          case 'payment_reminder':
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                type: 'payment',
+                title: 'Payment Reminder',
+                message: `Please complete the remaining payment of ₹${processedNotification.amount} for Order #${processedNotification.orderId}`,
+                orderId: processedNotification.orderId,
+                amount: processedNotification.amount,
+                read: false,
+              },
+            })
+            break
+            
+          case 'delivery_update':
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                type: 'delivery',
+                title: 'Delivery Update',
+                message: processedNotification.message || `Your order #${processedNotification.orderId} status has been updated`,
+                orderId: processedNotification.orderId,
+                status: processedNotification.status,
+                read: false,
+              },
+            })
+            // Update order status if order exists
+            if (processedNotification.orderId) {
+              dispatch({
+                type: 'UPDATE_ORDER',
+                payload: {
+                  id: processedNotification.orderId,
+                  status: processedNotification.status,
+                },
+              })
+            }
+            break
+            
+          case 'order_assigned':
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                type: 'order',
+                title: 'Order Assigned',
+                message: `Your order #${processedNotification.orderId} has been assigned to ${processedNotification.vendorName}`,
+                orderId: processedNotification.orderId,
+                read: false,
+              },
+            })
+            break
+            
+          case 'order_delivered':
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                type: 'delivery',
+                title: 'Order Delivered',
+                message: `Your order #${processedNotification.orderId} has been delivered. Please complete the remaining payment.`,
+                orderId: processedNotification.orderId,
+                read: false,
+              },
+            })
+            // Update order status
+            if (processedNotification.orderId) {
+              dispatch({
+                type: 'UPDATE_ORDER',
+                payload: {
+                  id: processedNotification.orderId,
+                  status: 'delivered',
+                  deliveryDate: processedNotification.deliveryDate || new Date().toISOString(),
+                },
+              })
+            }
+            break
+            
+          case 'offer':
+          case 'announcement':
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                type: processedNotification.type,
+                title: processedNotification.title,
+                message: processedNotification.message,
+                read: false,
+              },
+            })
+            break
+            
+          default:
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                ...processedNotification,
+                read: false,
+              },
+            })
+        }
+      })
+      
+      dispatch({ type: 'SET_REALTIME_CONNECTED', payload: true })
+      
+      return () => {
+        cleanup()
+        dispatch({ type: 'SET_REALTIME_CONNECTED', payload: false })
+      }
+    }
+  }, [state.authenticated, state.profile.phone])
+  
   const value = useMemo(() => state, [state])
   return (
     <UserStateContext.Provider value={value}>

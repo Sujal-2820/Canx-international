@@ -171,6 +171,146 @@ export function SellerDashboard({ onLogout }) {
   }
 
   const unreadNotificationsCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications])
+  
+  const tabLabels = useMemo(() => {
+    return NAV_ITEMS.reduce((acc, item) => {
+      acc[item.id] = item.label
+      return acc
+    }, {})
+  }, [])
+  
+  const searchCatalog = useMemo(
+    () =>
+      [
+        {
+          id: 'search-overview-hero',
+          label: 'My Earnings',
+          keywords: ['earnings', 'wallet', 'balance', 'money', 'income', 'revenue'],
+          tab: 'overview',
+          targetId: 'seller-overview-hero',
+        },
+        {
+          id: 'search-overview-services',
+          label: 'Quick Actions',
+          keywords: ['actions', 'shortcuts', 'share', 'referrals', 'quick'],
+          tab: 'overview',
+          targetId: 'seller-overview-services',
+        },
+        {
+          id: 'search-overview-activity',
+          label: 'Recent Activity',
+          keywords: ['activity', 'recent', 'transactions', 'updates', 'history'],
+          tab: 'overview',
+          targetId: 'seller-overview-activity',
+        },
+        {
+          id: 'search-overview-snapshot',
+          label: 'My Stats',
+          keywords: ['stats', 'summary', 'metrics', 'numbers', 'performance'],
+          tab: 'overview',
+          targetId: 'seller-overview-snapshot',
+        },
+        {
+          id: 'search-overview-target',
+          label: 'My Target',
+          keywords: ['target', 'goal', 'progress', 'monthly', 'aim'],
+          tab: 'overview',
+          targetId: 'seller-target-progress',
+        },
+        {
+          id: 'search-referrals',
+          label: 'My Referrals',
+          keywords: ['referrals', 'users', 'people', 'commission', 'sales'],
+          tab: 'referrals',
+          targetId: null,
+        },
+        {
+          id: 'search-wallet',
+          label: 'My Wallet',
+          keywords: ['wallet', 'balance', 'money', 'transactions', 'withdrawal', 'commission'],
+          tab: 'wallet',
+          targetId: null,
+        },
+        {
+          id: 'search-announcements',
+          label: 'Updates',
+          keywords: ['updates', 'announcements', 'news', 'notifications', 'messages'],
+          tab: 'announcements',
+          targetId: null,
+        },
+        {
+          id: 'search-performance',
+          label: 'My Performance',
+          keywords: ['performance', 'reports', 'analytics', 'insights', 'progress'],
+          tab: 'performance',
+          targetId: null,
+        },
+        {
+          id: 'search-profile',
+          label: 'My Profile',
+          keywords: ['profile', 'account', 'settings', 'seller id', 'info'],
+          tab: 'profile',
+          targetId: null,
+        },
+      ].map((item) => ({
+        ...item,
+        tabLabel: tabLabels[item.tab],
+      })),
+    [tabLabels],
+  )
+  
+  const [pendingScroll, setPendingScroll] = useState(null)
+  
+  const searchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) {
+      return searchCatalog.slice(0, 7)
+    }
+    const tokens = query.split(/\s+/).filter(Boolean)
+    const results = searchCatalog
+      .map((item) => {
+        const haystack = `${item.label} ${item.tabLabel} ${item.keywords.join(' ')}`.toLowerCase()
+        const directIndex = haystack.indexOf(query)
+        const directScore = directIndex >= 0 ? 200 - directIndex : 0
+        const tokenScore = tokens.reduce((score, token) => (haystack.includes(token) ? score + 20 : score), 0)
+        const score = directScore + tokenScore
+        return { ...item, score }
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+    return results.length ? results : searchCatalog.slice(0, 5)
+  }, [searchCatalog, searchQuery])
+  
+  const handleSearchNavigate = (item) => {
+    if (!item) return
+    const delay = item.tab === activeTab ? 150 : 420
+    setActiveTab(item.tab)
+    if (item.targetId) {
+      setPendingScroll({ id: item.targetId, delay })
+    }
+    closeSearch()
+  }
+  
+  const handleSearchSubmit = () => {
+    if (searchResults.length) {
+      handleSearchNavigate(searchResults[0])
+    } else {
+      closeSearch()
+    }
+  }
+  
+  useEffect(() => {
+    if (!pendingScroll) return
+    const { id, delay } = pendingScroll
+    const timer = setTimeout(() => {
+      const element = document.getElementById(id)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+      }
+      setPendingScroll(null)
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [pendingScroll, activeTab])
 
   return (
     <>
@@ -218,20 +358,37 @@ export function SellerDashboard({ onLogout }) {
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     event.preventDefault()
-                    closeSearch()
+                    handleSearchSubmit()
                   }
                   if (event.key === 'Escape') {
                     event.preventDefault()
                     closeSearch()
                   }
                 }}
-                placeholder="Search referrals, transactions..."
+                placeholder="Search for referrals, wallet, earnings..."
                 className="seller-search-input"
                 aria-label="Search seller console"
               />
               <button type="button" className="seller-search-cancel" onClick={closeSearch}>
                 Cancel
               </button>
+            </div>
+            <div className="seller-search-sheet__body">
+              {searchResults.length ? (
+                searchResults.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSearchNavigate(item)}
+                    className="seller-search-result"
+                  >
+                    <span className="seller-search-result__label">{item.label}</span>
+                    <span className="seller-search-result__meta">{item.tabLabel}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="seller-search-empty">No matches yet. Try another keyword.</p>
+              )}
             </div>
           </div>
         </div>

@@ -252,3 +252,16 @@ export function UserIcon({ active = false, className = 'h-5 w-5' }) {
   )
 }
 
+export function GiftIcon({ className = 'h-5 w-5' }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+        d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H4.5a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625v2.625m0 0V21m-2.625-13.5H7.5a1.5 1.5 0 0 0-1.5 1.5v8.25a1.5 1.5 0 0 0 1.5 1.5h1.875m0 0H12m-2.625 0H12m2.625-13.5H16.5a1.5 1.5 0 0 1 1.5 1.5v8.25a1.5 1.5 0 0 1-1.5 1.5h-1.875m0 0H12m-2.625 0H12"
+      />
+    </svg>
+  )
+}
+

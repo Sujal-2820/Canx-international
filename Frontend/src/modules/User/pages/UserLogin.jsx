@@ -1,8 +1,9 @@
 import { useState } from 'react'
 
 export function UserLogin({ onSubmit }) {
-  const [form, setForm] = useState({ phone: '', otp: '' })
+  const [form, setForm] = useState({ phone: '', otp: '', sellerId: '' })
   const [step, setStep] = useState('phone')
+  const [showSellerId, setShowSellerId] = useState(false)
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -63,9 +64,43 @@ export function UserLogin({ onSubmit }) {
                   value={form.otp}
                   onChange={handleChange}
                   placeholder="4 digit code"
+                  maxLength={4}
                   className="w-full rounded-2xl border border-muted/60 bg-surface px-4 py-3 text-sm tracking-[0.3em] focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
                 />
               </div>
+              
+              {/* Seller ID Input (Optional) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="user-seller-id" className="text-xs font-semibold text-muted-foreground">
+                    Seller ID (Optional)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowSellerId(!showSellerId)}
+                    className="text-xs text-brand hover:underline"
+                  >
+                    {showSellerId ? 'Hide' : 'Have a Seller ID?'}
+                  </button>
+                </div>
+                {showSellerId && (
+                  <input
+                    id="user-seller-id"
+                    name="sellerId"
+                    type="text"
+                    value={form.sellerId}
+                    onChange={handleChange}
+                    placeholder="Enter Seller ID (e.g., SLR-1001)"
+                    className="w-full rounded-2xl border border-muted/60 bg-surface px-4 py-3 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
+                  />
+                )}
+                {showSellerId && (
+                  <p className="text-xs text-muted-foreground">
+                    Enter the Seller ID shared by your local seller to link your purchases for cashback
+                  </p>
+                )}
+              </div>
+              
               <button type="submit" className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-brand-foreground">
                 Login
               </button>

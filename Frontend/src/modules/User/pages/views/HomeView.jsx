@@ -8,18 +8,125 @@ import { cn } from '../../../../lib/cn'
 export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearchClick, onFilterClick, onToggleFavourite, favourites = [] }) {
   const [bannerIndex, setBannerIndex] = useState(0)
   const categoriesRef = useRef(null)
+  const bannerRef = useRef(null)
   const [selectedCategory, setSelectedCategory] = useState(userSnapshot.categories[0]?.id || null)
+  const [isUserInteracting, setIsUserInteracting] = useState(false)
+  const autoSlideTimeoutRef = useRef(null)
+  const touchStartXRef = useRef(null)
+  const touchEndXRef = useRef(null)
 
   const popularProducts = userSnapshot.popularProducts
     .map((id) => userSnapshot.products.find((p) => p.id === id))
     .filter(Boolean)
 
+  const goToNextSlide = () => {
+    setBannerIndex((prev) => (prev + 1) % userSnapshot.banners.length)
+  }
+
+  const goToPreviousSlide = () => {
+    setBannerIndex((prev) => (prev - 1 + userSnapshot.banners.length) % userSnapshot.banners.length)
+  }
+
+  const goToSlide = (index) => {
+    setBannerIndex(index)
+    setIsUserInteracting(true)
+    resetAutoSlide()
+  }
+
+  const resetAutoSlide = () => {
+    if (autoSlideTimeoutRef.current) {
+      clearTimeout(autoSlideTimeoutRef.current)
+    }
+    autoSlideTimeoutRef.current = setTimeout(() => {
+      setIsUserInteracting(false)
+    }, 3000)
+  }
+
+  // Auto-slide when user is not interacting
   useEffect(() => {
+    if (isUserInteracting) return
+
     const interval = setInterval(() => {
       setBannerIndex((prev) => (prev + 1) % userSnapshot.banners.length)
-    }, 5000)
+    }, 3000)
+    
     return () => clearInterval(interval)
+  }, [isUserInteracting])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSlideTimeoutRef.current) {
+        clearTimeout(autoSlideTimeoutRef.current)
+      }
+    }
   }, [])
+
+  // Touch handlers for swipe
+  const handleTouchStart = (e) => {
+    touchStartXRef.current = e.touches[0].clientX
+    setIsUserInteracting(true)
+  }
+
+  const handleTouchMove = (e) => {
+    touchEndXRef.current = e.touches[0].clientX
+  }
+
+  const handleTouchEnd = () => {
+    if (!touchStartXRef.current || !touchEndXRef.current) return
+
+    const distance = touchStartXRef.current - touchEndXRef.current
+    const minSwipeDistance = 50
+
+    if (Math.abs(distance) > minSwipeDistance) {
+      if (distance > 0) {
+        // Swiped left - go to next
+        goToNextSlide()
+      } else {
+        // Swiped right - go to previous
+        goToPreviousSlide()
+      }
+    }
+
+    resetAutoSlide()
+    touchStartXRef.current = null
+    touchEndXRef.current = null
+  }
+
+  // Mouse handlers for desktop drag
+  const handleMouseDown = (e) => {
+    touchStartXRef.current = e.clientX
+    setIsUserInteracting(true)
+  }
+
+  const handleMouseMove = (e) => {
+    if (touchStartXRef.current !== null) {
+      touchEndXRef.current = e.clientX
+    }
+  }
+
+  const handleMouseUp = () => {
+    if (!touchStartXRef.current || !touchEndXRef.current) {
+      touchStartXRef.current = null
+      touchEndXRef.current = null
+      return
+    }
+
+    const distance = touchStartXRef.current - touchEndXRef.current
+    const minSwipeDistance = 50
+
+    if (Math.abs(distance) > minSwipeDistance) {
+      if (distance > 0) {
+        goToNextSlide()
+      } else {
+        goToPreviousSlide()
+      }
+    }
+
+    resetAutoSlide()
+    touchStartXRef.current = null
+    touchEndXRef.current = null
+  }
 
   const handleCategoryClick = (categoryId) => {
     setSelectedCategory(categoryId)
@@ -70,7 +177,17 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
 
       {/* Hero Banner Section */}
       <section id="home-hero" className="home-hero-section">
-        <div className="home-hero-banner">
+        <div
+          ref={bannerRef}
+          className="home-hero-banner"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+        >
           {userSnapshot.banners.map((banner, index) => (
             <div
               key={banner.id}
@@ -97,7 +214,7 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
                 'home-hero-banner__indicator',
                 index === bannerIndex && 'home-hero-banner__indicator--active'
               )}
-              onClick={() => setBannerIndex(index)}
+              onClick={() => goToSlide(index)}
               aria-label={`Go to banner ${index + 1}`}
             />
           ))}

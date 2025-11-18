@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { AlertTriangle, BarChart3, PieChart, Users } from 'lucide-react'
 import { MetricCard } from '../components/MetricCard'
 import { StatusBadge } from '../components/StatusBadge'
@@ -5,10 +6,21 @@ import { FilterBar } from '../components/FilterBar'
 import { ProgressList } from '../components/ProgressList'
 import { Timeline } from '../components/Timeline'
 import { dashboardSummary, analyticsSummary } from '../services/adminData'
+import { useAdminState } from '../context/AdminContext'
+import { useAdminApi } from '../hooks/useAdminApi'
 import { cn } from '../../../lib/cn'
 
 export function DashboardPage() {
-  const { headline, payables } = dashboardSummary
+  const { dashboard } = useAdminState()
+  const { fetchDashboardData } = useAdminApi()
+
+  useEffect(() => {
+    fetchDashboardData({ period: '30d' })
+  }, [fetchDashboardData])
+
+  // Use data from context or fallback to snapshot
+  const dashboardData = dashboard.data || dashboardSummary
+  const { headline, payables } = dashboardData
 
   return (
     <div className="space-y-8">

@@ -1,8 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useUserState, useUserDispatch } from '../../context/UserContext'
+import { useUserApi } from '../../hooks/useUserApi'
 import { userSnapshot, ADVANCE_PAYMENT_PERCENTAGE, REMAINING_PAYMENT_PERCENTAGE } from '../../services/userData'
 import { MapPinIcon, CreditCardIcon, TruckIcon, ChevronRightIcon, ChevronDownIcon, CheckIcon, PackageIcon, EditIcon, TrashIcon, XIcon } from '../../components/icons'
 import { cn } from '../../../../lib/cn'
+import { useToast } from '../../components/ToastNotification'
 
 const STEPS = [
   { id: 1, label: 'Summary', icon: PackageIcon },
@@ -11,8 +13,10 @@ const STEPS = [
 ]
 
 export function CheckoutView({ onBack, onOrderPlaced }) {
-  const { cart, addresses, profile } = useUserState()
+  const { cart, addresses, profile, assignedVendor } = useUserState()
   const dispatch = useUserDispatch()
+  const { assignVendor, createOrder, createPaymentIntent, confirmPayment, loading } = useUserApi()
+  const { success, error: showError } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
   const [summaryExpanded, setSummaryExpanded] = useState(true)
   const [selectedAddress, setSelectedAddress] = useState(
@@ -168,14 +172,27 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
     }
   }, [cartItems, selectedShipping])
 
-  // Find assigned vendor based on location
-  const assignedVendor = useMemo(() => {
-    const vendorId = cartItems[0]?.vendor?.id
-    if (vendorId) {
-      return userSnapshot.products.find((p) => p.vendor?.id === vendorId)?.vendor
+  // Assign vendor based on selected address location (20km radius)
+  useEffect(() => {
+    if (currentStep >= 2 && selectedAddress && cartItems.length > 0) {
+      const address = uniqueAddresses.find((a) => a.id === selectedAddress)
+      if (address && address.pincode) {
+        // Get coordinates from address or use profile location
+        const location = {
+          address: address.address,
+          city: address.city,
+          state: address.state,
+          pincode: address.pincode,
+          coordinates: profile.location?.coordinates || null,
+        }
+        
+        assignVendor(location).catch((err) => {
+          console.error('Failed to assign vendor:', err)
+          // Vendor assignment will be handled by backend during order creation
+        })
+      }
     }
-    return null
-  }, [cartItems])
+  }, [currentStep, selectedAddress, cartItems.length, uniqueAddresses, profile.location, assignVendor])
 
   const handleNext = () => {
     if (currentStep < 3) {
@@ -191,35 +208,91 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
     }
   }
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (!selectedAddress) {
-      alert('Please select a delivery address')
+      showError('Please select a delivery address')
       return
     }
 
-    const order = {
-      id: `ORD-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      status: 'pending',
-      paymentStatus: 'partial_paid',
-      items: cartItems.map((item) => ({
-        productId: item.productId,
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-      })),
-      total: totals.total,
-      advancePaid: totals.advance,
-      remaining: totals.remaining,
-      vendor: assignedVendor,
-      deliveryTime: selectedShipping.time,
-      deliveryDate: null,
-      addressId: selectedAddress,
-      shippingMethod: selectedShipping.id,
+    const address = uniqueAddresses.find((a) => a.id === selectedAddress)
+    if (!address) {
+      showError('Invalid address selected')
+      return
     }
 
-    setPendingOrder(order)
-    setShowPaymentConfirm(true)
+    // Create order via API
+    const orderData = {
+      items: cartItems.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+      })),
+      addressId: selectedAddress,
+      shippingMethod: selectedShipping.id,
+      paymentMethod: paymentMethod,
+    }
+
+    try {
+      const orderResult = await createOrder(orderData)
+      if (orderResult.error) {
+        showError(orderResult.error.message || 'Failed to create order')
+        return
+      }
+
+      const order = orderResult.data.order
+      setPendingOrder(order)
+      setShowPaymentConfirm(true)
+    } catch (err) {
+      showError('Failed to create order. Please try again.')
+    }
+  }
+
+  const handleConfirmPayment = async () => {
+    if (!pendingOrder) return
+
+    try {
+      // Create payment intent
+      const paymentIntentResult = await createPaymentIntent(
+        pendingOrder.id,
+        totals.advance,
+        paymentMethod
+      )
+
+      if (paymentIntentResult.error) {
+        showError(paymentIntentResult.error.message || 'Failed to initialize payment')
+        return
+      }
+
+      const { paymentIntentId, clientSecret, paymentGateway } = paymentIntentResult.data
+
+      // In a real app, this would integrate with Razorpay/Paytm/Stripe SDK
+      // For now, we'll simulate payment confirmation
+      // TODO: Integrate actual payment gateway SDK here
+      
+      // Simulate payment confirmation (replace with actual gateway integration)
+      const paymentDetails = {
+        paymentIntentId,
+        clientSecret,
+        // Add actual payment gateway response here
+      }
+
+      const confirmResult = await confirmPayment(
+        paymentIntentId,
+        paymentMethod,
+        paymentDetails
+      )
+
+      if (confirmResult.error) {
+        showError(confirmResult.error.message || 'Payment failed')
+        return
+      }
+
+      success('Order placed successfully! Advance payment confirmed.')
+      onOrderPlaced?.(pendingOrder)
+      setShowPaymentConfirm(false)
+      setPendingOrder(null)
+    } catch (err) {
+      showError('Payment processing failed. Please try again.')
+    }
   }
 
   // Collapsible Summary Component
@@ -543,11 +616,18 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
             </div>
           </div>
 
-          {assignedVendor && (
+          {(assignedVendor || cartItems[0]?.vendor) && (
             <div className="p-3 rounded-xl bg-[rgba(240,245,242,0.5)] border border-[rgba(34,94,65,0.15)]">
               <p className="text-xs font-semibold text-[rgba(26,42,34,0.65)] uppercase tracking-wide mb-1">Assigned Vendor</p>
-              <p className="text-sm font-semibold text-[#172022]">{assignedVendor.name}</p>
-              <p className="text-xs text-[rgba(26,42,34,0.6)]">{assignedVendor.location}</p>
+              <p className="text-sm font-semibold text-[#172022]">
+                {assignedVendor?.name || cartItems[0]?.vendor?.name || 'Assigning...'}
+              </p>
+              <p className="text-xs text-[rgba(26,42,34,0.6)]">
+                {assignedVendor?.location || cartItems[0]?.vendor?.location || 'Based on your location (20km radius)'}
+              </p>
+              {!assignedVendor && (
+                <p className="text-xs text-orange-600 mt-1">Vendor will be assigned automatically based on your address</p>
+              )}
             </div>
           )}
         </div>
@@ -734,14 +814,11 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  onOrderPlaced(pendingOrder)
-                  setShowPaymentConfirm(false)
-                  setPendingOrder(null)
-                }}
+                onClick={handleConfirmPayment}
+                disabled={loading}
                 className="user-payment-confirm-modal__btn user-payment-confirm-modal__btn--confirm"
               >
-                Pay ₹{pendingOrder.advancePaid.toLocaleString('en-IN')} & Place Order
+                {loading ? 'Processing...' : `Pay ₹${pendingOrder.advancePaid.toLocaleString('en-IN')} & Place Order`}
               </button>
             </div>
           </div>

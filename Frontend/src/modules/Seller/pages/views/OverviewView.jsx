@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { sellerSnapshot } from '../../services/sellerData'
+import { useSellerState } from '../../context/SellerContext'
+import { useSellerApi } from '../../hooks/useSellerApi'
 import { cn } from '../../../../lib/cn'
-import { UsersIcon, WalletIcon, ChartIcon, SparkIcon, ShareIcon, TargetIcon, TrendingUpIcon } from '../../components/icons'
+import { UsersIcon, WalletIcon, ChartIcon, SparkIcon, ShareIcon, TargetIcon, TrendingUpIcon, GiftIcon } from '../../components/icons'
 
 export function OverviewView({ onNavigate, openPanel }) {
+  const { targetIncentives } = useSellerState()
+  const { fetchTargetIncentives } = useSellerApi()
   const [showActivitySheet, setShowActivitySheet] = useState(false)
   const [renderActivitySheet, setRenderActivitySheet] = useState(false)
   const servicesRef = useRef(null)
@@ -64,6 +68,11 @@ export function OverviewView({ onNavigate, openPanel }) {
     container.addEventListener('scroll', handleScroll, { passive: true })
     return () => container.removeEventListener('scroll', handleScroll)
   }, [services.length])
+
+  // Fetch target incentives on mount
+  useEffect(() => {
+    fetchTargetIncentives()
+  }, [fetchTargetIncentives])
 
   return (
     <div className="seller-overview space-y-6">
@@ -307,6 +316,45 @@ export function OverviewView({ onNavigate, openPanel }) {
           </div>
         </div>
       </section>
+
+      {/* Target Incentives Section */}
+      {targetIncentives && targetIncentives.length > 0 && (
+        <section id="seller-target-incentives" className="seller-section">
+          <div className="seller-section__header">
+            <div>
+              <h3 className="seller-section__title">Target Incentives</h3>
+              <p className="seller-section__subtitle">Rewards for achieving your targets</p>
+            </div>
+          </div>
+          <div className="seller-incentives-list">
+            {targetIncentives.map((incentive) => (
+              <div key={incentive.id} className="seller-incentive-card">
+                <div className="seller-incentive-card__icon">
+                  <GiftIcon className="h-5 w-5" />
+                </div>
+                <div className="seller-incentive-card__content">
+                  <h4 className="seller-incentive-card__title">{incentive.title}</h4>
+                  <p className="seller-incentive-card__description">{incentive.description}</p>
+                  <div className="seller-incentive-card__meta">
+                    <span className="seller-incentive-card__amount">₹{incentive.amount?.toLocaleString('en-IN')}</span>
+                    <span className="seller-incentive-card__date">
+                      {incentive.achievedDate
+                        ? `Achieved on ${new Date(incentive.achievedDate).toLocaleDateString('en-IN')}`
+                        : 'Pending'}
+                    </span>
+                  </div>
+                </div>
+                {incentive.status === 'achieved' && (
+                  <div className="seller-incentive-card__badge">
+                    <SparkIcon className="h-4 w-4" />
+                    Earned
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Quick Actions Section */}
       <section id="seller-overview-quick-actions" className="seller-section">

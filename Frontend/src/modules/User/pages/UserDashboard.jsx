@@ -172,6 +172,133 @@ function UserDashboardContent({ onLogout }) {
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
   const favouritesCount = useMemo(() => favourites.length, [favourites])
   const unreadNotificationsCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications])
+  
+  const tabLabels = useMemo(() => {
+    return NAV_ITEMS.reduce((acc, item) => {
+      acc[item.id] = item.label
+      return acc
+    }, {})
+  }, [])
+  
+  const searchCatalog = useMemo(
+    () =>
+      [
+        {
+          id: 'search-home-hero',
+          label: 'Special Offers',
+          keywords: ['offers', 'deals', 'promotions', 'discounts', 'banner', 'special'],
+          tab: 'home',
+          targetId: 'home-hero',
+        },
+        {
+          id: 'search-home-search',
+          label: 'Find Products',
+          keywords: ['search', 'find', 'products', 'items', 'look'],
+          tab: 'home',
+          targetId: 'home-search',
+        },
+        {
+          id: 'search-home-categories',
+          label: 'Browse Categories',
+          keywords: ['categories', 'seeds', 'fertilizers', 'pesticides', 'tools', 'browse'],
+          tab: 'home',
+          targetId: 'home-categories',
+        },
+        {
+          id: 'search-home-popular',
+          label: 'Best Sellers',
+          keywords: ['popular', 'best', 'trending', 'top', 'sellers', 'products'],
+          tab: 'home',
+          targetId: 'home-popular-products',
+        },
+        {
+          id: 'search-cart',
+          label: 'My Cart',
+          keywords: ['cart', 'basket', 'items', 'checkout', 'buy'],
+          tab: 'cart',
+          targetId: null,
+        },
+        {
+          id: 'search-favourites',
+          label: 'My Favourites',
+          keywords: ['favourites', 'wishlist', 'saved', 'liked', 'favorite'],
+          tab: 'favourites',
+          targetId: null,
+        },
+        {
+          id: 'search-orders',
+          label: 'My Orders',
+          keywords: ['orders', 'history', 'purchases', 'deliveries', 'past'],
+          tab: 'orders',
+          targetId: null,
+        },
+        {
+          id: 'search-account',
+          label: 'My Account',
+          keywords: ['account', 'profile', 'settings', 'address', 'payment', 'info'],
+          tab: 'account',
+          targetId: null,
+        },
+      ].map((item) => ({
+        ...item,
+        tabLabel: tabLabels[item.tab],
+      })),
+    [tabLabels],
+  )
+  
+  const [pendingScroll, setPendingScroll] = useState(null)
+  
+  const searchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) {
+      return searchCatalog.slice(0, 7)
+    }
+    const tokens = query.split(/\s+/).filter(Boolean)
+    const results = searchCatalog
+      .map((item) => {
+        const haystack = `${item.label} ${item.tabLabel} ${item.keywords.join(' ')}`.toLowerCase()
+        const directIndex = haystack.indexOf(query)
+        const directScore = directIndex >= 0 ? 200 - directIndex : 0
+        const tokenScore = tokens.reduce((score, token) => (haystack.includes(token) ? score + 20 : score), 0)
+        const score = directScore + tokenScore
+        return { ...item, score }
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+    return results.length ? results : searchCatalog.slice(0, 5)
+  }, [searchCatalog, searchQuery])
+  
+  const handleSearchNavigate = (item) => {
+    if (!item) return
+    const delay = item.tab === activeTab ? 150 : 420
+    setActiveTab(item.tab)
+    if (item.targetId) {
+      setPendingScroll({ id: item.targetId, delay })
+    }
+    closeSearch()
+  }
+  
+  const handleSearchSubmit = () => {
+    if (searchResults.length) {
+      handleSearchNavigate(searchResults[0])
+    } else {
+      setActiveTab('search')
+      closeSearch()
+    }
+  }
+  
+  useEffect(() => {
+    if (!pendingScroll) return
+    const { id, delay } = pendingScroll
+    const timer = setTimeout(() => {
+      const element = document.getElementById(id)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+      }
+      setPendingScroll(null)
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [pendingScroll, activeTab])
 
   const handleAddToCart = (productId, quantity = 1) => {
     const product = userSnapshot.products.find((p) => p.id === productId)
@@ -430,7 +557,7 @@ function UserDashboardContent({ onLogout }) {
         <div className={cn('user-search-sheet', searchOpen && 'is-open')}>
           <div className={cn('user-search-sheet__overlay', searchOpen && 'is-open')} onClick={closeSearch} />
           <div className={cn('user-search-sheet__panel', searchOpen && 'is-open')}>
-            <div className="flex items-center gap-2.5">
+            <div className="user-search-sheet__header">
               <input
                 ref={searchInputRef}
                 value={searchQuery}
@@ -438,25 +565,41 @@ function UserDashboardContent({ onLogout }) {
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     event.preventDefault()
-                    setActiveTab('search')
-                    closeSearch()
+                    handleSearchSubmit()
                   }
                   if (event.key === 'Escape') {
                     event.preventDefault()
                     closeSearch()
                   }
                 }}
-                placeholder="Search products..."
-                className="flex-1 rounded-2xl border border-[rgba(15,118,110,0.25)] bg-[rgba(240,253,250,0.85)] py-2.5 px-4 text-[0.9rem] text-[#0f172a] shadow-[inset_0_2px_6px_-3px_rgba(15,23,42,0.25)] focus:outline-none focus:border-[#1b8f5b] focus:ring-2 focus:ring-[rgba(43,118,79,0.2)]"
-                aria-label="Search products"
+                placeholder="Search for products, orders, cart..."
+                className="user-search-input"
+                aria-label="Search user dashboard"
               />
               <button
                 type="button"
-                className="border-none bg-transparent text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-[#047857]"
+                className="user-search-cancel"
                 onClick={closeSearch}
               >
                 Cancel
               </button>
+            </div>
+            <div className="user-search-sheet__body">
+              {searchResults.length ? (
+                searchResults.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSearchNavigate(item)}
+                    className="user-search-result"
+                  >
+                    <span className="user-search-result__label">{item.label}</span>
+                    <span className="user-search-result__meta">{item.tabLabel}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="user-search-empty">No matches yet. Try another keyword.</p>
+              )}
             </div>
           </div>
         </div>

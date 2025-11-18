@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
 import { useUserState } from '../../context/UserContext'
-import { PackageIcon, TruckIcon, ClockIcon, CheckCircleIcon } from '../../components/icons'
+import { useUserApi } from '../../hooks/useUserApi'
+import { PackageIcon, TruckIcon, ClockIcon, CheckCircleIcon, CreditCardIcon } from '../../components/icons'
 import { cn } from '../../../../lib/cn'
+import { useToast } from '../../components/ToastNotification'
 
 const FILTER_TABS = [
   { id: 'all', label: 'All' },
@@ -12,7 +14,10 @@ const FILTER_TABS = [
 
 export function OrdersView() {
   const { orders, cart } = useUserState()
+  const { createRemainingPaymentIntent, confirmRemainingPayment, loading } = useUserApi()
+  const { success, error: showError } = useToast()
   const [activeFilter, setActiveFilter] = useState('all')
+  const [processingPayment, setProcessingPayment] = useState(null)
 
   // Combine orders and cart items
   const allItems = useMemo(() => {
@@ -88,6 +93,59 @@ export function OrdersView() {
       })
     } catch {
       return dateString
+    }
+  }
+
+  const handlePayRemaining = async (order) => {
+    if (!order || !order.id) {
+      showError('Invalid order')
+      return
+    }
+
+    setProcessingPayment(order.id)
+
+    try {
+      // Create remaining payment intent
+      const paymentIntentResult = await createRemainingPaymentIntent(order.id, 'razorpay')
+
+      if (paymentIntentResult.error) {
+        showError(paymentIntentResult.error.message || 'Failed to initialize payment')
+        setProcessingPayment(null)
+        return
+      }
+
+      const { paymentIntentId, clientSecret, amount } = paymentIntentResult.data
+
+      // In a real app, this would integrate with Razorpay/Paytm/Stripe SDK
+      // TODO: Integrate actual payment gateway SDK here
+      
+      // Simulate payment confirmation (replace with actual gateway integration)
+      const paymentDetails = {
+        paymentIntentId,
+        clientSecret,
+        // Add actual payment gateway response here
+      }
+
+      const confirmResult = await confirmRemainingPayment(
+        order.id,
+        paymentIntentId,
+        'razorpay',
+        paymentDetails
+      )
+
+      if (confirmResult.error) {
+        showError(confirmResult.error.message || 'Payment failed')
+        setProcessingPayment(null)
+        return
+      }
+
+      success(`Remaining payment of ₹${amount.toLocaleString('en-IN')} completed successfully!`)
+      setProcessingPayment(null)
+      
+      // Order status will be updated via real-time notification or refresh
+    } catch (err) {
+      showError('Payment processing failed. Please try again.')
+      setProcessingPayment(null)
     }
   }
 
@@ -195,12 +253,26 @@ export function OrdersView() {
                       )}
                     >
                       {item.paymentStatus === 'partial_paid'
-                        ? 'Partial Paid (30%)'
+                        ? `Partial Paid (30%) - ₹${item.remaining?.toLocaleString('en-IN') || '0'} remaining`
                         : item.paymentStatus === 'pending'
                           ? 'Pending'
                           : item.paymentStatus}
                     </span>
                   </div>
+                )}
+                {/* Pay Remaining Button - Show when order is delivered and partially paid */}
+                {item.status === 'delivered' && item.paymentStatus === 'partial_paid' && item.remaining > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handlePayRemaining(item)}
+                    disabled={processingPayment === item.id || loading}
+                    className="mt-3 w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white text-sm font-semibold hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <CreditCardIcon className="h-4 w-4" />
+                    {processingPayment === item.id || loading
+                      ? 'Processing...'
+                      : `Pay Remaining ₹${item.remaining.toLocaleString('en-IN')}`}
+                  </button>
                 )}
               </div>
             </div>

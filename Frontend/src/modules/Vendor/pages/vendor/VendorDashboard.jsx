@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVendorDispatch, useVendorState } from '../../context/VendorContext'
+import { useVendorApi } from '../../hooks/useVendorApi'
 import { MobileShell } from '../../components/MobileShell'
 import { BottomNavItem } from '../../components/BottomNavItem'
 import { MenuList } from '../../components/MenuList'
@@ -57,6 +58,7 @@ const NAV_ITEMS = [
 export function VendorDashboard({ onLogout }) {
   const { profile } = useVendorState()
   const dispatch = useVendorDispatch()
+  const { acceptOrder, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus } = useVendorApi()
   const [activeTab, setActiveTab] = useState('overview')
   const welcomeName = (profile?.name || vendorSnapshot.welcome.name || 'Partner').split(' ')[0]
   const { isOpen, isMounted, currentAction, openPanel, closePanel } = useButtonAction()
@@ -357,13 +359,73 @@ export function VendorDashboard({ onLogout }) {
           action={currentAction}
           isOpen={isOpen}
           onClose={closePanel}
-          onAction={(actionData) => {
-            // Handle actions - can be extended for API calls
-            console.log('Action performed:', actionData)
-            // Note: Backend integration is currently absent, so this is front-end mockup only
-            if (actionData.type === 'update' && actionData.data.type === 'admin_request') {
-              // Simulate sending request to admin
-              success('Request sent to admin successfully. You will be notified once reviewed.')
+          onAction={async (actionData) => {
+            // Handle actions with API integration
+            const { type, data, buttonId } = actionData
+
+            try {
+              // Order actions
+              if (buttonId === 'order-available' && data.orderId) {
+                const result = await acceptOrder(data.orderId)
+                if (result.data) {
+                  success('Order accepted successfully!')
+                } else if (result.error) {
+                  error(result.error.message || 'Failed to accept order')
+                }
+              } else if (buttonId === 'order-not-available' && data.orderId) {
+                // Open a panel to get reason for rejection
+                openPanel('order-reject-reason', { orderId: data.orderId })
+              } else if (buttonId === 'order-reject-confirm' && data.orderId && data.reason) {
+                const result = await rejectOrder(data.orderId, { reason: data.reason, notes: data.notes })
+                if (result.data) {
+                  success('Order rejected and forwarded to Admin')
+                } else if (result.error) {
+                  error(result.error.message || 'Failed to reject order')
+                }
+              } else if (buttonId === 'update-order-status' && data.orderId && data.status) {
+                const result = await updateOrderStatus(data.orderId, { status: data.status })
+                if (result.data) {
+                  success('Order status updated successfully!')
+                } else if (result.error) {
+                  error(result.error.message || 'Failed to update order status')
+                }
+              }
+              // Inventory actions
+              else if (buttonId === 'update-stock' && data.itemId && data.newStock !== undefined) {
+                const result = await updateInventoryStock(data.itemId, {
+                  quantity: parseFloat(data.newStock),
+                  notes: data.reason,
+                })
+                if (result.data) {
+                  success('Stock updated successfully!')
+                } else if (result.error) {
+                  error(result.error.message || 'Failed to update stock')
+                }
+              }
+              // Credit purchase actions
+              else if (buttonId === 'place-credit-purchase' && data.amount) {
+                const purchaseData = {
+                  items: data.items ? [{ description: data.items }] : [],
+                  totalAmount: parseFloat(data.amount),
+                  notes: data.urgency ? `Urgency: ${data.urgency}` : '',
+                }
+                const result = await requestCreditPurchase(purchaseData)
+                if (result.data) {
+                  success('Purchase request submitted successfully. Waiting for Admin approval.')
+                } else if (result.error) {
+                  error(result.error.message || 'Failed to submit purchase request')
+                }
+              }
+              // Admin request actions
+              else if (type === 'update' && data.type === 'admin_request') {
+                // Simulate sending request to admin (this would be a separate API endpoint)
+                success('Request sent to admin successfully. You will be notified once reviewed.')
+              } else {
+                // Default success message for other actions
+                success('Action completed successfully')
+              }
+            } catch (err) {
+              error(err.message || 'An unexpected error occurred')
             }
           }}
           onShowNotification={(message, type = 'info') => {
@@ -381,10 +443,21 @@ export function VendorDashboard({ onLogout }) {
 }
 
 function OverviewView({ onNavigate, welcomeName, openPanel }) {
+  const { dashboard } = useVendorState()
+  const { fetchDashboardData } = useVendorApi()
   const [showActivitySheet, setShowActivitySheet] = useState(false)
   const [renderActivitySheet, setRenderActivitySheet] = useState(false)
   const servicesRef = useRef(null)
   const [servicePage, setServicePage] = useState(0)
+
+  // Fetch dashboard data on mount
+  useEffect(() => {
+    fetchDashboardData().then((result) => {
+      if (result.data) {
+        // Data is stored in context via the API hook
+      }
+    })
+  }, [fetchDashboardData])
 
   const services = [
     { label: 'Stock', note: 'Reorder stock', tone: 'success', target: 'inventory', icon: BoxIcon, action: null },
@@ -397,13 +470,17 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
     { label: 'Settings', note: 'Profile & verification', tone: 'success', target: 'credit', icon: CreditIcon, action: 'profile-settings' },
   ]
 
-  const transactions = [
+  // Use data from context or fallback to snapshot
+  const overviewData = dashboard.overview || vendorSnapshot
+  const transactions = overviewData.recentActivity || [
     { name: 'Farm Fresh Traders', action: 'Order accepted', amount: '+₹86,200', status: 'Completed', avatar: 'FF' },
     { name: 'Green Valley Hub', action: 'Loan repayment', amount: '-₹40,000', status: 'Pending', avatar: 'GV' },
     { name: 'HarvestLink Pvt Ltd', action: 'Delivery scheduled', amount: '+₹21,500', status: 'Scheduled', avatar: 'HL' },
   ]
 
-  const walletBalance = vendorSnapshot.credit.remaining || '₹0'
+  const walletBalance = dashboard.credit?.remaining
+    ? `₹${(dashboard.credit.remaining / 100000).toFixed(1)}L`
+    : vendorSnapshot.credit.remaining || '₹0'
 
   const quickActions = [
     {
@@ -458,7 +535,7 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
         <div className="overview-hero__card">
           <div className="overview-hero__meta">
             <span className="overview-chip overview-chip--success">
-              Active Zone • {vendorSnapshot.welcome.coverageKm} km
+              Active Zone • {dashboard.profile?.coverageRadius || vendorSnapshot.welcome.coverageKm} km
             </span>
             <span className="overview-chip overview-chip--warn">Today {new Date().toLocaleDateString('en-GB')}</span>
           </div>
@@ -633,7 +710,7 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
           </div>
         </div>
         <div className="overview-metric-grid">
-          {vendorSnapshot.highlights.map((item) => (
+          {(overviewData.highlights || vendorSnapshot.highlights).map((item) => (
             <div key={item.id} className="overview-metric-card">
               <div className="overview-metric-card__head">
                 <p>{item.label}</p>
@@ -689,7 +766,21 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
 }
 
 function InventoryView({ openPanel }) {
-  const inventory = vendorSnapshot.inventory
+  const { dashboard } = useVendorState()
+  const dispatch = useVendorDispatch()
+  const { getInventory } = useVendorApi()
+  const [inventoryData, setInventoryData] = useState(null)
+
+  useEffect(() => {
+    getInventory().then((result) => {
+      if (result.data) {
+        setInventoryData(result.data)
+        dispatch({ type: 'SET_INVENTORY_DATA', payload: result.data })
+      }
+    })
+  }, [getInventory, dispatch])
+
+  const inventory = inventoryData?.items || dashboard.inventory?.items || vendorSnapshot.inventory
   const totalSkus = inventory.length
   const criticalCount = inventory.filter((item) => item.status === 'Critical').length
   const lowCount = inventory.filter((item) => item.status === 'Low').length
@@ -922,7 +1013,20 @@ function InventoryView({ openPanel }) {
 }
 
 function OrdersView({ openPanel }) {
+  const { dashboard } = useVendorState()
+  const dispatch = useVendorDispatch()
+  const { getOrders } = useVendorApi()
   const [selectedFilter, setSelectedFilter] = useState('all')
+  const [ordersData, setOrdersData] = useState(null)
+
+  useEffect(() => {
+    getOrders({ status: selectedFilter === 'all' ? undefined : selectedFilter }).then((result) => {
+      if (result.data) {
+        setOrdersData(result.data)
+        dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+      }
+    })
+  }, [getOrders, selectedFilter, dispatch])
 
   const STAGES = ['Awaiting', 'Processing', 'Delivered']
 
@@ -934,7 +1038,7 @@ function OrdersView({ openPanel }) {
     return 0
   }
 
-  const orders = vendorSnapshot.orders
+  const orders = ordersData?.orders || dashboard.orders?.orders || vendorSnapshot.orders
   const totals = orders.reduce(
     (acc, order) => {
       const index = stageIndex(order.status)
@@ -1181,13 +1285,35 @@ function OrdersView({ openPanel }) {
 }
 
 function CreditView({ openPanel }) {
-  const credit = vendorSnapshot.credit
-  const usedPercent = Math.min(
-    Math.round(
-      (parseInt(credit.used.replace(/[^0-9]/g, ''), 10) / parseInt(credit.limit.replace(/[^0-9]/g, ''), 10)) * 100,
-    ),
-    100,
-  )
+  const { dashboard } = useVendorState()
+  const dispatch = useVendorDispatch()
+  const { getCreditInfo } = useVendorApi()
+
+  useEffect(() => {
+    getCreditInfo().then((result) => {
+      if (result.data) {
+        dispatch({ type: 'SET_CREDIT_DATA', payload: result.data })
+      }
+    })
+  }, [getCreditInfo, dispatch])
+
+  const creditData = dashboard.credit || {}
+  const credit = {
+    limit: creditData.limit ? `₹${(creditData.limit / 100000).toFixed(1)}L` : vendorSnapshot.credit.limit || '₹35L',
+    used: creditData.used ? `₹${(creditData.used / 100000).toFixed(1)}L` : vendorSnapshot.credit.used || '₹22.6L',
+    remaining: creditData.remaining ? `₹${(creditData.remaining / 100000).toFixed(1)}L` : vendorSnapshot.credit.remaining || '₹12.4L',
+    penalty: creditData.penalty === 0 ? 'No penalty' : creditData.penalty || vendorSnapshot.credit.penalty || 'No penalty',
+    due: creditData.dueDate || vendorSnapshot.credit.due || '08 Dec 2025',
+  }
+
+  const usedPercent = creditData.limit && creditData.used
+    ? Math.min(Math.round((creditData.used / creditData.limit) * 100), 100)
+    : Math.min(
+        Math.round(
+          (parseInt(credit.used.replace(/[^0-9]/g, ''), 10) / parseInt(credit.limit.replace(/[^0-9]/g, ''), 10)) * 100,
+        ),
+        100,
+      )
 
   const creditMetrics = [
     { label: 'Loan limit', value: credit.limit, icon: CreditIcon, tone: 'success' },
@@ -1354,6 +1480,17 @@ function CreditView({ openPanel }) {
 }
 
 function ReportsView() {
+  const { dashboard } = useVendorState()
+  const dispatch = useVendorDispatch()
+  const { getReports } = useVendorApi()
+
+  useEffect(() => {
+    getReports({ period: 'week' }).then((result) => {
+      if (result.data) {
+        dispatch({ type: 'SET_REPORTS_DATA', payload: result.data })
+      }
+    })
+  }, [getReports, dispatch])
   const topVendors = [
     { name: 'HarvestLink Pvt Ltd', revenue: '₹1.4 Cr', change: '+12%', tone: 'success' },
     { name: 'GreenGrow Supplies', revenue: '₹1.1 Cr', change: '+9%', tone: 'success' },

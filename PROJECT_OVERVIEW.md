@@ -1,0 +1,377 @@
+# IRA SATHI - Project Overview & System Documentation
+
+## System Overview
+
+**IRA SATHI** is a comprehensive fertilizer management ecosystem that connects four core entities to streamline the distribution and purchase of fertilizers, ensuring efficient operations from head office to end users.
+
+### Core Entities
+
+1. **Admin (Head Office)** - Central management and oversight
+2. **Vendors (Local Distributors)** - Regional distributors (1 per 20km radius)
+3. **Sellers (Field Agents / Seller Boys)** - On-ground sales representatives
+4. **Users (Farmers or Retail Buyers)** - End consumers purchasing fertilizers
+
+### System Objectives
+
+The system ensures that:
+
+- Users can easily purchase fertilizers online
+- Sellers get credited when their referred users purchase
+- Vendors manage local stock, credit, and distribution
+- Admin oversees everything—stock, payments, credits, vendors, and performance
+
+---
+
+## User Application Flow
+
+### Step 1: Onboarding & Authentication
+
+1. User downloads IRA SATHI mobile app
+2. User opens app → shown language selection screen (English / Hindi / etc.) powered by **Google Translator API**
+3. User proceeds to OTP-based login:
+   - Enters mobile number
+   - Receives OTP (via Firebase / SMS API)
+   - Logs in successfully
+4. User can optionally enter a **Seller ID** (shared by the local seller boy)
+   - If entered, all purchases under this ID are linked for cashback to that seller
+   - Seller ID gets stored in user's profile
+
+### Step 2: Dashboard & Product Browsing
+
+1. User lands on the Home screen with:
+   - Categories (e.g., Organic, Chemical, Seeds, Insecticides, etc.)
+   - Highlighted offers and popular products
+2. User selects a category → views product list
+3. Each product card displays:
+   - Name, Price, Description, Stock Status, Vendor Name/Location
+4. User taps a product → navigates to Product Details page showing:
+   - Image, available stock, delivery timeline (3hr / 4hr / 1 day – set by Admin), and Add to Cart option
+
+### Step 3: Add to Cart & Checkout
+
+1. User adds products to cart
+2. System checks minimum order value (**₹2,000**):
+   - If below ₹2,000 → shows alert "Minimum order value is ₹2,000."
+3. At checkout:
+   - System fetches assigned Vendor based on user's location (20 km radius rule)
+   - If vendor is available and has stock → order goes to that vendor
+   - If vendor doesn't have stock → order automatically forwards to Admin stock
+4. User proceeds to payment:
+   - **30% advance payment** required before confirming the order
+   - **70% payment** scheduled post-delivery (via link or auto-reminder)
+
+### Step 4: Payment Gateway
+
+1. System integrates **Razorpay/Paytm/Stripe**
+2. User pays 30% amount → transaction verified → order confirmed
+3. Payment status = "Partial Paid"
+
+### Step 5: Order Assignment
+
+1. Backend verifies stock from vendor:
+   - If vendor has stock → vendor receives order notification
+   - If vendor doesn't have stock → vendor must mark "Not Available" with reason → order gets escalated to Admin
+2. Admin arranges delivery via master warehouse
+
+### Step 6: Order Delivery & Remaining Payment
+
+1. Delivery scheduled as per admin-set timing (3 hr, 4 hr, 1 day)
+2. After delivery confirmation, user receives notification for remaining 70% payment
+3. User completes balance payment → order marked "Fully Paid & Delivered"
+4. Seller ID linked to the order → cashback credited to seller's wallet (see Seller Panel flow)
+
+### Step 7: Post-Order Features
+
+User can track:
+- Order History
+- Payment Status (Advance / Remaining)
+- Delivery Status
+- User can raise issue via Support Chat / Call
+
+Push Notifications for:
+- Payment reminder
+- Delivery updates
+- Offers or announcements
+
+---
+
+## Vendor Panel Flow (Distributor)
+
+### Step 1: Vendor Registration
+
+1. Vendor applies through website or Admin directly registers them
+2. Vendor location verified using **Google Maps API**
+3. Only **1 vendor allowed per 20 km radius**
+4. Vendor account approved by Admin and login credentials shared
+
+### Step 2: Vendor Dashboard
+
+Main sections:
+- Orders
+- Inventory
+- Purchase from Admin
+- Credit Management
+- Reports
+
+### Step 3: Inventory Management
+
+1. Vendor sees all fertilizers assigned to them by Admin
+2. Can view:
+   - Current stock quantity
+   - Purchase price from Admin
+   - Selling price to users
+3. Vendor can update stock quantities manually after physical deliveries
+
+### Step 4: Order Management
+
+1. When user in vendor's region places an order:
+   - Vendor receives notification
+   - Vendor checks stock availability
+2. Vendor options:
+   - "Available" → accepts order → arranges delivery
+   - "Not Available" → must provide reason (e.g., out of stock, delay in shipment)
+     - System redirects order to Admin for fulfillment
+3. Vendor updates order status:
+   - Accepted → Processing → Delivered
+4. Vendor can see payment status (advance received / pending balance)
+
+### Step 5: Purchase from Admin
+
+1. If vendor stock is low, they can reorder from Admin:
+   - Minimum purchase value **₹50,000**
+   - Purchase type: "Credit Order"
+2. Once request placed:
+   - Admin verifies order → approves or rejects
+   - Vendor receives fertilizer stock entry in inventory
+   - Credit balance increases
+
+### Step 6: Credit Management System
+
+1. Each vendor has a credit limit and repayment time set by Admin
+2. If vendor delays payment:
+   - Credit points reduce daily based on penalty rate defined by Admin
+   - After expiry, vendor restricted from new purchases until cleared
+3. Vendor dashboard shows:
+   - Credit limit
+   - Remaining amount
+   - Penalty status
+   - Due date reminders
+
+### Step 7: Reports & Insights
+
+Vendor dashboard displays:
+- Total Orders (daily/weekly/monthly)
+- Total Sales & Revenue
+- Credit Purchase Summary
+- Payment History
+- User Region Analytics (20km coverage)
+
+---
+
+## Seller Panel Flow (Field Agent)
+
+### Step 1: Seller Registration
+
+1. Seller created by Admin with:
+   - Unique Seller ID (e.g., SLR-1001)
+   - Name, contact info, village area
+   - Monthly sales target and commission rate
+2. Seller logs in using provided credentials
+
+### Step 2: Dashboard Overview
+
+Seller home screen includes:
+- Total Users Referred
+- Total Purchase Amount through Seller ID
+- Current Month Target & Achieved %
+- Wallet Balance
+- Latest Announcements from Admin
+
+### Step 3: User Referral System
+
+1. Seller visits farmers in nearby villages
+2. Seller explains the app and provides his unique Seller ID
+3. When user uses that ID:
+   - Every purchase made by that user is linked to seller's account
+   - Seller earns cashback or commission based on Admin's set rate
+
+### Step 4: Wallet & Cashback Flow
+
+1. For each completed order linked to Seller ID:
+   - System calculates cashback (e.g., 2% of total order value)
+   - Cashback added to seller's wallet automatically
+2. Seller can view:
+   - Wallet balance
+   - Transaction details
+   - Withdrawal requests (approved by Admin)
+
+### Step 5: Target Management
+
+1. Admin sets monthly sales target per seller (e.g., ₹1,00,000 total sales)
+2. Seller dashboard shows:
+   - Progress Bar (e.g., 75% achieved)
+   - Number of orders through Seller ID
+   - Incentives if target achieved
+
+### Step 6: Notifications
+
+- When cashback added → "You earned ₹200 for User Order #123."
+- When target achieved → "Congratulations! You reached your monthly goal."
+- When Admin updates policy or product info → instant push notification
+
+---
+
+## Admin Panel Flow (Super Admin)
+
+### Step 1: Authentication
+
+1. Admin logs in with secure credentials
+2. Dashboard overview shows:
+   - Total Users, Vendors, Sellers
+   - Total Orders
+   - Total Sales & Revenue
+   - Pending Payments & Credits
+
+### Step 2: Master Product Management
+
+1. Add, edit, or delete fertilizer products
+2. Assign products to vendors region-wise
+3. Maintain:
+   - Stock quantity
+   - Price to vendor
+   - Price to user
+   - Expiry dates / batch info
+4. Toggle product visibility (active/inactive)
+
+### Step 3: Vendor Management
+
+1. View all registered vendors with location map
+2. Approve/reject new vendor applications
+3. Set credit policy:
+   - Credit Limit
+   - Repayment days
+   - Penalty rate
+4. Approve vendor purchase requests (≥₹50,000)
+5. Monitor vendor performance and dues
+
+### Step 4: Seller Management
+
+1. Create / edit seller profiles
+2. Assign unique Seller IDs
+3. Define cashback % or commission rates
+4. Set monthly sales targets
+5. Track each seller's progress, total referred users, and sales data
+6. Approve seller wallet withdrawals
+
+### Step 5: User Management
+
+1. View list of all registered users
+2. View linked seller IDs
+3. Check each user's orders, payments, and support tickets
+4. Block / deactivate suspicious accounts
+
+### Step 6: Order & Payment Management
+
+1. View all orders (User + Vendor)
+2. Filter by region, vendor, date, status
+3. Reassign orders when vendor unavailable
+4. Monitor:
+   - Advance (30%) payments
+   - Pending (70%) payments
+5. Generate invoices and sales reports
+
+### Step 7: Credit & Finance Management
+
+1. Manage vendor credits and repayment history
+2. Apply penalties for delays automatically
+3. Set global parameters:
+   - Advance % (default 30%)
+   - Minimum order for user (₹2,000)
+   - Minimum vendor purchase (₹50,000)
+4. View total outstanding credits and recovery status
+
+### Step 8: Reporting & Analytics
+
+Daily, weekly, and monthly summaries:
+- Total orders
+- Total revenue
+- Region-wise performance
+- Top Vendors and Sellers
+- Export in Excel / PDF
+
+---
+
+## Key System Parameters
+
+### Financial Thresholds
+
+- **Minimum User Order Value**: ₹2,000
+- **Minimum Vendor Purchase**: ₹50,000
+- **Advance Payment**: 30% of order value
+- **Remaining Payment**: 70% post-delivery
+
+### Geographic Rules
+
+- **Vendor Coverage**: 1 vendor per 20 km radius
+- **Location Verification**: Google Maps API
+
+### Delivery Timelines
+
+- Configurable by Admin: 3 hours / 4 hours / 1 day
+
+### Credit Management
+
+- Credit limits set per vendor by Admin
+- Daily penalty calculation for delayed payments
+- Automatic restrictions on overdue accounts
+
+---
+
+## Technology Integrations
+
+### APIs & Services
+
+- **Google Translator API** - Multi-language support
+- **Google Maps API** - Location verification and vendor radius management
+- **Firebase / SMS API** - OTP authentication
+- **Payment Gateways** - Razorpay / Paytm / Stripe
+
+### Key Features
+
+- Real-time notifications (push notifications)
+- Multi-language support
+- Location-based vendor assignment
+- Automated credit management
+- Commission/cashback tracking
+- Comprehensive reporting and analytics
+
+---
+
+## Workflow Summary
+
+### Order Flow
+
+```
+User → Cart → Checkout → Payment (30%) → Vendor Assignment → 
+Stock Check → Delivery → Payment (70%) → Cashback to Seller
+```
+
+### Vendor Credit Flow
+
+```
+Vendor Request → Admin Approval → Stock Allocation → 
+Credit Balance Update → Repayment Tracking → Penalty Calculation
+```
+
+### Seller Commission Flow
+
+```
+User Purchase (with Seller ID) → Order Completion → 
+Cashback Calculation → Wallet Credit → Withdrawal Request → Admin Approval
+```
+
+---
+
+*Document Version: 1.0*  
+*Last Updated: 2024*
+
