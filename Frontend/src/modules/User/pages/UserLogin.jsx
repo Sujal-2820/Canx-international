@@ -1,114 +1,165 @@
 import { useState } from 'react'
+import { OtpVerification } from '../../../components/auth/OtpVerification'
+import * as userApi from '../services/userApi'
 
-export function UserLogin({ onSubmit }) {
-  const [form, setForm] = useState({ phone: '', otp: '', sellerId: '' })
-  const [step, setStep] = useState('phone')
-  const [showSellerId, setShowSellerId] = useState(false)
+export function UserLogin({ onSuccess, onSwitchToRegister }) {
+  const [step, setStep] = useState('phone') // 'phone' | 'otp'
+  const [form, setForm] = useState({ phone: '' })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
-  const handleChange = (event) => {
-    const { name, value } = event.target
+  const handleChange = (e) => {
+    const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
+    setError(null)
   }
 
-  const requestOtp = (event) => {
-    event.preventDefault()
-    setStep('otp')
+  const handleRequestOtp = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+
+    try {
+      if (!form.phone.trim()) {
+        setError('Contact number is required')
+        setLoading(false)
+        return
+      }
+      if (form.phone.length < 10) {
+        setError('Please enter a valid contact number')
+        setLoading(false)
+        return
+      }
+
+      // Request OTP (mock for now - accepts any data)
+      const result = await userApi.requestOTP({ phone: form.phone })
+      
+      if (result.success || result.data) {
+        setStep('otp')
+      } else {
+        setError(result.error?.message || 'Failed to send OTP. Please try again.')
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to send OTP. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleSubmit = (event) => {
-    event.preventDefault()
-    onSubmit?.(form)
+  const handleVerifyOtp = async (otpCode) => {
+    setError(null)
+    setLoading(true)
+
+    try {
+      // Login with OTP (mock for now - accepts any data)
+      const result = await userApi.loginWithOtp({ phone: form.phone, otp: otpCode })
+
+      if (result.success || result.data) {
+        // Store token if provided
+        if (result.data?.token) {
+          localStorage.setItem('user_token', result.data.token)
+        }
+        onSuccess?.(result.data?.user || { phone: form.phone })
+      } else {
+        setError(result.error?.message || 'Invalid OTP. Please try again.')
+      }
+    } catch (err) {
+      setError(err.message || 'Verification failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResendOtp = async () => {
+    setLoading(true)
+    try {
+      await userApi.requestOTP({ phone: form.phone })
+    } catch (err) {
+      setError('Failed to resend OTP. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (step === 'otp') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-6 py-12">
+        <div className="w-full max-w-md space-y-6">
+          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm">
+            <OtpVerification
+              phone={form.phone}
+              onVerify={handleVerifyOtp}
+              onResend={handleResendOtp}
+              onBack={() => setStep('phone')}
+              loading={loading}
+              error={error}
+            />
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface px-6 py-12">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="text-center">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">User Access</p>
-          <h1 className="mt-2 text-2xl font-semibold text-surface-foreground">Welcome back to IRA Sathi</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Sign in with your registered mobile number.</p>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-6 py-12">
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+          </div>
+          <p className="text-xs uppercase tracking-wide text-green-600 font-semibold">Welcome Back</p>
+          <h1 className="text-3xl font-bold text-gray-900">Sign in to IRA Sathi</h1>
+          <p className="text-sm text-gray-600">Enter your contact number to continue</p>
         </div>
-        <div className="rounded-3xl border border-muted/60 bg-white/90 p-6 shadow-card">
-          {step === 'phone' ? (
-            <form className="space-y-4" onSubmit={requestOtp}>
-              <div className="space-y-1.5">
-                <label htmlFor="user-phone" className="text-xs font-semibold text-muted-foreground">
-                  Mobile Number
-                </label>
-                <input
-                  id="user-phone"
-                  name="phone"
-                  type="tel"
-                  required
-                  value={form.phone}
-                  onChange={handleChange}
-                  placeholder="+91 90000 00000"
-                  className="w-full rounded-2xl border border-muted/60 bg-surface px-4 py-3 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
-                />
+
+        <div className="rounded-3xl border border-green-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm">
+          <form onSubmit={handleRequestOtp} className="space-y-5">
+            {error && (
+              <div className="rounded-2xl bg-red-50 border border-red-200 p-4">
+                <p className="text-sm text-red-600">{error}</p>
               </div>
-              <button type="submit" className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-brand-foreground">
-                Send OTP
+            )}
+
+            <div className="space-y-1.5">
+              <label htmlFor="login-phone" className="text-xs font-semibold text-gray-700">
+                Contact Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="login-phone"
+                name="phone"
+                type="tel"
+                required
+                value={form.phone}
+                onChange={handleChange}
+                placeholder="+91 90000 00000"
+                maxLength={15}
+                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Sending OTP...' : 'Continue'}
+            </button>
+
+            <div className="text-center text-sm">
+              <span className="text-gray-600">Don't have an account? </span>
+              <button
+                type="button"
+                onClick={onSwitchToRegister}
+                className="text-green-600 font-semibold hover:underline"
+              >
+                Sign up
               </button>
-            </form>
-          ) : (
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div className="space-y-1.5">
-                <label htmlFor="user-otp" className="text-xs font-semibold text-muted-foreground">
-                  Enter OTP
-                </label>
-                <input
-                  id="user-otp"
-                  name="otp"
-                  type="text"
-                  required
-                  value={form.otp}
-                  onChange={handleChange}
-                  placeholder="4 digit code"
-                  maxLength={4}
-                  className="w-full rounded-2xl border border-muted/60 bg-surface px-4 py-3 text-sm tracking-[0.3em] focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
-                />
-              </div>
-              
-              {/* IRA Partner ID Input (Optional) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="user-seller-id" className="text-xs font-semibold text-muted-foreground">
-                    IRA Partner ID (Optional)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowSellerId(!showSellerId)}
-                    className="text-xs text-brand hover:underline"
-                  >
-                    {showSellerId ? 'Hide' : 'Have an IRA Partner ID?'}
-                  </button>
-                </div>
-                {showSellerId && (
-                  <input
-                    id="user-seller-id"
-                    name="sellerId"
-                    type="text"
-                    value={form.sellerId}
-                    onChange={handleChange}
-                    placeholder="Enter IRA Partner ID (e.g., SLR-1001)"
-                    className="w-full rounded-2xl border border-muted/60 bg-surface px-4 py-3 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
-                  />
-                )}
-                {showSellerId && (
-                  <p className="text-xs text-muted-foreground">
-                    Enter the IRA Partner ID shared by your local IRA Partner to link your purchases for cashback
-                  </p>
-                )}
-              </div>
-              
-              <button type="submit" className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-brand-foreground">
-                Login
-              </button>
-            </form>
-          )}
+            </div>
+          </form>
         </div>
       </div>
     </div>
   )
 }
-

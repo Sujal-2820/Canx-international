@@ -46,7 +46,98 @@ async function apiRequest(endpoint, options = {}) {
 // ============================================================================
 
 /**
- * Vendor Login
+ * Request OTP for Vendor
+ * POST /vendors/auth/request-otp
+ * 
+ * @param {Object} data - { phone }
+ * @returns {Promise<Object>} - { message: 'OTP sent successfully', expiresIn: 300 }
+ */
+export async function requestVendorOTP(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          message: 'OTP sent successfully',
+          expiresIn: 300,
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/vendors/auth/request-otp', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Register Vendor with OTP
+ * POST /vendors/auth/register
+ * 
+ * @param {Object} data - { fullName, phone, otp }
+ * @returns {Promise<Object>} - { token, vendor: { id, name, phone } }
+ */
+export async function registerVendor(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          token: 'mock_vendor_token_' + Date.now(),
+          vendor: {
+            id: 'vendor_' + Date.now(),
+            name: data.fullName,
+            phone: data.phone,
+          },
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/vendors/auth/register', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Login Vendor with OTP
+ * POST /vendors/auth/login
+ * 
+ * @param {Object} data - { phone, otp }
+ * @returns {Promise<Object>} - { token, vendor: { id, name, phone, location, coverageRadius } }
+ */
+export async function loginVendorWithOtp(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          token: 'mock_vendor_token_' + Date.now(),
+          vendor: {
+            id: 'vendor_' + Date.now(),
+            name: 'Vendor',
+            phone: data.phone,
+            location: { lat: 19.2183, lng: 73.0822, address: 'Kolhapur, Maharashtra' },
+            coverageRadius: 20,
+          },
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/vendors/auth/login', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Vendor Login (Legacy - email/password)
  * POST /vendors/login
  * 
  * @param {Object} credentials - { email, password }

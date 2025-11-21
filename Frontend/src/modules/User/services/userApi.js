@@ -53,24 +53,98 @@ async function apiRequest(endpoint, options = {}) {
  * @returns {Promise<Object>} - { message: 'OTP sent successfully', expiresIn: 300 }
  */
 export async function requestOTP(data) {
-  return apiRequest('/users/auth/request-otp', {
-    method: 'POST',
-    body: JSON.stringify(data),
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          message: 'OTP sent successfully',
+          expiresIn: 300,
+        },
+      })
+    }, 1000)
   })
+  // Uncomment when backend is ready:
+  // return apiRequest('/users/auth/request-otp', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
 }
 
 /**
- * Verify OTP and Login
+ * Register User with OTP
+ * POST /users/auth/register
+ * 
+ * @param {Object} data - { fullName, phone, otp, sellerId? }
+ * @returns {Promise<Object>} - { token, user: { id, name, phone, sellerId } }
+ */
+export async function register(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          token: 'mock_token_' + Date.now(),
+          user: {
+            id: 'user_' + Date.now(),
+            name: data.fullName,
+            phone: data.phone,
+            sellerId: data.sellerId || null,
+          },
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/users/auth/register', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Login with OTP
+ * POST /users/auth/login
+ * 
+ * @param {Object} data - { phone, otp }
+ * @returns {Promise<Object>} - { token, user: { id, name, phone, sellerId, location } }
+ */
+export async function loginWithOtp(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          token: 'mock_token_' + Date.now(),
+          user: {
+            id: 'user_' + Date.now(),
+            name: 'User',
+            phone: data.phone,
+            sellerId: null,
+          },
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/users/auth/login', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Verify OTP and Login (Legacy - use loginWithOtp)
  * POST /users/auth/verify-otp
  * 
  * @param {Object} data - { phone, otp, sellerId? }
  * @returns {Promise<Object>} - { token, user: { id, name, phone, email, sellerId, location } }
  */
 export async function verifyOTP(data) {
-  return apiRequest('/users/auth/verify-otp', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  })
+  return loginWithOtp(data)
 }
 
 /**

@@ -46,7 +46,100 @@ async function apiRequest(endpoint, options = {}) {
 // ============================================================================
 
 /**
- * Seller Login
+ * Request OTP for Seller (IRA Partner)
+ * POST /sellers/auth/request-otp
+ * 
+ * @param {Object} data - { phone }
+ * @returns {Promise<Object>} - { message: 'OTP sent successfully', expiresIn: 300 }
+ */
+export async function requestSellerOTP(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          message: 'OTP sent successfully',
+          expiresIn: 300,
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/sellers/auth/request-otp', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Register Seller (IRA Partner) with OTP
+ * POST /sellers/auth/register
+ * 
+ * @param {Object} data - { fullName, phone, otp }
+ * @returns {Promise<Object>} - { token, seller: { id, name, phone, sellerId } }
+ */
+export async function registerSeller(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          token: 'mock_seller_token_' + Date.now(),
+          seller: {
+            id: 'seller_' + Date.now(),
+            name: data.fullName,
+            phone: data.phone,
+            sellerId: 'SLR-' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
+          },
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/sellers/auth/register', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Login Seller (IRA Partner) with OTP
+ * POST /sellers/auth/login
+ * 
+ * @param {Object} data - { phone, otp }
+ * @returns {Promise<Object>} - { token, seller: { id, name, sellerId, phone, area, commissionRate } }
+ */
+export async function loginSellerWithOtp(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          token: 'mock_seller_token_' + Date.now(),
+          seller: {
+            id: 'seller_' + Date.now(),
+            name: 'IRA Partner',
+            phone: data.phone,
+            sellerId: 'SLR-001',
+            area: 'Kolhapur',
+            commissionRate: '2% - 3%',
+          },
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/sellers/auth/login', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Seller Login (Legacy - email/password)
  * POST /sellers/login
  * 
  * @param {Object} credentials - { email, password }

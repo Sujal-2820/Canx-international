@@ -46,34 +46,90 @@ async function apiRequest(endpoint, options = {}) {
 // ============================================================================
 
 /**
- * Admin Login
- * POST /admin/login
+ * Admin Login (Step 1: Email/Password)
+ * POST /admin/auth/login
  * 
  * @param {Object} credentials - { email, password }
- * @returns {Promise<Object>} - { token, admin: { id, name, email, role } }
+ * @returns {Promise<Object>} - { requiresOtp: true, message: 'OTP sent to email' }
  */
 export async function loginAdmin(credentials) {
-  // Simulate API call - replace with actual API call when backend is ready
+  // Mock implementation for testing - accepts any data
   return new Promise((resolve) => {
     setTimeout(() => {
-      if (credentials.email === 'admin@irasathi.com' && credentials.password === 'admin123') {
-        resolve({
-          success: true,
-          data: {
-            token: 'fake-admin-token',
-            admin: {
-              id: 'admin-001',
-              name: 'Super Admin',
-              email: credentials.email,
-              role: 'super_admin',
-            },
-          },
-        })
-      } else {
-        resolve({ success: false, error: { message: 'Invalid credentials' } })
-      }
+      resolve({
+        success: true,
+        data: {
+          requiresOtp: true,
+          message: 'OTP sent to email',
+          email: credentials.email,
+        },
+      })
     }, 1000)
   })
+  // Uncomment when backend is ready:
+  // return apiRequest('/admin/auth/login', {
+  //   method: 'POST',
+  //   body: JSON.stringify(credentials),
+  // })
+}
+
+/**
+ * Request OTP for Admin
+ * POST /admin/auth/request-otp
+ * 
+ * @param {Object} data - { email }
+ * @returns {Promise<Object>} - { message: 'OTP sent successfully', expiresIn: 300 }
+ */
+export async function requestAdminOTP(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          message: 'OTP sent successfully',
+          expiresIn: 300,
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/admin/auth/request-otp', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
+}
+
+/**
+ * Verify Admin OTP and Complete Login
+ * POST /admin/auth/verify-otp
+ * 
+ * @param {Object} data - { email, otp }
+ * @returns {Promise<Object>} - { token, admin: { id, name, email, role } }
+ */
+export async function verifyAdminOTP(data) {
+  // Mock implementation for testing - accepts any data
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        data: {
+          token: 'mock_admin_token_' + Date.now(),
+          admin: {
+            id: 'admin_' + Date.now(),
+            name: 'Super Admin',
+            email: data.email,
+            role: 'super_admin',
+          },
+        },
+      })
+    }, 1000)
+  })
+  // Uncomment when backend is ready:
+  // return apiRequest('/admin/auth/verify-otp', {
+  //   method: 'POST',
+  //   body: JSON.stringify(data),
+  // })
 }
 
 /**

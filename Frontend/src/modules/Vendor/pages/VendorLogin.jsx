@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
-import * as sellerApi from '../services/sellerApi'
+import * as vendorApi from '../services/vendorApi'
 
-export function SellerLogin({ onSuccess, onSwitchToRegister }) {
+export function VendorLogin({ onSuccess, onSwitchToRegister }) {
   const [step, setStep] = useState('phone') // 'phone' | 'otp'
   const [form, setForm] = useState({ phone: '' })
   const [loading, setLoading] = useState(false)
@@ -31,7 +31,7 @@ export function SellerLogin({ onSuccess, onSwitchToRegister }) {
         return
       }
 
-      const result = await sellerApi.requestSellerOTP({ phone: form.phone })
+      const result = await vendorApi.requestVendorOTP({ phone: form.phone })
       
       if (result.success || result.data) {
         setStep('otp')
@@ -50,13 +50,13 @@ export function SellerLogin({ onSuccess, onSwitchToRegister }) {
     setLoading(true)
 
     try {
-      const result = await sellerApi.loginSellerWithOtp({ phone: form.phone, otp: otpCode })
+      const result = await vendorApi.loginVendorWithOtp({ phone: form.phone, otp: otpCode })
 
       if (result.success || result.data) {
         if (result.data?.token) {
-          localStorage.setItem('seller_token', result.data.token)
+          localStorage.setItem('vendor_token', result.data.token)
         }
-        onSuccess?.(result.data?.seller || { phone: form.phone })
+        onSuccess?.(result.data?.vendor || { phone: form.phone })
       } else {
         setError(result.error?.message || 'Invalid OTP. Please try again.')
       }
@@ -70,7 +70,7 @@ export function SellerLogin({ onSuccess, onSwitchToRegister }) {
   const handleResendOtp = async () => {
     setLoading(true)
     try {
-      await sellerApi.requestSellerOTP({ phone: form.phone })
+      await vendorApi.requestVendorOTP({ phone: form.phone })
     } catch (err) {
       setError('Failed to resend OTP. Please try again.')
     } finally {
@@ -103,11 +103,11 @@ export function SellerLogin({ onSuccess, onSwitchToRegister }) {
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
             <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
           </div>
-          <p className="text-xs uppercase tracking-wide text-green-600 font-semibold">IRA Partner Access</p>
-          <h1 className="text-3xl font-bold text-gray-900">Sign in to IRA Partner Dashboard</h1>
+          <p className="text-xs uppercase tracking-wide text-green-600 font-semibold">Vendor Access</p>
+          <h1 className="text-3xl font-bold text-gray-900">Sign in to Vendor Dashboard</h1>
           <p className="text-sm text-gray-600">Enter your contact number to continue</p>
         </div>
 
@@ -120,11 +120,11 @@ export function SellerLogin({ onSuccess, onSwitchToRegister }) {
             )}
 
             <div className="space-y-1.5">
-              <label htmlFor="seller-login-phone" className="text-xs font-semibold text-gray-700">
+              <label htmlFor="vendor-login-phone" className="text-xs font-semibold text-gray-700">
                 Contact Number <span className="text-red-500">*</span>
               </label>
               <input
-                id="seller-login-phone"
+                id="vendor-login-phone"
                 name="phone"
                 type="tel"
                 required
@@ -160,3 +160,4 @@ export function SellerLogin({ onSuccess, onSwitchToRegister }) {
     </div>
   )
 }
+

@@ -1,0 +1,1352 @@
+/**
+ * Seller (IRA Partner) Controller
+ * 
+ * Handles all seller-related operations
+ */
+
+const Seller = require('../models/Seller');
+const User = require('../models/User');
+const Order = require('../models/Order');
+const Commission = require('../models/Commission');
+const WithdrawalRequest = require('../models/WithdrawalRequest');
+
+const { generateOTP, sendOTP } = require('../config/sms');
+const { generateToken } = require('../middleware/auth');
+const { OTP_EXPIRY_MINUTES, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH } = require('../utils/constants');
+
+/**
+ * @desc    Seller registration
+ * @route   POST /api/sellers/auth/register
+ * @access  Public
+ */
+exports.register = async (req, res, next) => {
+  try {
+    const { name, phone, area } = req.body;
+
+    if (!name || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name and phone are required',
+      });
+    }
+
+    // Check if seller already exists
+    const existingSeller = await Seller.findOne({ phone });
+
+    if (existingSeller) {
+      return res.status(400).json({
+        success: false,
+        message: 'Seller with this phone number already exists',
+      });
+    }
+
+    // Create seller (requires admin approval)
+    const seller = new Seller({
+      name,
+      phone,
+      area: area || '',
+      status: 'pending', // Requires admin approval
+    });
+
+    // Clear any existing OTP before generating new one
+    seller.clearOTP();
+    
+    // Generate new unique OTP
+    const otpCode = seller.generateOTP();
+    await seller.save();
+
+    // Send OTP via SMS
+    try {
+      // Enhanced console logging for OTP
+      const timestamp = new Date().toISOString();
+      console.log('\n' + '='.repeat(60));
+      console.log('🔐 SELLER OTP GENERATED (Registration)');
+      console.log('='.repeat(60));
+      console.log(`📱 Phone: ${phone}`);
+      console.log(`🔢 OTP Code: ${otpCode}`);
+      console.log(`⏰ Generated At: ${timestamp}`);
+      console.log(`⏳ Expires In: 5 minutes`);
+      console.log('='.repeat(60) + '\n');
+      
+      // Try to send OTP (will use dummy in development)
+      await sendOTP(phone, otpCode);
+    } catch (error) {
+      console.error('Failed to send OTP:', error);
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        message: 'Registration request submitted. OTP sent to phone.',
+        sellerId: seller._id,
+        requiresApproval: true,
+        expiresIn: OTP_EXPIRY_MINUTES * 60, // seconds
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Request OTP for seller
+ * @route   POST /api/sellers/auth/request-otp
+ * @access  Public
+ */
+exports.requestOTP = async (req, res, next) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number is required',
+      });
+    }
+
+    let seller = await Seller.findOne({ phone });
+
+    // If seller doesn't exist, create pending registration
+    if (!seller) {
+      seller = new Seller({
+        phone,
+        status: 'pending',
+      });
+    }
+
+    // Clear any existing OTP before generating new one
+    seller.clearOTP();
+    
+    // Generate new unique OTP
+    const otpCode = seller.generateOTP();
+    await seller.save();
+
+    // Send OTP via SMS
+    try {
+      // Enhanced console logging for OTP
+      const timestamp = new Date().toISOString();
+      console.log('\n' + '='.repeat(60));
+      console.log('🔐 SELLER OTP GENERATED');
+      console.log('='.repeat(60));
+      console.log(`📱 Phone: ${phone}`);
+      console.log(`🆔 Seller ID: ${seller.sellerId || 'Pending'}`);
+      console.log(`🔢 OTP Code: ${otpCode}`);
+      console.log(`⏰ Generated At: ${timestamp}`);
+      console.log(`⏳ Expires In: 5 minutes`);
+      console.log('='.repeat(60) + '\n');
+      
+      // Try to send OTP (will use dummy in development)
+      await sendOTP(phone, otpCode);
+    } catch (error) {
+      console.error('Failed to send OTP:', error);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'OTP sent successfully',
+        expiresIn: OTP_EXPIRY_MINUTES * 60, // seconds
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Verify OTP and complete login/registration
+ * @route   POST /api/sellers/auth/verify-otp
+ * @access  Public
+ */
+exports.verifyOTP = async (req, res, next) => {
+  try {
+    const { phone, otp } = req.body;
+
+    if (!phone || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number and OTP are required',
+      });
+    }
+
+    const seller = await Seller.findOne({ phone });
+
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        message: 'Seller not found',
+      });
+    }
+
+    // Verify OTP
+    const isOtpValid = seller.verifyOTP(otp);
+
+    if (!isOtpValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired OTP',
+      });
+    }
+
+    // Check if seller is approved and active
+    if (seller.status !== 'approved' || !seller.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'Seller account is pending approval or inactive. Please contact admin.',
+      });
+    }
+
+    // Clear OTP after successful verification
+    seller.clearOTP();
+    await seller.save();
+
+    // Generate JWT token
+    const token = generateToken({
+      sellerId: seller._id,
+      phone: seller.phone,
+      sellerIdCode: seller.sellerId,
+      role: 'seller',
+      type: 'seller',
+    });
+
+    // Enhanced console logging
+    const timestamp = new Date().toISOString();
+    console.log('\n' + '='.repeat(60));
+    console.log('🔐 SELLER OTP VERIFIED');
+    console.log('='.repeat(60));
+    console.log(`📱 Phone: ${phone}`);
+    console.log(`🆔 Seller ID: ${seller.sellerId}`);
+    console.log(`👤 Name: ${seller.name}`);
+    console.log(`✅ Status: ${seller.status}`);
+    console.log(`⏰ Logged In At: ${timestamp}`);
+    console.log('='.repeat(60) + '\n');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        token,
+        seller: {
+          id: seller._id,
+          sellerId: seller.sellerId,
+          name: seller.name,
+          phone: seller.phone,
+          area: seller.area,
+          status: seller.status,
+          isActive: seller.isActive,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Seller logout
+ * @route   POST /api/sellers/auth/logout
+ * @access  Private (Seller)
+ */
+exports.logout = async (req, res, next) => {
+  try {
+    // TODO: Implement token blacklisting
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get seller profile
+ * @route   GET /api/sellers/auth/profile
+ * @access  Private (Seller)
+ */
+exports.getProfile = async (req, res, next) => {
+  try {
+    // Seller is attached by authorizeSeller middleware
+    const seller = req.seller;
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        seller: {
+          id: seller._id,
+          sellerId: seller.sellerId,
+          name: seller.name,
+          phone: seller.phone,
+          email: seller.email,
+          area: seller.area,
+          location: seller.location,
+          monthlyTarget: seller.monthlyTarget,
+          wallet: {
+            balance: seller.wallet.balance,
+            pending: seller.wallet.pending,
+            available: seller.wallet.balance - seller.wallet.pending,
+          },
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get dashboard overview
+ * @route   GET /api/sellers/dashboard
+ * @access  Private (Seller)
+ */
+exports.getDashboard = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+
+    // Get total referrals count
+    const totalReferrals = await User.countDocuments({ sellerId: seller.sellerId });
+
+    // Get current month's sales (completed orders)
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    const currentMonthSales = await Order.aggregate([
+      {
+        $match: {
+          sellerId: seller.sellerId,
+          status: 'delivered',
+          paymentStatus: 'fully_paid',
+          createdAt: { $gte: currentMonthStart },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: '$totalAmount' },
+          orderCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalSales = currentMonthSales[0]?.totalSales || 0;
+    const orderCount = currentMonthSales[0]?.orderCount || 0;
+
+    // Calculate target progress
+    const targetProgress = seller.monthlyTarget > 0
+      ? (totalSales / seller.monthlyTarget) * 100
+      : 0;
+
+    // Get wallet summary
+    const walletBalance = seller.wallet.balance;
+    const pendingWithdrawals = seller.wallet.pending;
+    const availableBalance = walletBalance - pendingWithdrawals;
+
+    // Get pending withdrawal requests count
+    const pendingWithdrawalCount = await WithdrawalRequest.countDocuments({
+      sellerId: seller._id,
+      status: 'pending',
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        overview: {
+          totalReferrals,
+          currentMonthSales: totalSales,
+          currentMonthOrders: orderCount,
+          monthlyTarget: seller.monthlyTarget,
+          targetProgress: Math.round(targetProgress * 100) / 100,
+          wallet: {
+            balance: walletBalance,
+            pending: pendingWithdrawals,
+            available: availableBalance,
+            pendingWithdrawalCount,
+          },
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get overview data (referrals, sales, target)
+ * @route   GET /api/sellers/dashboard/overview
+ * @access  Private (Seller)
+ */
+exports.getOverview = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+
+    // Get referrals count
+    const totalReferrals = await User.countDocuments({ sellerId: seller.sellerId });
+
+    // Get current month's sales
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    const salesData = await Order.aggregate([
+      {
+        $match: {
+          sellerId: seller.sellerId,
+          status: 'delivered',
+          paymentStatus: 'fully_paid',
+          createdAt: { $gte: currentMonthStart },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: '$totalAmount' },
+          orderCount: { $sum: 1 },
+          averageOrderValue: { $avg: '$totalAmount' },
+        },
+      },
+    ]);
+
+    const totalSales = salesData[0]?.totalSales || 0;
+    const orderCount = salesData[0]?.orderCount || 0;
+    const averageOrderValue = salesData[0]?.averageOrderValue || 0;
+
+    // Calculate target progress
+    const targetProgress = seller.monthlyTarget > 0
+      ? (totalSales / seller.monthlyTarget) * 100
+      : 0;
+
+    // Get active referrals (users who made purchases this month)
+    const activeReferrals = await Order.distinct('userId', {
+      sellerId: seller.sellerId,
+      status: 'delivered',
+      paymentStatus: 'fully_paid',
+      createdAt: { $gte: currentMonthStart },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        referrals: {
+          total: totalReferrals,
+          active: activeReferrals.length,
+        },
+        sales: {
+          currentMonth: totalSales,
+          orderCount,
+          averageOrderValue: Math.round(averageOrderValue * 100) / 100,
+        },
+        target: {
+          monthlyTarget: seller.monthlyTarget,
+          achieved: totalSales,
+          progress: Math.round(targetProgress * 100) / 100,
+          remaining: seller.monthlyTarget - totalSales,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get wallet data
+ * @route   GET /api/sellers/dashboard/wallet
+ * @access  Private (Seller)
+ */
+exports.getWallet = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+
+    // Get pending withdrawal requests
+    const pendingWithdrawals = await WithdrawalRequest.find({
+      sellerId: seller._id,
+      status: 'pending',
+    })
+      .sort({ createdAt: -1 })
+      .select('amount status createdAt')
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        wallet: {
+          balance: seller.wallet.balance,
+          pending: seller.wallet.pending,
+          available: seller.wallet.balance - seller.wallet.pending,
+        },
+        pendingWithdrawals,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get referrals data (dashboard)
+ * @route   GET /api/sellers/dashboard/referrals
+ * @access  Private (Seller)
+ */
+exports.getReferrals = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { limit = 10 } = req.query;
+
+    // Get recent referrals (users linked to seller)
+    const referrals = await User.find({ sellerId: seller.sellerId })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .select('name phone email createdAt location')
+      .lean();
+
+    // Get current month purchases per referral
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const referralStats = await Promise.all(
+      referrals.map(async (referral) => {
+        // Get current month purchases for this user
+        const userPurchases = await Order.aggregate([
+          {
+            $match: {
+              userId: referral._id,
+              sellerId: seller.sellerId,
+              status: 'delivered',
+              paymentStatus: 'fully_paid',
+              createdAt: { $gte: currentMonthStart },
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalPurchases: { $sum: '$totalAmount' },
+              orderCount: { $sum: 1 },
+            },
+          },
+        ]);
+
+        const monthlyPurchases = userPurchases[0]?.totalPurchases || 0;
+        const orderCount = userPurchases[0]?.orderCount || 0;
+
+        // Determine commission rate based on monthly purchases
+        const commissionRate = monthlyPurchases <= IRA_PARTNER_COMMISSION_THRESHOLD
+          ? IRA_PARTNER_COMMISSION_RATE_LOW
+          : IRA_PARTNER_COMMISSION_RATE_HIGH;
+
+        // Calculate commission (simplified - actual calculation happens on order completion)
+        const estimatedCommission = monthlyPurchases * (commissionRate / 100);
+
+        return {
+          ...referral,
+          monthlyPurchases,
+          orderCount,
+          commissionRate,
+          estimatedCommission: Math.round(estimatedCommission * 100) / 100,
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        referrals: referralStats,
+        totalReferrals: await User.countDocuments({ sellerId: seller.sellerId }),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get performance data
+ * @route   GET /api/sellers/dashboard/performance
+ * @access  Private (Seller)
+ */
+exports.getPerformance = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+
+    // Get current month's performance
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const performanceData = await Order.aggregate([
+      {
+        $match: {
+          sellerId: seller.sellerId,
+          status: 'delivered',
+          paymentStatus: 'fully_paid',
+          createdAt: { $gte: currentMonthStart },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: '$totalAmount' },
+          orderCount: { $sum: 1 },
+          averageOrderValue: { $avg: '$totalAmount' },
+        },
+      },
+    ]);
+
+    const totalSales = performanceData[0]?.totalSales || 0;
+    const orderCount = performanceData[0]?.orderCount || 0;
+    const averageOrderValue = performanceData[0]?.averageOrderValue || 0;
+
+    // Get active users count
+    const activeUsers = await Order.distinct('userId', {
+      sellerId: seller.sellerId,
+      status: 'delivered',
+      paymentStatus: 'fully_paid',
+      createdAt: { $gte: currentMonthStart },
+    });
+
+    // Calculate target progress
+    const targetProgress = seller.monthlyTarget > 0
+      ? (totalSales / seller.monthlyTarget) * 100
+      : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        currentMonth: {
+          sales: totalSales,
+          orders: orderCount,
+          activeUsers: activeUsers.length,
+          averageOrderValue: Math.round(averageOrderValue * 100) / 100,
+        },
+        target: {
+          monthlyTarget: seller.monthlyTarget,
+          achieved: totalSales,
+          progress: Math.round(targetProgress * 100) / 100,
+          remaining: seller.monthlyTarget - totalSales,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// WALLET & COMMISSION CONTROLLERS
+// ============================================================================
+
+/**
+ * @desc    Get wallet details
+ * @route   GET /api/sellers/wallet
+ * @access  Private (Seller)
+ */
+exports.getWalletDetails = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+
+    // Get recent commissions (transactions)
+    const recentCommissions = await Commission.find({ sellerId: seller._id })
+      .populate('userId', 'name phone')
+      .populate('orderId', 'orderNumber totalAmount')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select('-__v')
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        wallet: {
+          balance: seller.wallet.balance,
+          pending: seller.wallet.pending,
+          available: seller.wallet.balance - seller.wallet.pending,
+        },
+        recentCommissions,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get wallet transaction history
+ * @route   GET /api/sellers/wallet/transactions
+ * @access  Private (Seller)
+ */
+exports.getWalletTransactions = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { page = 1, limit = 20, month, year } = req.query;
+
+    // Build query
+    const query = { sellerId: seller._id };
+
+    if (month && year) {
+      query.month = parseInt(month);
+      query.year = parseInt(year);
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Get commissions grouped by user and month
+    const transactions = await Commission.find(query)
+      .populate('userId', 'name phone')
+      .populate('orderId', 'orderNumber totalAmount')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .select('-__v')
+      .lean();
+
+    // Group commissions by user and month for summary
+    const commissionSummary = await Commission.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: {
+            userId: '$userId',
+            month: '$month',
+            year: '$year',
+          },
+          totalCommission: { $sum: '$commissionAmount' },
+          orderCount: { $sum: 1 },
+          cumulativePurchases: { $max: '$newCumulativePurchaseAmount' },
+          commissionRate: { $max: '$commissionRate' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id.userId',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $unwind: '$user',
+      },
+      {
+        $project: {
+          userId: '$user._id',
+          userName: '$user.name',
+          userPhone: '$user.phone',
+          month: '$_id.month',
+          year: '$_id.year',
+          totalCommission: 1,
+          orderCount: 1,
+          cumulativePurchases: 1,
+          commissionRate: 1,
+        },
+      },
+      {
+        $sort: { year: -1, month: -1 },
+      },
+    ]);
+
+    const total = await Commission.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        transactions,
+        commissionSummary,
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          totalItems: total,
+          itemsPerPage: limitNum,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Request withdrawal from wallet
+ * @route   POST /api/sellers/wallet/withdraw
+ * @access  Private (Seller)
+ */
+exports.requestWithdrawal = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { amount, paymentMethod = 'bank_transfer', paymentDetails, notes } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid withdrawal amount is required (minimum ₹100)',
+      });
+    }
+
+    if (amount < 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Minimum withdrawal amount is ₹100',
+      });
+    }
+
+    // Check available balance
+    const availableBalance = seller.wallet.balance - seller.wallet.pending;
+    if (amount > availableBalance) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient balance. Available: ₹${availableBalance}, Requested: ₹${amount}`,
+      });
+    }
+
+    // Create withdrawal request
+    const withdrawal = await WithdrawalRequest.create({
+      sellerId: seller._id,
+      amount,
+      paymentMethod,
+      paymentDetails,
+      notes,
+      status: 'pending',
+    });
+
+    // Update seller wallet pending amount
+    seller.wallet.pending += amount;
+    await seller.save();
+
+    console.log(`✅ Withdrawal requested: ₹${amount} by seller ${seller.sellerId} - ${seller.name}`);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        withdrawal,
+        wallet: {
+          balance: seller.wallet.balance,
+          pending: seller.wallet.pending,
+          available: seller.wallet.balance - seller.wallet.pending,
+        },
+        message: 'Withdrawal request submitted successfully. Awaiting admin approval.',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get withdrawal requests
+ * @route   GET /api/sellers/wallet/withdrawals
+ * @access  Private (Seller)
+ */
+exports.getWithdrawals = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { status, page = 1, limit = 20 } = req.query;
+
+    const query = { sellerId: seller._id };
+
+    if (status) {
+      query.status = status;
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const withdrawals = await WithdrawalRequest.find(query)
+      .populate('reviewedBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .select('-__v')
+      .lean();
+
+    const total = await WithdrawalRequest.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        withdrawals,
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          totalItems: total,
+          itemsPerPage: limitNum,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// REFERRALS & COMMISSIONS CONTROLLERS
+// ============================================================================
+
+/**
+ * @desc    Get referral details (specific user)
+ * @route   GET /api/sellers/referrals/:referralId
+ * @access  Private (Seller)
+ */
+exports.getReferralDetails = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { referralId } = req.params;
+
+    // Find user (must be linked to this seller)
+    const user = await User.findOne({
+      _id: referralId,
+      sellerId: seller.sellerId,
+    }).select('name phone email createdAt location');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Referral not found or not linked to your seller ID',
+      });
+    }
+
+    // Get current month's purchases
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    // Get user's orders for current month
+    const currentMonthOrders = await Order.find({
+      userId: user._id,
+      sellerId: seller.sellerId,
+      status: 'delivered',
+      paymentStatus: 'fully_paid',
+      createdAt: { $gte: currentMonthStart },
+    })
+      .sort({ createdAt: -1 })
+      .select('orderNumber totalAmount createdAt items')
+      .lean();
+
+    // Calculate monthly purchase total
+    const monthlyPurchaseTotal = currentMonthOrders.reduce(
+      (sum, order) => sum + order.totalAmount,
+      0
+    );
+
+    // Determine commission rate based on monthly purchases
+    const commissionRate = monthlyPurchaseTotal <= IRA_PARTNER_COMMISSION_THRESHOLD
+      ? IRA_PARTNER_COMMISSION_RATE_LOW
+      : IRA_PARTNER_COMMISSION_RATE_HIGH;
+
+    // Get commissions for this user this month
+    const currentMonthCommissions = await Commission.find({
+      sellerId: seller._id,
+      userId: user._id,
+      month: currentMonth,
+      year: currentYear,
+    })
+      .populate('orderId', 'orderNumber totalAmount')
+      .sort({ createdAt: -1 })
+      .select('-__v')
+      .lean();
+
+    const totalCommissionEarned = currentMonthCommissions.reduce(
+      (sum, comm) => sum + comm.commissionAmount,
+      0
+    );
+
+    // Get all-time stats
+    const allTimeStats = await Order.aggregate([
+      {
+        $match: {
+          userId: user._id,
+          sellerId: seller.sellerId,
+          status: 'delivered',
+          paymentStatus: 'fully_paid',
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalPurchases: { $sum: '$totalAmount' },
+          orderCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        referral: user,
+        currentMonth: {
+          month: currentMonth,
+          year: currentYear,
+          purchaseTotal: monthlyPurchaseTotal,
+          orderCount: currentMonthOrders.length,
+          orders: currentMonthOrders,
+          commissionRate,
+          commissionEarned: totalCommissionEarned,
+          commissions: currentMonthCommissions,
+        },
+        allTime: {
+          totalPurchases: allTimeStats[0]?.totalPurchases || 0,
+          orderCount: allTimeStats[0]?.orderCount || 0,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get referral statistics
+ * @route   GET /api/sellers/referrals/stats
+ * @access  Private (Seller)
+ */
+exports.getReferralStats = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+
+    // Get current month
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    // Get all referrals
+    const totalReferrals = await User.countDocuments({ sellerId: seller.sellerId });
+
+    // Get active referrals (made purchases this month)
+    const activeReferrals = await Order.distinct('userId', {
+      sellerId: seller.sellerId,
+      status: 'delivered',
+      paymentStatus: 'fully_paid',
+      createdAt: { $gte: currentMonthStart },
+    });
+
+    // Calculate per-user monthly purchases
+    const userMonthlyPurchases = await Order.aggregate([
+      {
+        $match: {
+          sellerId: seller.sellerId,
+          status: 'delivered',
+          paymentStatus: 'fully_paid',
+          createdAt: { $gte: currentMonthStart },
+        },
+      },
+      {
+        $group: {
+          _id: '$userId',
+          totalPurchases: { $sum: '$totalAmount' },
+          orderCount: { $sum: 1 },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $unwind: '$user',
+      },
+      {
+        $project: {
+          userId: '$user._id',
+          userName: '$user.name',
+          userPhone: '$user.phone',
+          totalPurchases: 1,
+          orderCount: 1,
+          commissionRate: {
+            $cond: [
+              { $lte: ['$totalPurchases', IRA_PARTNER_COMMISSION_THRESHOLD] },
+              IRA_PARTNER_COMMISSION_RATE_LOW,
+              IRA_PARTNER_COMMISSION_RATE_HIGH,
+            ],
+          },
+          estimatedCommission: {
+            $multiply: [
+              '$totalPurchases',
+              {
+                $divide: [
+                  {
+                    $cond: [
+                      { $lte: ['$totalPurchases', IRA_PARTNER_COMMISSION_THRESHOLD] },
+                      IRA_PARTNER_COMMISSION_RATE_LOW,
+                      IRA_PARTNER_COMMISSION_RATE_HIGH,
+                    ],
+                  },
+                  100,
+                ],
+              },
+            ],
+          },
+        },
+      },
+      {
+        $sort: { totalPurchases: -1 },
+      },
+    ]);
+
+    // Calculate total commission
+    const totalCommission = userMonthlyPurchases.reduce(
+      (sum, user) => sum + user.estimatedCommission,
+      0
+    );
+
+    // Calculate total sales
+    const totalSales = userMonthlyPurchases.reduce(
+      (sum, user) => sum + user.totalPurchases,
+      0
+    );
+
+    // Count referrals by commission tier
+    const lowTierReferrals = userMonthlyPurchases.filter(
+      u => u.totalPurchases <= IRA_PARTNER_COMMISSION_THRESHOLD
+    ).length;
+    const highTierReferrals = userMonthlyPurchases.filter(
+      u => u.totalPurchases > IRA_PARTNER_COMMISSION_THRESHOLD
+    ).length;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        period: {
+          month: currentMonth,
+          year: currentYear,
+        },
+        referrals: {
+          total: totalReferrals,
+          active: activeReferrals.length,
+          lowTier: lowTierReferrals,
+          highTier: highTierReferrals,
+        },
+        sales: {
+          total: totalSales,
+          averagePerUser: activeReferrals.length > 0
+            ? Math.round((totalSales / activeReferrals.length) * 100) / 100
+            : 0,
+        },
+        commissions: {
+          total: Math.round(totalCommission * 100) / 100,
+          averagePerUser: activeReferrals.length > 0
+            ? Math.round((totalCommission / activeReferrals.length) * 100) / 100
+            : 0,
+        },
+        userPurchases: userMonthlyPurchases,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// TARGET & PERFORMANCE CONTROLLERS
+// ============================================================================
+
+/**
+ * @desc    Get monthly target and progress
+ * @route   GET /api/sellers/target
+ * @access  Private (Seller)
+ */
+exports.getTarget = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+
+    // Get current month's sales
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const salesData = await Order.aggregate([
+      {
+        $match: {
+          sellerId: seller.sellerId,
+          status: 'delivered',
+          paymentStatus: 'fully_paid',
+          createdAt: { $gte: currentMonthStart },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          achieved: { $sum: '$totalAmount' },
+          orderCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const achieved = salesData[0]?.achieved || 0;
+    const orderCount = salesData[0]?.orderCount || 0;
+    const monthlyTarget = seller.monthlyTarget || 0;
+
+    // Calculate progress
+    const progress = monthlyTarget > 0
+      ? (achieved / monthlyTarget) * 100
+      : 0;
+
+    // Calculate days remaining in month
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const daysRemaining = Math.ceil((lastDayOfMonth - now) / (1000 * 60 * 60 * 24));
+
+    // Calculate required daily sales to meet target
+    const remainingToTarget = monthlyTarget - achieved;
+    const requiredDailySales = daysRemaining > 0 && remainingToTarget > 0
+      ? remainingToTarget / daysRemaining
+      : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        target: {
+          monthlyTarget,
+          achieved,
+          remaining: remainingToTarget,
+          progress: Math.round(progress * 100) / 100,
+          orderCount,
+        },
+        timeline: {
+          currentDate: now,
+          monthStart: currentMonthStart,
+          monthEnd: lastDayOfMonth,
+          daysRemaining,
+          requiredDailySales: Math.round(requiredDailySales * 100) / 100,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get performance analytics
+ * @route   GET /api/sellers/performance
+ * @access  Private (Seller)
+ */
+exports.getPerformanceAnalytics = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { period = '30' } = req.query; // days
+
+    const daysAgo = new Date();
+    daysAgo.setDate(daysAgo.getDate() - parseInt(period));
+
+    // Get sales trends
+    const salesTrends = await Order.aggregate([
+      {
+        $match: {
+          sellerId: seller.sellerId,
+          status: 'delivered',
+          paymentStatus: 'fully_paid',
+          createdAt: { $gte: daysAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+          },
+          sales: { $sum: '$totalAmount' },
+          orderCount: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { _id: 1 },
+      },
+    ]);
+
+    // Get order status breakdown
+    const orderStatusBreakdown = await Order.aggregate([
+      {
+        $match: {
+          sellerId: seller.sellerId,
+          createdAt: { $gte: daysAgo },
+        },
+      },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$totalAmount' },
+        },
+      },
+    ]);
+
+    // Get top performing referrals
+    const topReferrals = await Order.aggregate([
+      {
+        $match: {
+          sellerId: seller.sellerId,
+          status: 'delivered',
+          paymentStatus: 'fully_paid',
+          createdAt: { $gte: daysAgo },
+        },
+      },
+      {
+        $group: {
+          _id: '$userId',
+          totalPurchases: { $sum: '$totalAmount' },
+          orderCount: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { totalPurchases: -1 },
+      },
+      {
+        $limit: 10,
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $unwind: '$user',
+      },
+      {
+        $project: {
+          userId: '$user._id',
+          userName: '$user.name',
+          userPhone: '$user.phone',
+          totalPurchases: 1,
+          orderCount: 1,
+        },
+      },
+    ]);
+
+    // Calculate conversion metrics
+    const totalReferrals = await User.countDocuments({ sellerId: seller.sellerId });
+    const activeReferrals = await Order.distinct('userId', {
+      sellerId: seller.sellerId,
+      status: 'delivered',
+      paymentStatus: 'fully_paid',
+      createdAt: { $gte: daysAgo },
+    });
+
+    const conversionRate = totalReferrals > 0
+      ? (activeReferrals.length / totalReferrals) * 100
+      : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        period: parseInt(period),
+        analytics: {
+          salesTrends,
+          orderStatusBreakdown,
+          topReferrals,
+          metrics: {
+            totalReferrals,
+            activeReferrals: activeReferrals.length,
+            conversionRate: Math.round(conversionRate * 100) / 100,
+          },
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

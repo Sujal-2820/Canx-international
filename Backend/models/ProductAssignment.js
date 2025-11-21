@@ -1,0 +1,60 @@
+const mongoose = require('mongoose');
+
+/**
+ * Product Assignment Schema
+ * 
+ * Links Products to Vendors
+ * When Admin assigns a product to a vendor, it creates an inventory entry for that vendor
+ */
+const productAssignmentSchema = new mongoose.Schema({
+  productId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product',
+    required: [true, 'Product ID is required'],
+  },
+  vendorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Vendor',
+    required: [true, 'Vendor ID is required'],
+  },
+  // Regional assignment (optional)
+  region: {
+    type: String,
+    trim: true,
+    // Region/area where this product-vendor assignment is valid
+  },
+  // Assignment status
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+  // Assignment metadata
+  assignedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    required: true,
+  },
+  assignedAt: {
+    type: Date,
+    default: Date.now,
+  },
+  // Notes about the assignment
+  notes: {
+    type: String,
+    trim: true,
+  },
+}, {
+  timestamps: true,
+});
+
+// Compound index: One product can be assigned to one vendor once
+productAssignmentSchema.index({ productId: 1, vendorId: 1 }, { unique: true });
+
+// Indexes for queries
+productAssignmentSchema.index({ vendorId: 1, isActive: 1 }); // Vendor's active assignments
+productAssignmentSchema.index({ productId: 1, isActive: 1 }); // Product's active assignments
+
+const ProductAssignment = mongoose.model('ProductAssignment', productAssignmentSchema);
+
+module.exports = ProductAssignment;
+
