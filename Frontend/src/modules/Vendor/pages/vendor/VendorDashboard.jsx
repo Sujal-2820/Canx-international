@@ -57,7 +57,7 @@ const NAV_ITEMS = [
 export function VendorDashboard({ onLogout }) {
   const { profile, dashboard } = useVendorState()
   const dispatch = useVendorDispatch()
-  const { acceptOrder, acceptOrderPartially, rejectOrder, updateInventoryStock, updateProductStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getProductDetails } = useVendorApi()
+  const { acceptOrder, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData } = useVendorApi()
   const [activeTab, setActiveTab] = useState('overview')
   const welcomeName = (profile?.name || 'Partner').split(' ')[0]
   const { isOpen, isMounted, currentAction, openPanel, closePanel } = useButtonAction()
@@ -890,662 +890,21 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
   )
 }
 
-function PurchaseFromAdminView({ products, onBack, onSuccess }) {
-  const { dashboard } = useVendorState()
-  const dispatch = useVendorDispatch()
-  const { requestCreditPurchase, getCreditInfo, fetchDashboardData } = useVendorApi()
-  const { success, error: showError } = useToast()
-  const MIN_PURCHASE_VALUE = 50000
-  
-  const [selectedProducts, setSelectedProducts] = useState([]) // Array of { product, quantity }
-  const [creditInfo, setCreditInfo] = useState(null)
-  const [purchaseReason, setPurchaseReason] = useState('')
-  const [confirmText, setConfirmText] = useState('')
-  const [notes, setNotes] = useState('')
-  const [error, setError] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [showPolicy, setShowPolicy] = useState(false)
-
-  const loadCreditInfo = async () => {
-    setLoading(true)
-    try {
-      const result = await getCreditInfo()
-      console.log('Credit info API response:', result)
-      if (result.data) {
-        console.log('Setting credit info:', result.data)
-        setCreditInfo(result.data)
-      } else {
-        console.warn('No credit data in response:', result)
-      }
-    } catch (err) {
-      console.error('Failed to load credit info:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadCreditInfo()
-  }, [getCreditInfo])
-
-  const availableProducts = products.filter(p => (p.adminStock ?? p.stock ?? 0) > 0)
-
-  const handleAddProduct = (product) => {
-    const existingIndex = selectedProducts.findIndex(
-      sp => (sp.product.id || sp.product._id) === (product.id || product._id)
-    )
-    
-    if (existingIndex >= 0) {
-      // Product already in cart, update quantity
-      const updated = [...selectedProducts]
-      updated[existingIndex].quantity = 1
-      setSelectedProducts(updated)
-    } else {
-      // Add new product
-      setSelectedProducts([...selectedProducts, { product, quantity: 1 }])
-    }
-  }
-
-  const handleRemoveProduct = (productId) => {
-    setSelectedProducts(selectedProducts.filter(
-      sp => (sp.product.id || sp.product._id) !== productId
-    ))
-  }
-
-  const handleQuantityChange = (productId, value) => {
-    // Allow empty string for typing
-    if (value === '' || value === null || value === undefined) {
-      setSelectedProducts(selectedProducts.map(sp => {
-        if ((sp.product.id || sp.product._id) === productId) {
-          return { ...sp, quantity: '' }
-        }
-        return sp
-      }))
-      return
-    }
-    
-    const qty = parseFloat(value)
-    if (isNaN(qty) || qty < 1) {
-      // Allow invalid input while typing, will validate on blur
-      setSelectedProducts(selectedProducts.map(sp => {
-        if ((sp.product.id || sp.product._id) === productId) {
-          return { ...sp, quantity: value }
-        }
-        return sp
-      }))
-      return
-    }
-    
-    setSelectedProducts(selectedProducts.map(sp => {
-      if ((sp.product.id || sp.product._id) === productId) {
-        const adminStock = sp.product.adminStock ?? sp.product.stock ?? 0
-        const validQty = Math.min(Math.max(1, qty), adminStock)
-        return { ...sp, quantity: validQty }
-      }
-      return sp
-    }))
-  }
-
-  const handleQuantityBlur = (productId) => {
-    // Validate and set minimum on blur
-    setSelectedProducts(selectedProducts.map(sp => {
-      if ((sp.product.id || sp.product._id) === productId) {
-        const currentQty = sp.quantity
-        if (currentQty === '' || currentQty === null || currentQty === undefined) {
-          return { ...sp, quantity: 1 }
-        }
-        const qty = parseFloat(currentQty)
-        if (isNaN(qty) || qty < 1) {
-          return { ...sp, quantity: 1 }
-        }
-        const adminStock = sp.product.adminStock ?? sp.product.stock ?? 0
-        const validQty = Math.min(Math.max(1, qty), adminStock)
-        return { ...sp, quantity: validQty }
-      }
-      return sp
-    }))
-  }
-
-  const calculateTotal = () => {
-    return selectedProducts.reduce((total, sp) => {
-      const pricePerUnit = sp.product.pricePerUnit || sp.product.priceToVendor || 0
-      const qty = typeof sp.quantity === 'number' ? sp.quantity : (parseFloat(sp.quantity) || 0)
-      return total + (qty * pricePerUnit)
-    }, 0)
-  }
-
-  const totalAmount = calculateTotal()
-  
-  // Access credit info correctly - backend returns { data: { credit: {...}, status: {...} } }
-  const creditData = creditInfo?.credit || {}
-  const dashboardCredit = dashboard?.credit || {}
-  
-  // Get raw values
-  const rawCreditRemaining = creditData?.remaining ?? dashboardCredit?.remaining ?? 0
-  const creditLimit = creditData?.limit ?? dashboardCredit?.limit ?? 0
-  
-  // Debug: Log credit info structure
-  useEffect(() => {
-    if (creditInfo || dashboard?.credit) {
-      const debugCreditData = creditInfo?.credit || {}
-      const debugDashboardCredit = dashboard?.credit || {}
-      const debugRawCreditRemaining = debugCreditData?.remaining ?? debugDashboardCredit?.remaining ?? 0
-      const debugCreditLimit = debugCreditData?.limit ?? debugDashboardCredit?.limit ?? 0
-      console.log('Credit Info Debug:', {
-        creditInfo,
-        creditData: debugCreditData,
-        dashboardCredit: debugDashboardCredit,
-        dashboard: dashboard?.credit,
-        rawCreditRemaining: debugRawCreditRemaining,
-        creditLimit: debugCreditLimit
-      })
-    }
-  }, [creditInfo, dashboard?.credit])
-  
-  // Ensure credit remaining is never negative (should be limit - used, but protect against negative)
-  // If negative, it means credit has been exceeded, but we'll show 0 for available credit
-  const creditRemaining = Math.max(0, rawCreditRemaining) // Ensure it's never negative for display
-  const repaymentDays = creditData?.repaymentDays ?? dashboardCredit?.repaymentDays ?? 30
-  const penaltyRate = creditData?.penaltyRate ?? dashboardCredit?.penaltyRate ?? 0
-  const projectedCredit = Math.max(0, creditRemaining - totalAmount) // Ensure projected is never negative
-
-  // Check if all quantities are valid
-  const allQuantitiesValid = selectedProducts.length > 0 && selectedProducts.every(sp => {
-    const qty = typeof sp.quantity === 'number' ? sp.quantity : parseFloat(sp.quantity)
-    return !isNaN(qty) && qty >= 1
-  })
-
-  // Debug logging (can be removed later)
-  const debugInfo = {
-    selectedProductsCount: selectedProducts.length,
-    allQuantitiesValid,
-    totalAmount,
-    isValidAmount: !isNaN(totalAmount) && totalAmount > 0,
-    meetsMinimum: totalAmount >= MIN_PURCHASE_VALUE,
-    withinCredit: totalAmount <= creditRemaining,
-    hasReason: purchaseReason.trim().length > 0,
-    isConfirmed: confirmText.trim().toLowerCase() === 'confirm',
-    isSubmitting,
-    creditRemaining,
-    creditLimit,
-  }
-
-  const canSubmit = 
-    selectedProducts.length > 0 &&
-    allQuantitiesValid &&
-    !isNaN(totalAmount) &&
-    totalAmount > 0 &&
-    totalAmount >= MIN_PURCHASE_VALUE &&
-    creditLimit > 0 && // Credit limit must be set
-    totalAmount <= creditRemaining &&
-    creditRemaining > 0 && // Ensure there's available credit
-    purchaseReason.trim().length > 0 &&
-    confirmText.trim().toLowerCase() === 'confirm' &&
-    !isSubmitting
-
-  // Log for debugging (remove in production)
-  useEffect(() => {
-    if (selectedProducts.length > 0) {
-      console.log('Submit button debug:', debugInfo, 'canSubmit:', canSubmit)
-    }
-  }, [selectedProducts.length, totalAmount, creditRemaining, purchaseReason, confirmText, isSubmitting])
-
-  const handleSubmit = async () => {
-    setError('')
-
-    // Validate all quantities first
-    const invalidProducts = selectedProducts.filter(sp => {
-      const qty = typeof sp.quantity === 'number' ? sp.quantity : parseFloat(sp.quantity)
-      return isNaN(qty) || qty < 1
-    })
-    
-    if (invalidProducts.length > 0) {
-      setError('Please enter valid quantities (minimum 1) for all selected products.')
-      // Auto-fix invalid quantities
-      setSelectedProducts(selectedProducts.map(sp => {
-        const qty = typeof sp.quantity === 'number' ? sp.quantity : parseFloat(sp.quantity)
-        if (isNaN(qty) || qty < 1) {
-          return { ...sp, quantity: 1 }
-        }
-        return sp
-      }))
-      return
-    }
-
-    if (selectedProducts.length === 0) {
-      setError('Please add at least one product to your purchase.')
-      return
-    }
-
-    if (totalAmount < MIN_PURCHASE_VALUE) {
-      setError(`Minimum purchase amount is ₹${MIN_PURCHASE_VALUE.toLocaleString('en-IN')}.`)
-      return
-    }
-
-    if (totalAmount > creditRemaining) {
-      setError('Purchase amount exceeds available credit limit.')
-      return
-    }
-
-    if (!purchaseReason.trim()) {
-      setError('Please provide a reason for this purchase.')
-      return
-    }
-
-    if (confirmText.trim().toLowerCase() !== 'confirm') {
-      setError('Please type "confirm" to proceed with the purchase request.')
-      return
-    }
-
-    setIsSubmitting(true)
-    try {
-      // Ensure all quantities are numbers
-      const validatedProducts = selectedProducts.map(sp => {
-        const qty = typeof sp.quantity === 'number' ? sp.quantity : parseFloat(sp.quantity) || 1
-        const adminStock = sp.product.adminStock ?? sp.product.stock ?? 0
-        const validQty = Math.min(Math.max(1, qty), adminStock)
-        return {
-          productId: sp.product.id || sp.product._id,
-          productName: sp.product.name,
-          quantity: validQty,
-          pricePerUnit: sp.product.pricePerUnit || sp.product.priceToVendor || 0,
-        }
-      })
-
-      const payload = {
-        items: validatedProducts,
-        notes: notes.trim() ? `${purchaseReason.trim()}\n\n${notes.trim()}` : purchaseReason.trim() || undefined,
-      }
-
-      const result = await requestCreditPurchase(payload)
-      if (result.data) {
-        // Reload credit info and dashboard data to reflect the pending purchase
-        await Promise.all([
-          loadCreditInfo(),
-          fetchDashboardData().then((dashboardResult) => {
-            if (dashboardResult.data) {
-              dispatch({ type: 'SET_DASHBOARD_OVERVIEW', payload: dashboardResult.data })
-              if (dashboardResult.data.credit) {
-                dispatch({ type: 'SET_CREDIT_DATA', payload: dashboardResult.data.credit })
-              }
-            }
-          })
-        ])
-        onSuccess()
-        // Reset form
-        setSelectedProducts([])
-        setPurchaseReason('')
-        setConfirmText('')
-        setNotes('')
-      } else if (result.error) {
-        const message = result.error.message || 'Failed to submit purchase request.'
-        setError(message)
-        showError(message)
-      }
-    } catch (err) {
-      const message = err?.error?.message || err.message || 'Failed to submit purchase request.'
-      setError(message)
-      showError(message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm font-semibold text-purple-600 hover:text-purple-800"
-          >
-            ← Back to Stock Manager
-          </button>
-          <h2 className="mt-2 text-2xl font-bold text-gray-900">Purchase from Admin</h2>
-          <p className="text-sm text-gray-500">Select multiple products and submit a purchase request</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowPolicy(!showPolicy)}
-          className="rounded-full border border-purple-200 bg-purple-50 px-4 py-2 text-xs font-semibold text-purple-700 transition-all hover:border-purple-400 hover:bg-purple-100"
-        >
-          {showPolicy ? 'Hide' : 'View'} Policy
-        </button>
-      </div>
-
-      {/* Credit Policy Display */}
-      {showPolicy && (
-        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
-          <h3 className="text-sm font-bold text-blue-900 mb-3">Purchasing Policy</h3>
-          {creditLimit === 0 ? (
-            <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4">
-              <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Credit Limit Not Set</p>
-              <p className="text-xs text-yellow-800">
-                Your credit limit has not been configured yet. Please contact Admin to set up your credit limit (minimum ₹1,00,000) before making purchase requests.
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-xs text-blue-800">
-              <div>
-                <p className="font-semibold">Credit Limit</p>
-                <p className="text-sm font-bold text-blue-900">₹{creditLimit.toLocaleString('en-IN')}</p>
-              </div>
-              <div>
-                <p className="font-semibold">Available Credit</p>
-                <p className="text-sm font-bold text-blue-900">
-                  ₹{creditRemaining.toLocaleString('en-IN')}
-                </p>
-                {rawCreditRemaining < 0 && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Credit exceeded by ₹{Math.abs(rawCreditRemaining).toLocaleString('en-IN')}
-                  </p>
-                )}
-              </div>
-            <div>
-              <p className="font-semibold">Minimum Purchase</p>
-              <p className="text-sm font-bold text-blue-900">₹{MIN_PURCHASE_VALUE.toLocaleString('en-IN')}</p>
-            </div>
-            <div>
-              <p className="font-semibold">Repayment Period</p>
-              <p className="text-sm font-bold text-blue-900">{repaymentDays} days</p>
-            </div>
-            {penaltyRate > 0 && (
-              <div>
-                <p className="font-semibold">Penalty Rate</p>
-                <p className="text-sm font-bold text-blue-900">{penaltyRate}% per day</p>
-              </div>
-            )}
-            </div>
-          )}
-          <div className="mt-3 pt-3 border-t border-blue-200">
-            <p className="text-xs text-blue-700">
-              <strong>Note:</strong> All purchase requests require Admin approval. You will be notified once your request is reviewed.
-              {creditLimit > 0 && ` Payment is due within ${repaymentDays} days of approval.`}
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Available Products List */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Available Products</h3>
-            {loading ? (
-              <div className="text-center py-8 text-gray-500">
-                <p>Loading products...</p>
-              </div>
-            ) : availableProducts.length > 0 ? (
-              <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                {availableProducts.map((product) => {
-                  const adminStock = product.adminStock ?? product.stock ?? 0
-                  const isSelected = selectedProducts.some(
-                    sp => (sp.product.id || sp.product._id) === (product.id || product._id)
-                  )
-                  
-                  return (
-                    <div
-                      key={product.id || product._id}
-                      className={cn(
-                        'rounded-lg border p-4 transition-all',
-                        isSelected
-                          ? 'border-purple-300 bg-purple-50'
-                          : 'border-gray-200 bg-white hover:border-purple-200'
-                      )}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gray-100">
-                          {product.primaryImage || product.images?.[0]?.url ? (
-                            <img
-                              src={product.primaryImage || product.images[0].url}
-                              alt={product.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <BoxIcon className="h-8 w-8 text-gray-400" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-gray-900 line-clamp-1">{product.name}</h4>
-                          <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                            {product.description || 'No description'}
-                          </p>
-                          <div className="mt-2 flex items-center gap-4 text-xs">
-                            <span className="text-gray-600">
-                              Stock: <strong>{adminStock} {product.unit || 'kg'}</strong>
-                            </span>
-                            <span className="text-purple-600 font-semibold">
-                              ₹{product.pricePerUnit || product.priceToVendor || 0} per {product.unit || 'kg'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0">
-                          {isSelected ? (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveProduct(product.id || product._id)}
-                              className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition-all hover:bg-red-100"
-                            >
-                              Remove
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleAddProduct(product)}
-                              className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 transition-all hover:bg-purple-100"
-                            >
-                              Add
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <p>No products available for purchase</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Cart and Purchase Form */}
-        <div className="space-y-4">
-          {/* Selected Products Cart */}
-          <div className="rounded-2xl border border-purple-200 bg-purple-50/40 p-5 shadow-sm">
-            <h3 className="text-lg font-bold text-purple-900 mb-4">Selected Products</h3>
-            {selectedProducts.length === 0 ? (
-              <p className="text-sm text-gray-600 text-center py-4">No products selected</p>
-            ) : (
-              <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                {selectedProducts.map((sp) => {
-                  const product = sp.product
-                  const adminStock = product.adminStock ?? product.stock ?? 0
-                  const pricePerUnit = product.pricePerUnit || product.priceToVendor || 0
-                  const qty = typeof sp.quantity === 'number' ? sp.quantity : (parseFloat(sp.quantity) || 0)
-                  const itemTotal = qty * pricePerUnit
-                  
-                  return (
-                    <div key={product.id || product._id} className="rounded-lg border border-white bg-white/70 p-3">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-semibold text-gray-900 line-clamp-1">{product.name}</h4>
-                          <p className="text-xs text-gray-600">₹{pricePerUnit.toLocaleString('en-IN')} per {product.unit || 'kg'}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveProduct(product.id || product._id)}
-                          className="flex-shrink-0 text-red-600 hover:text-red-800 text-xs"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-gray-700">Qty:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max={adminStock}
-                          value={sp.quantity}
-                          onChange={(e) => handleQuantityChange(product.id || product._id, e.target.value)}
-                          onBlur={() => handleQuantityBlur(product.id || product._id)}
-                          className="w-20 rounded border border-gray-300 px-2 py-1 text-xs focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                        />
-                        <span className="text-xs text-gray-600">({product.unit || 'kg'})</span>
-                        <span className="ml-auto text-xs font-semibold text-purple-700">
-                          ₹{itemTotal.toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* Total Summary */}
-            {selectedProducts.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-purple-200">
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Subtotal:</span>
-                    <span className="font-semibold text-gray-900">₹{totalAmount.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Available Credit:</span>
-                    <span className={cn(
-                      'font-semibold',
-                      totalAmount <= creditRemaining ? 'text-green-700' : 'text-red-700'
-                    )}>
-                      ₹{creditRemaining.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">After Purchase:</span>
-                    <span className={cn(
-                      'font-semibold',
-                      projectedCredit >= 0 ? 'text-gray-900' : 'text-red-700'
-                    )}>
-                      ₹{projectedCredit.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  {totalAmount < MIN_PURCHASE_VALUE && (
-                    <p className="text-xs text-red-600 mt-2">
-                      Minimum purchase: ₹{MIN_PURCHASE_VALUE.toLocaleString('en-IN')}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Purchase Form */}
-          {selectedProducts.length > 0 && (
-            <div className="rounded-2xl border border-purple-200 bg-purple-50/40 p-5 shadow-sm">
-              <h3 className="text-lg font-bold text-purple-900 mb-4">Purchase Details</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-700">
-                    Reason for Purchase <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={purchaseReason}
-                    onChange={(e) => setPurchaseReason(e.target.value)}
-                    rows={3}
-                    placeholder="Explain why you need these products..."
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-700">
-                    Additional Notes (optional)
-                  </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={2}
-                    placeholder="Urgency, delivery expectations, etc."
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-700">
-                    Type "confirm" to proceed <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={confirmText}
-                    onChange={(e) => setConfirmText(e.target.value)}
-                    placeholder="Type 'confirm' here"
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                  />
-                </div>
-
-                {creditLimit === 0 && (
-                  <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3">
-                    <p className="text-sm font-semibold text-yellow-900 mb-1">⚠️ Credit Limit Not Configured</p>
-                    <p className="text-xs text-yellow-800">
-                      Please contact Admin to set up your credit limit (minimum ₹1,00,000) before making purchase requests.
-                    </p>
-                  </div>
-                )}
-
-                {error && (
-                  <p className="text-sm text-red-600">{error}</p>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={!canSubmit}
-                  className={cn(
-                    'w-full rounded-full px-6 py-3 text-sm font-semibold text-white transition-all',
-                    canSubmit
-                      ? 'bg-purple-600 hover:bg-purple-700'
-                      : 'bg-purple-300 cursor-not-allowed'
-                  )}
-                >
-                  {isSubmitting ? 'Submitting...' : 'Submit Purchase Request'}
-                </button>
-
-                {!canSubmit && creditLimit === 0 && (
-                  <p className="text-xs text-center text-yellow-700 mt-2">
-                    Cannot submit: Credit limit needs to be set by Admin
-                  </p>
-                )}
-
-                <p className="text-[11px] text-purple-600 text-center">
-                  Your request will be reviewed by Admin. You'll be notified of the approval status.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function InventoryView({ openPanel }) {
   const { dashboard, profile } = useVendorState()
   const dispatch = useVendorDispatch()
   const { success, error: showError } = useToast()
-  const { getProducts, getProductDetails, updateProductStock } = useVendorApi()
+  const { getProducts, getProductDetails, requestCreditPurchase } = useVendorApi()
+  const MIN_PURCHASE_VALUE = 50000
   const [productsData, setProductsData] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
-  const [showPurchaseScreen, setShowPurchaseScreen] = useState(false)
+  const [orderQuantity, setOrderQuantity] = useState('')
+  const [confirmProductName, setConfirmProductName] = useState('')
+  const [orderNotes, setOrderNotes] = useState('')
+  const [orderError, setOrderError] = useState('')
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [isUpdatingStock, setIsUpdatingStock] = useState(false)
-  const [stockUpdateValue, setStockUpdateValue] = useState('')
-  const [showStockUpdateForm, setShowStockUpdateForm] = useState(false)
+  const orderFormRef = useRef(null)
 
   useEffect(() => {
     const token = localStorage.getItem('vendor_token')
@@ -1568,6 +927,12 @@ function InventoryView({ openPanel }) {
     })
   }, [getProducts])
 
+  useEffect(() => {
+    setOrderQuantity('')
+    setConfirmProductName('')
+    setOrderNotes('')
+    setOrderError('')
+  }, [selectedProduct?.id])
 
   const handleProductClick = async (product) => {
     setLoading(true)
@@ -1583,6 +948,74 @@ function InventoryView({ openPanel }) {
     }
   }
 
+  const handleOrderStock = () => {
+    if (orderFormRef.current) {
+      orderFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  const handleOrderSubmit = async () => {
+    if (!selectedProduct) return
+    const adminStock = selectedProduct.adminStock ?? selectedProduct.displayStock ?? selectedProduct.stock ?? 0
+    const pricePerUnit = selectedProduct.pricePerUnit || selectedProduct.priceToVendor || 0
+    const quantityNumber = parseFloat(orderQuantity)
+    const orderTotal = quantityNumber * pricePerUnit
+    const creditRemaining = dashboard.credit?.remaining || 0
+
+    setOrderError('')
+
+    if (!quantityNumber || quantityNumber <= 0) {
+      setOrderError('Enter a valid quantity to order.')
+      return
+    }
+    if (quantityNumber > adminStock) {
+      setOrderError('Requested quantity exceeds admin stock availability.')
+      return
+    }
+    if (orderTotal < MIN_PURCHASE_VALUE) {
+      setOrderError(`Minimum order value is ₹${MIN_PURCHASE_VALUE.toLocaleString('en-IN')}.`)
+      return
+    }
+    if (orderTotal > creditRemaining) {
+      setOrderError('Insufficient remaining credits to place this request.')
+      return
+    }
+    if (!confirmProductName || confirmProductName.trim().toLowerCase() !== selectedProduct.name.trim().toLowerCase()) {
+      setOrderError('Please type the exact product name to confirm the request.')
+      return
+    }
+
+    setIsSubmittingOrder(true)
+    try {
+      const payload = {
+        items: [
+          {
+            productId: selectedProduct.id || selectedProduct._id,
+            productName: selectedProduct.name,
+            quantity: quantityNumber,
+            pricePerUnit,
+          },
+        ],
+        notes: orderNotes ? orderNotes.trim() : undefined,
+      }
+
+      const result = await requestCreditPurchase(payload)
+      if (result.data) {
+        success('Order request submitted. Admin will review and approve.')
+        setSelectedProduct(null)
+      } else if (result.error) {
+        const message = result.error.message || 'Failed to submit order request.'
+        setOrderError(message)
+        showError(message)
+      }
+    } catch (err) {
+      const message = err?.error?.message || err.message || 'Failed to submit order request.'
+      setOrderError(message)
+      showError(message)
+    } finally {
+      setIsSubmittingOrder(false)
+    }
+  }
 
   // Get products from backend
   const products = productsData?.products || []
@@ -1647,61 +1080,27 @@ function InventoryView({ openPanel }) {
     Critical: 22,
   }
 
-  // Show PurchaseFromAdmin screen
-  if (showPurchaseScreen) {
-    return (
-      <PurchaseFromAdminView
-        products={products}
-        onBack={() => setShowPurchaseScreen(false)}
-        onSuccess={() => {
-          setShowPurchaseScreen(false)
-          success('Purchase request submitted. Admin will review and approve.')
-        }}
-      />
-    )
-  }
-
-  // Show Product Details
   if (selectedProduct) {
     const adminStock = selectedProduct.adminStock ?? selectedProduct.displayStock ?? selectedProduct.stock ?? 0
     const vendorStock = selectedProduct.vendorStock ?? 0
     const vendorStockStatus = getVendorStockStatus(vendorStock)
     const ordersCount = selectedProduct.vendorOrdersCount ?? 0
-    const arrivingQuantity = selectedProduct.arrivingQuantity || 0
-
-    const handleStockUpdate = async () => {
-      const newStock = parseInt(stockUpdateValue)
-      if (isNaN(newStock) || newStock < 0) {
-        showError('Please enter a valid stock quantity (≥ 0)')
-        return
-      }
-
-      setIsUpdatingStock(true)
-      try {
-        const productId = selectedProduct.id || selectedProduct._id
-        const result = await updateProductStock(productId, {
-          stock: newStock,
-          notes: `Stock updated manually. Previous: ${vendorStock}, New: ${newStock}${arrivingQuantity > 0 ? ` (includes ${arrivingQuantity} from approved purchase)` : ''}`,
-        })
-
-        if (result.data) {
-          // Refresh product details
-          const updatedProduct = await getProductDetails(productId)
-          if (updatedProduct.data?.product) {
-            setSelectedProduct(updatedProduct.data.product)
-          }
-          setShowStockUpdateForm(false)
-          setStockUpdateValue('')
-          success('Stock updated successfully!')
-        } else {
-          showError(result.error?.message || 'Failed to update stock')
-        }
-      } catch (err) {
-        showError(err.message || 'Failed to update stock')
-      } finally {
-        setIsUpdatingStock(false)
-      }
-    }
+    const pricePerUnit = selectedProduct.pricePerUnit || selectedProduct.priceToVendor || 0
+    const quantityNumber = parseFloat(orderQuantity) || 0
+    const orderTotal = quantityNumber * pricePerUnit
+    const creditInfo = dashboard.credit || {}
+    const creditRemaining = creditInfo.remaining || 0
+    const creditLimit = creditInfo.limit || 0
+    const projectedCredit = creditRemaining - orderTotal
+    const confirmMatches =
+      confirmProductName.trim().toLowerCase() === (selectedProduct.name || '').trim().toLowerCase()
+    const canSubmitOrder =
+      quantityNumber > 0 &&
+      quantityNumber <= adminStock &&
+      orderTotal >= MIN_PURCHASE_VALUE &&
+      orderTotal <= creditRemaining &&
+      confirmMatches &&
+      !isSubmittingOrder
 
     return (
       <div className="space-y-6">
@@ -1717,6 +1116,15 @@ function InventoryView({ openPanel }) {
             <h2 className="mt-2 text-2xl font-bold text-gray-900">{selectedProduct.name}</h2>
             <p className="text-sm text-gray-500">SKU: {selectedProduct.sku || 'N/A'}</p>
           </div>
+          {selectedProduct.stockStatus === 'in_stock' && (
+            <button
+              type="button"
+              onClick={handleOrderStock}
+              className="rounded-full bg-purple-600 px-6 py-2 text-sm font-semibold text-white transition-all hover:bg-purple-700"
+            >
+              Order Stock
+            </button>
+          )}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -1743,98 +1151,6 @@ function InventoryView({ openPanel }) {
                 {selectedProduct.description || 'No description available'}
               </p>
             </div>
-
-            {/* Arriving Products Note */}
-            {arrivingQuantity > 0 && !showStockUpdateForm && (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                <p className="text-sm font-semibold text-blue-900">
-                  📦 {arrivingQuantity} {selectedProduct.unit || 'kg'} arriving in 24 hours
-                </p>
-                <p className="text-xs text-blue-700 mt-1">
-                  This quantity is from your approved purchase request. Update stock when it arrives.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowStockUpdateForm(true)
-                    setStockUpdateValue(String(vendorStock + arrivingQuantity))
-                  }}
-                  className="mt-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
-                >
-                  Update Stock When Arrived
-                </button>
-              </div>
-            )}
-
-            {/* Stock Update Form */}
-            {showStockUpdateForm && (
-              <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
-                <h4 className="text-sm font-semibold text-purple-900 mb-2">Update Stock Quantity</h4>
-                <p className="text-xs text-purple-700 mb-3">
-                  Enter the total stock quantity you currently have (including the {arrivingQuantity > 0 ? `${arrivingQuantity} ${selectedProduct.unit || 'kg'} that arrived` : 'new stock'}).
-                </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    value={stockUpdateValue}
-                    onChange={(e) => setStockUpdateValue(e.target.value)}
-                    placeholder="Enter stock quantity"
-                    className="flex-1 rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                    disabled={isUpdatingStock}
-                  />
-                  <span className="text-sm text-gray-600">{selectedProduct.unit || 'kg'}</span>
-                </div>
-                <div className="flex items-center gap-2 mt-3">
-                  <button
-                    type="button"
-                    onClick={handleStockUpdate}
-                    disabled={isUpdatingStock || !stockUpdateValue}
-                    className={cn(
-                      'rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors',
-                      isUpdatingStock || !stockUpdateValue
-                        ? 'bg-purple-300 cursor-not-allowed'
-                        : 'bg-purple-600 hover:bg-purple-700'
-                    )}
-                  >
-                    {isUpdatingStock ? 'Updating...' : 'Confirm Update'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowStockUpdateForm(false)
-                      setStockUpdateValue('')
-                    }}
-                    disabled={isUpdatingStock}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Manual Stock Update Button (when no arriving stock) */}
-            {arrivingQuantity === 0 && vendorStock >= 0 && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-600">Need to update stock?</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Manually update your stock quantity</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowStockUpdateForm(true)
-                      setStockUpdateValue(String(vendorStock))
-                    }}
-                    className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
-                  >
-                    Update Stock
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -1884,8 +1200,119 @@ function InventoryView({ openPanel }) {
                 <p className="text-sm font-semibold text-gray-900 capitalize">{selectedProduct.category || '—'}</p>
               </div>
             </div>
+
+            <div
+              ref={orderFormRef}
+              className="space-y-4 rounded-2xl border border-purple-200 bg-purple-50/40 p-4 shadow-sm"
+            >
+              <div>
+                <h4 className="text-sm font-semibold text-purple-800">Order stock using credits</h4>
+                <p className="text-xs text-purple-600 mt-1">
+                  Minimum order amount ₹{MIN_PURCHASE_VALUE.toLocaleString('en-IN')}. Admin will review and approve the request before stock is dispatched.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-white bg-white/70 p-3">
+                  <p className="text-xs text-gray-600">Credit available</p>
+                  <p className="text-sm font-bold text-gray-900">
+                    ₹{creditRemaining.toLocaleString('en-IN')}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white bg-white/70 p-3">
+                  <p className="text-xs text-gray-600">Order amount</p>
+                  <p className={cn('text-sm font-bold', orderTotal >= MIN_PURCHASE_VALUE ? 'text-gray-900' : 'text-red-600')}>
+                    ₹{orderTotal.toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-1">Price ₹{pricePerUnit.toLocaleString('en-IN')} per {selectedProduct.unit || 'kg'}</p>
+                </div>
+                <div className="rounded-lg border border-white bg-white/70 p-3">
+                  <p className="text-xs text-gray-600">Credits after request</p>
+                  <p className={cn('text-sm font-bold', projectedCredit >= 0 ? 'text-gray-900' : 'text-red-600')}>
+                    ₹{projectedCredit.toLocaleString('en-IN')}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-1">Must stay within credit limit ₹{creditLimit.toLocaleString('en-IN')}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">
+                    Quantity to order ({selectedProduct.unit || 'kg'})
+                  </label>
+                  <input
+                    type="number"
+                    value={orderQuantity}
+                    onChange={(e) => setOrderQuantity(e.target.value)}
+                    min="1"
+                    max={adminStock}
+                    placeholder="Enter quantity"
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Admin has {adminStock} {selectedProduct.unit || 'kg'} available.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700">
+                    Type product name to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={confirmProductName}
+                    onChange={(e) => setConfirmProductName(e.target.value)}
+                    placeholder={selectedProduct.name}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-700">
+                  Notes for admin (optional)
+                </label>
+                <textarea
+                  value={orderNotes}
+                  onChange={(e) => setOrderNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Mention urgency, delivery expectations, etc."
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                />
+              </div>
+
+              {orderError && (
+                <p className="text-sm text-red-600">{orderError}</p>
+              )}
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleOrderStock}
+                  className="rounded-full border border-purple-200 bg-white px-4 py-2 text-xs font-semibold text-purple-700 transition-all hover:border-purple-400 hover:text-purple-900"
+                >
+                  Check requirements
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOrderSubmit}
+                  disabled={!canSubmitOrder}
+                  className={cn(
+                    'rounded-full px-6 py-2 text-sm font-semibold text-white transition-all',
+                    canSubmitOrder
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : 'bg-purple-300 cursor-not-allowed'
+                  )}
+                >
+                  {isSubmittingOrder ? 'Submitting...' : 'Submit for Admin Approval'}
+                </button>
+              </div>
+              <p className="text-[11px] text-purple-600">
+                Requests are visible to Admin for approval. You will be notified once stock is allotted.
+              </p>
+            </div>
           </div>
         </div>
+
       </div>
     )
   }
@@ -1902,7 +1329,6 @@ function InventoryView({ openPanel }) {
             </p>
             <div className="inventory-hero__actions">
               {[
-                { label: 'Purchase from Admin', icon: TruckIcon, action: 'purchase-from-admin' },
                 { label: 'Add product', icon: SparkIcon, action: 'add-sku' },
                 { label: 'Reorder', icon: TruckIcon, action: 'reorder' },
                 { label: 'Supplier list', icon: HomeIcon, action: 'supplier-list' },
@@ -1912,13 +1338,7 @@ function InventoryView({ openPanel }) {
                   key={action.label}
                   type="button"
                   className="inventory-hero__action"
-                  onClick={() => {
-                    if (action.action === 'purchase-from-admin') {
-                      setShowPurchaseScreen(true)
-                    } else if (action.action) {
-                      openPanel(action.action)
-                    }
-                  }}
+                  onClick={() => action.action && openPanel(action.action)}
                 >
                   <span className="inventory-hero__action-icon">
                     <action.icon className="h-4 w-4" />
@@ -2031,7 +1451,6 @@ function InventoryView({ openPanel }) {
               const vendorStock = product.vendorStock ?? 0
               const vendorStockStatus = getVendorStockStatus(vendorStock)
               const adminStockStatus = product.stockStatus || (adminStock > 0 ? 'in_stock' : 'out_of_stock')
-              const arrivingQuantity = product.arrivingQuantity || 0
               
               return (
                 <div
@@ -2057,15 +1476,6 @@ function InventoryView({ openPanel }) {
                   <div className="space-y-2">
                     <h4 className="font-bold text-gray-900 line-clamp-1">{product.name}</h4>
                     <p className="text-xs text-gray-600 line-clamp-2">{shortDescription}...</p>
-                    
-                    {/* Arriving Products Note */}
-                    {arrivingQuantity > 0 && (
-                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-2">
-                        <p className="text-xs font-semibold text-blue-900">
-                          📦 {arrivingQuantity} {product.unit || 'kg'} arriving in 24 hours
-                        </p>
-                      </div>
-                    )}
                     
                     {/* Stock Status */}
                     <div className="flex items-center gap-2">

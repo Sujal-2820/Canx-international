@@ -1,5 +1,5 @@
-import { createContext, useContext, useMemo, useReducer, useEffect } from 'react'
-import { initializeRealtimeConnection, handleRealtimeNotification } from '../services/sellerApi'
+import { createContext, useContext, useMemo, useReducer, useEffect, useState } from 'react'
+import { initializeRealtimeConnection, handleRealtimeNotification, getSellerProfile } from '../services/sellerApi'
 
 const initialState = {
   language: 'en',
@@ -201,6 +201,46 @@ function reducer(state, action) {
 
 export function SellerProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState)
+  const [isInitialized, setIsInitialized] = useState(false)
+  
+  // Initialize seller profile from token on mount
+  useEffect(() => {
+    const initializeSeller = async () => {
+      const token = localStorage.getItem('seller_token')
+      if (token && !state.authenticated) {
+        try {
+          const profileResult = await getSellerProfile()
+          
+          if (profileResult.success && profileResult.data?.seller) {
+            const seller = profileResult.data.seller
+            dispatch({
+              type: 'AUTH_LOGIN',
+              payload: {
+                id: seller.id || seller._id,
+                name: seller.name,
+                phone: seller.phone,
+                email: seller.email,
+                sellerId: seller.sellerId,
+                area: seller.area,
+                status: seller.status,
+                isActive: seller.isActive,
+              },
+            })
+          } else {
+            // Token is invalid, remove it
+            localStorage.removeItem('seller_token')
+          }
+        } catch (error) {
+          console.error('Failed to initialize seller:', error)
+          // Token might be invalid, remove it
+          localStorage.removeItem('seller_token')
+        }
+      }
+      setIsInitialized(true)
+    }
+    
+    initializeSeller()
+  }, [state.authenticated])
   
   // Initialize real-time connection when authenticated
   useEffect(() => {

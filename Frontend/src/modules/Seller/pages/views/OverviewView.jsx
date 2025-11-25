@@ -1,20 +1,80 @@
 import { useState, useRef, useEffect } from 'react'
-import { sellerSnapshot } from '../../services/sellerData'
 import { useSellerState } from '../../context/SellerContext'
 import { useSellerApi } from '../../hooks/useSellerApi'
 import { cn } from '../../../../lib/cn'
-import { UsersIcon, WalletIcon, ChartIcon, SparkIcon, ShareIcon, TargetIcon, TrendingUpIcon, GiftIcon } from '../../components/icons'
+import { UsersIcon, WalletIcon, ChartIcon, SparkIcon, ShareIcon, TargetIcon, TrendingUpIcon } from '../../components/icons'
+import * as sellerApi from '../../services/sellerApi'
 
 export function OverviewView({ onNavigate, openPanel }) {
-  const { targetIncentives } = useSellerState()
-  const { fetchTargetIncentives } = useSellerApi()
+  const { profile, dashboard } = useSellerState()
+  const { fetchDashboardOverview, fetchWalletData } = useSellerApi()
   const [showActivitySheet, setShowActivitySheet] = useState(false)
   const [renderActivitySheet, setRenderActivitySheet] = useState(false)
   const servicesRef = useRef(null)
   const [servicePage, setServicePage] = useState(0)
+  const [recentActivity, setRecentActivity] = useState([])
+  const [highlights, setHighlights] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  const overview = sellerSnapshot.overview
-  const profile = sellerSnapshot.profile
+  // Fetch dashboard data on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        // Fetch dashboard overview
+        const overviewResult = await fetchDashboardOverview()
+        if (overviewResult.data) {
+          // Overview data is stored in context via dispatch
+        }
+
+        // Fetch wallet data
+        const walletResult = await fetchWalletData()
+        if (walletResult.data) {
+          // Wallet data is stored in context via dispatch
+        }
+
+        // Fetch recent activity
+        const activityResult = await sellerApi.getRecentActivity({ limit: 15 })
+        if (activityResult.success && activityResult.data?.activities) {
+          setRecentActivity(activityResult.data.activities)
+        }
+
+        // Fetch highlights
+        const highlightsResult = await sellerApi.getDashboardHighlights()
+        if (highlightsResult.success && highlightsResult.data) {
+          setHighlights(Array.isArray(highlightsResult.data) ? highlightsResult.data : highlightsResult.data.highlights || [])
+        }
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [fetchDashboardOverview, fetchWalletData])
+
+  // Get data from context or use defaults
+  const overview = dashboard.overview || {}
+  const wallet = dashboard.wallet || {}
+  
+  // Format wallet balance
+  const formatCurrency = (amount) => {
+    if (typeof amount === 'number') {
+      return amount >= 100000 ? `₹${(amount / 100000).toFixed(1)} L` : `₹${amount.toLocaleString('en-IN')}`
+    }
+    return amount || '₹0'
+  }
+
+  // Format overview data
+  const overviewData = {
+    walletBalance: formatCurrency(wallet.balance || 0),
+    monthlyTarget: formatCurrency(overview.monthlyTarget || 0),
+    targetProgress: overview.targetProgress || 0,
+    totalReferrals: overview.totalReferrals || 0,
+    thisMonthSales: formatCurrency(overview.currentMonthSales || 0),
+    status: overview.status || 'On Track',
+  }
 
   const services = [
     { label: 'Share ID', note: 'Share your Seller ID', tone: 'success', icon: ShareIcon, action: 'share-seller-id' },
@@ -69,11 +129,6 @@ export function OverviewView({ onNavigate, openPanel }) {
     return () => container.removeEventListener('scroll', handleScroll)
   }, [services.length])
 
-  // Fetch target incentives on mount
-  useEffect(() => {
-    fetchTargetIncentives()
-  }, [fetchTargetIncentives])
-
   return (
     <div className="seller-overview space-y-6">
       {/* Hero Card Section */}
@@ -81,14 +136,14 @@ export function OverviewView({ onNavigate, openPanel }) {
         <div className="seller-hero__card">
           <div className="seller-hero__meta">
             <span className="seller-chip seller-chip--success">
-              Seller ID • {profile.sellerId}
+              Seller ID • {profile.sellerId || 'N/A'}
             </span>
             <span className="seller-chip seller-chip--warn">Today {new Date().toLocaleDateString('en-GB')}</span>
           </div>
           <div className="seller-hero__core">
             <div className="seller-hero__identity">
               <span className="seller-hero__greeting">Your performance</span>
-              <h2 className="seller-hero__welcome">{profile.name.split(' ')[0]}</h2>
+              <h2 className="seller-hero__welcome">{(profile.name || 'Seller').split(' ')[0]}</h2>
             </div>
             <div className="seller-hero__badge">
               <SparkIcon className="h-6 w-6 text-white" />
@@ -97,7 +152,7 @@ export function OverviewView({ onNavigate, openPanel }) {
           <div className="seller-hero__balance">
             <div>
               <p className="seller-hero__label">Wallet Balance</p>
-              <p className="seller-hero__value">{overview.walletBalance}</p>
+              <p className="seller-hero__value">{overviewData.walletBalance}</p>
             </div>
             <button type="button" onClick={() => onNavigate('wallet')} className="seller-hero__cta">
               View wallet
@@ -105,10 +160,10 @@ export function OverviewView({ onNavigate, openPanel }) {
           </div>
           <div className="seller-hero__stats">
             {[
-              { label: 'Total Referrals', value: overview.totalReferrals.toString() },
-              { label: 'Target Progress', value: `${overview.targetProgress}%` },
-              { label: 'This Month Sales', value: overview.thisMonthSales },
-              { label: 'Status', value: overview.status },
+              { label: 'Total Referrals', value: overviewData.totalReferrals.toString() },
+              { label: 'Target Progress', value: `${overviewData.targetProgress}%` },
+              { label: 'This Month Sales', value: overviewData.thisMonthSales },
+              { label: 'Status', value: overviewData.status },
             ].map((item) => (
               <div key={item.label} className="seller-stat-card">
                 <p>{item.label}</p>
@@ -176,28 +231,44 @@ export function OverviewView({ onNavigate, openPanel }) {
           </button>
         </div>
         <div className="seller-activity__list">
-          {sellerSnapshot.recentActivity.slice(0, 3).map((item) => (
-            <div key={item.id} className="seller-activity__item">
-              <div className="seller-activity__avatar">{item.avatar}</div>
-              <div className="seller-activity__details">
-                <div className="seller-activity__row">
-                  <span className="seller-activity__name">{item.user}</span>
-                  <span
-                    className={cn(
-                      'seller-activity__amount',
-                      item.amount.startsWith('-') ? 'is-negative' : 'is-positive',
-                    )}
-                  >
-                    {item.amount}
-                  </span>
-                </div>
-                <div className="seller-activity__meta">
-                  <span>{item.action}</span>
-                  <span>{item.date}</span>
-                </div>
-              </div>
+          {loading ? (
+            <div className="seller-activity__item">
+              <p className="text-sm text-gray-500">Loading activity...</p>
             </div>
-          ))}
+          ) : recentActivity.length === 0 ? (
+            <div className="seller-activity__item">
+              <p className="text-sm text-gray-500">No recent activity</p>
+            </div>
+          ) : (
+            recentActivity.slice(0, 3).map((item) => {
+              const avatar = item.userName ? item.userName.substring(0, 2).toUpperCase() : 'U'
+              const amount = item.amount ? (item.amount > 0 ? `+₹${item.amount.toLocaleString('en-IN')}` : `₹${Math.abs(item.amount).toLocaleString('en-IN')}`) : '₹0'
+              const date = item.date || item.createdAt ? new Date(item.date || item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Recently'
+              
+              return (
+                <div key={item.id || item._id} className="seller-activity__item">
+                  <div className="seller-activity__avatar">{avatar}</div>
+                  <div className="seller-activity__details">
+                    <div className="seller-activity__row">
+                      <span className="seller-activity__name">{item.userName || item.user || 'User'}</span>
+                      <span
+                        className={cn(
+                          'seller-activity__amount',
+                          amount.startsWith('-') ? 'is-negative' : 'is-positive',
+                        )}
+                      >
+                        {amount}
+                      </span>
+                    </div>
+                    <div className="seller-activity__meta">
+                      <span>{item.action || item.type || 'Activity'}</span>
+                      <span>{date}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
       </section>
 
@@ -225,28 +296,40 @@ export function OverviewView({ onNavigate, openPanel }) {
               </button>
             </div>
             <div className="seller-activity-sheet__body">
-              {sellerSnapshot.recentActivity.map((item) => (
-                <div key={item.id} className="seller-activity__item">
-                  <div className="seller-activity__avatar">{item.avatar}</div>
-                  <div className="seller-activity__details">
-                    <div className="seller-activity__row">
-                      <span className="seller-activity__name">{item.user}</span>
-                      <span
-                        className={cn(
-                          'seller-activity__amount',
-                          item.amount.startsWith('-') ? 'is-negative' : 'is-positive',
-                        )}
-                      >
-                        {item.amount}
-                      </span>
-                    </div>
-                    <div className="seller-activity__meta">
-                      <span>{item.action}</span>
-                      <span>{item.date}</span>
-                    </div>
-                  </div>
+              {recentActivity.length === 0 ? (
+                <div className="seller-activity__item">
+                  <p className="text-sm text-gray-500">No recent activity</p>
                 </div>
-              ))}
+              ) : (
+                recentActivity.map((item) => {
+                  const avatar = item.userName ? item.userName.substring(0, 2).toUpperCase() : 'U'
+                  const amount = item.amount ? (item.amount > 0 ? `+₹${item.amount.toLocaleString('en-IN')}` : `₹${Math.abs(item.amount).toLocaleString('en-IN')}`) : '₹0'
+                  const date = item.date || item.createdAt ? new Date(item.date || item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Recently'
+                  
+                  return (
+                    <div key={item.id || item._id} className="seller-activity__item">
+                      <div className="seller-activity__avatar">{avatar}</div>
+                      <div className="seller-activity__details">
+                        <div className="seller-activity__row">
+                          <span className="seller-activity__name">{item.userName || item.user || 'User'}</span>
+                          <span
+                            className={cn(
+                              'seller-activity__amount',
+                              amount.startsWith('-') ? 'is-negative' : 'is-positive',
+                            )}
+                          >
+                            {amount}
+                          </span>
+                        </div>
+                        <div className="seller-activity__meta">
+                          <span>{item.action || item.type || 'Activity'}</span>
+                          <span>{date}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
         </div>
@@ -260,29 +343,34 @@ export function OverviewView({ onNavigate, openPanel }) {
           </div>
         </div>
         <div className="seller-metric-grid">
-          {sellerSnapshot.highlights.map((item) => (
-            <div key={item.id} className="seller-metric-card">
-              <div className="seller-metric-card__head">
-                <p>{item.label}</p>
-                <span>{item.trend}</span>
-              </div>
-              <h4>{item.value}</h4>
-              <div className="seller-metric-card__bar">
-                <span
-                  style={{
-                    width:
-                      item.id === 'target'
-                        ? `${overview.targetProgress}%`
-                        : item.id === 'referrals'
-                        ? '85%'
-                        : item.id === 'sales'
-                        ? '72%'
-                        : '90%',
-                  }}
-                />
-              </div>
+          {highlights.length === 0 ? (
+            <div className="seller-metric-card">
+              <p className="text-sm text-gray-500">No highlights available</p>
             </div>
-          ))}
+          ) : (
+            highlights.map((item) => {
+              const progress = item.id === 'target' 
+                ? overviewData.targetProgress 
+                : item.id === 'referrals' 
+                ? Math.min((overviewData.totalReferrals / 100) * 100, 100)
+                : item.id === 'sales'
+                ? Math.min((overviewData.targetProgress * 0.7), 100)
+                : item.progress || 0
+              
+              return (
+                <div key={item.id || item.label} className="seller-metric-card">
+                  <div className="seller-metric-card__head">
+                    <p>{item.label}</p>
+                    <span>{item.trend || item.meta || ''}</span>
+                  </div>
+                  <h4>{item.value || formatCurrency(item.amount || 0)}</h4>
+                  <div className="seller-metric-card__bar">
+                    <span style={{ width: `${Math.min(progress, 100)}%` }} />
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
       </section>
 
@@ -298,63 +386,24 @@ export function OverviewView({ onNavigate, openPanel }) {
           <div className="seller-target-card__header">
             <div className="seller-target-card__info">
               <span className="seller-target-card__label">Target</span>
-              <span className="seller-target-card__value">{overview.monthlyTarget}</span>
+              <span className="seller-target-card__value">{overviewData.monthlyTarget}</span>
             </div>
             <div className="seller-target-card__info">
               <span className="seller-target-card__label">Achieved</span>
-              <span className="seller-target-card__value">{overview.thisMonthSales}</span>
+              <span className="seller-target-card__value">{overviewData.thisMonthSales}</span>
             </div>
           </div>
           <div className="seller-target-card__progress">
             <div className="seller-target-card__progress-bar">
-              <span style={{ width: `${overview.targetProgress}%` }} />
+              <span style={{ width: `${overviewData.targetProgress}%` }} />
             </div>
             <div className="seller-target-card__progress-text">
-              <span>{overview.targetProgress}% Complete</span>
-              <span>{overview.status}</span>
+              <span>{overviewData.targetProgress}% Complete</span>
+              <span>{overviewData.status}</span>
             </div>
           </div>
         </div>
       </section>
-
-      {/* Target Incentives Section */}
-      {targetIncentives && targetIncentives.length > 0 && (
-        <section id="seller-target-incentives" className="seller-section">
-          <div className="seller-section__header">
-            <div>
-              <h3 className="seller-section__title">Target Incentives</h3>
-              <p className="seller-section__subtitle">Rewards for achieving your targets</p>
-            </div>
-          </div>
-          <div className="seller-incentives-list">
-            {targetIncentives.map((incentive) => (
-              <div key={incentive.id} className="seller-incentive-card">
-                <div className="seller-incentive-card__icon">
-                  <GiftIcon className="h-5 w-5" />
-                </div>
-                <div className="seller-incentive-card__content">
-                  <h4 className="seller-incentive-card__title">{incentive.title}</h4>
-                  <p className="seller-incentive-card__description">{incentive.description}</p>
-                  <div className="seller-incentive-card__meta">
-                    <span className="seller-incentive-card__amount">₹{incentive.amount?.toLocaleString('en-IN')}</span>
-                    <span className="seller-incentive-card__date">
-                      {incentive.achievedDate
-                        ? `Achieved on ${new Date(incentive.achievedDate).toLocaleDateString('en-IN')}`
-                        : 'Pending'}
-                    </span>
-                  </div>
-                </div>
-                {incentive.status === 'achieved' && (
-                  <div className="seller-incentive-card__badge">
-                    <SparkIcon className="h-4 w-4" />
-                    Earned
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Quick Actions Section */}
       <section id="seller-overview-quick-actions" className="seller-section">

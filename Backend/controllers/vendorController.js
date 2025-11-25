@@ -1347,7 +1347,6 @@ exports.getProducts = async (req, res, next) => {
     // Check which products are assigned to this vendor
     const productIds = products.map(p => p._id);
     let ordersCountMap = {};
-    let pendingPurchasesMap = {}; // Track pending/approved purchases
 
     if (productIds.length > 0) {
       const ordersCounts = await Order.aggregate([
@@ -1371,67 +1370,6 @@ exports.getProducts = async (req, res, next) => {
         },
       ]);
 
-      // Get pending and approved purchases (within last 24 hours) for arriving products
-      const CreditPurchase = require('../models/CreditPurchase');
-      const oneDayAgo = new Date();
-      oneDayAgo.setHours(oneDayAgo.getHours() - 24);
-      
-      // Get pending purchases (created within 24 hours)
-      const pendingPurchases = await CreditPurchase.find({
-        vendorId: vendor._id,
-        status: 'pending',
-        createdAt: { $gte: oneDayAgo },
-      }).lean();
-
-      // Get approved purchases (approved within 24 hours)
-      const approvedPurchases = await CreditPurchase.find({
-        vendorId: vendor._id,
-        status: 'approved',
-        reviewedAt: { $gte: oneDayAgo },
-      }).lean();
-
-      const recentPurchases = [...pendingPurchases, ...approvedPurchases];
-
-      // Get manual stock update times to exclude purchases that vendor has confirmed as received
-      const assignmentsWithManualUpdates = await ProductAssignment.find({
-        vendorId: vendor._id,
-        productId: { $in: productIds },
-      }).select('productId lastManualStockUpdate').lean();
-
-      const manualStockUpdateMap = {};
-      assignmentsWithManualUpdates.forEach(assignment => {
-        const productIdStr = assignment.productId.toString();
-        if (assignment.lastManualStockUpdate) {
-          manualStockUpdateMap[productIdStr] = assignment.lastManualStockUpdate;
-        }
-      });
-
-      // Aggregate quantities by product for arriving items
-      // Only exclude purchases if vendor has manually updated stock AFTER the purchase was approved
-      recentPurchases.forEach(purchase => {
-        const purchaseApprovedAt = purchase.reviewedAt || purchase.createdAt;
-        purchase.items.forEach(item => {
-          const productIdStr = item.productId.toString();
-          if (productIds.some(id => id.toString() === productIdStr)) {
-            // Count as arriving if:
-            // 1. Purchase is pending (not yet approved), OR
-            // 2. Purchase was approved and vendor hasn't manually updated stock yet, OR
-            // 3. Purchase was approved AFTER vendor's last manual stock update
-            const lastManualUpdate = manualStockUpdateMap[productIdStr];
-            const shouldCount = purchase.status === 'pending' || 
-                               !lastManualUpdate ||
-                               (purchaseApprovedAt && new Date(purchaseApprovedAt) > new Date(lastManualUpdate));
-            
-            if (shouldCount) {
-              if (!pendingPurchasesMap[productIdStr]) {
-                pendingPurchasesMap[productIdStr] = 0;
-              }
-              pendingPurchasesMap[productIdStr] += item.quantity;
-            }
-          }
-        });
-      });
-
       ordersCountMap = ordersCounts.reduce((acc, item) => {
         acc[item._id.toString()] = item.ordersCount;
         return acc;
@@ -1451,8 +1389,6 @@ exports.getProducts = async (req, res, next) => {
       const assignment = assignments.find(a => a.productId.toString() === product._id.toString());
       const adminStock = product.displayStock ?? product.stock ?? 0;
       const vendorStock = assignment?.stock ?? 0;
-      const productIdStr = product._id.toString();
-      const arrivingQuantity = pendingPurchasesMap[productIdStr] || 0;
       
       return {
         ...product,
@@ -1461,8 +1397,7 @@ exports.getProducts = async (req, res, next) => {
         assignmentId: assignment?._id || null,
         adminStock,
         vendorStock,
-        vendorOrdersCount: ordersCountMap[productIdStr] || 0,
-        arrivingQuantity, // Quantity arriving in 24 hours
+        vendorOrdersCount: ordersCountMap[product._id.toString()] || 0,
         // Stock available for ordering is admin managed stock
         stock: adminStock,
         stockStatus: adminStock > 0 ? 'in_stock' : 'out_of_stock',
@@ -1549,49 +1484,6 @@ exports.getProductDetails = async (req, res, next) => {
 
     const ordersInfo = ordersAggregation[0] || { totalOrders: 0, totalQuantity: 0 };
 
-    // Get arriving quantity (pending/approved purchases within 24 hours)
-    // Exclude purchases that have been received (stock was updated after approval)
-    const CreditPurchase = require('../models/CreditPurchase');
-    const oneDayAgo = new Date();
-    oneDayAgo.setHours(oneDayAgo.getHours() - 24);
-    
-    const pendingPurchases = await CreditPurchase.find({
-      vendorId: vendor._id,
-      status: 'pending',
-      createdAt: { $gte: oneDayAgo },
-      'items.productId': product._id,
-    }).lean();
-
-    const approvedPurchases = await CreditPurchase.find({
-      vendorId: vendor._id,
-      status: 'approved',
-      reviewedAt: { $gte: oneDayAgo },
-      'items.productId': product._id,
-    }).lean();
-
-    // Check if vendor has manually updated stock after purchase approval
-    const lastManualStockUpdate = assignment?.lastManualStockUpdate;
-
-    let arrivingQuantity = 0;
-    [...pendingPurchases, ...approvedPurchases].forEach(purchase => {
-      const purchaseApprovedAt = purchase.reviewedAt || purchase.createdAt;
-      // Count as arriving if:
-      // 1. Purchase is pending, OR
-      // 2. Vendor hasn't manually updated stock yet, OR
-      // 3. Purchase was approved AFTER vendor's last manual stock update
-      const shouldCount = purchase.status === 'pending' || 
-                         !lastManualStockUpdate ||
-                         (purchaseApprovedAt && new Date(purchaseApprovedAt) > new Date(lastManualStockUpdate));
-      
-      if (shouldCount) {
-        purchase.items.forEach(item => {
-          if (item.productId.toString() === product._id.toString()) {
-            arrivingQuantity += item.quantity;
-          }
-        });
-      }
-    });
-
     res.status(200).json({
       success: true,
       data: {
@@ -1605,7 +1497,6 @@ exports.getProductDetails = async (req, res, next) => {
           adminStock: product.displayStock ?? product.stock ?? 0,
           vendorStock: assignment?.stock ?? 0,
           vendorOrdersCount,
-          arrivingQuantity,
           stockStatus: (product.displayStock ?? product.stock ?? 0) > 0 ? 'in_stock' : 'out_of_stock',
           images: product.images,
           primaryImage: product.images?.find(img => img.isPrimary)?.url || product.images?.[0]?.url || null,
@@ -1749,106 +1640,7 @@ exports.getInventoryItemDetails = async (req, res, next) => {
 };
 
 /**
- * @desc    Update inventory stock for a product
- * @route   PUT /api/vendors/products/:productId/stock
- * @access  Private (Vendor)
- */
-exports.updateProductStock = async (req, res, next) => {
-  try {
-    const vendor = req.vendor;
-    const { productId } = req.params;
-    const { stock, notes } = req.body;
-
-    if (stock === undefined || stock < 0 || !Number.isInteger(Number(stock))) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid stock quantity is required (≥ 0, must be an integer)',
-      });
-    }
-
-    const stockValue = parseInt(stock);
-
-    // Find or create ProductAssignment
-    let assignment = await ProductAssignment.findOne({
-      productId: productId,
-      vendorId: vendor._id,
-    });
-
-    if (!assignment) {
-      // Create new assignment if it doesn't exist
-      // This can happen if vendor is updating stock for a product they purchased
-      assignment = await ProductAssignment.create({
-        productId: productId,
-        vendorId: vendor._id,
-        stock: stockValue,
-        isActive: true,
-        assignedBy: vendor._id, // Self-assigned
-        assignedAt: new Date(),
-        notes: notes || `Stock updated by vendor: ${stockValue} units`,
-        lastManualStockUpdate: new Date(), // Track that vendor manually set this stock
-      });
-    } else {
-      // Update existing assignment
-      const oldStock = assignment.stock || 0;
-      assignment.stock = stockValue;
-      if (notes) {
-        assignment.notes = `${assignment.notes || ''}\n[${new Date().toISOString()}] ${notes}`.trim();
-      }
-      // Track when vendor manually updated stock (this is different from admin creating/updating assignment)
-      assignment.lastManualStockUpdate = new Date();
-      await assignment.save();
-    }
-
-    // Mark approved purchases as received if stock was updated
-    // This helps remove "arriving" notes when vendor confirms stock arrival
-    const CreditPurchase = require('../models/CreditPurchase');
-    const oneDayAgo = new Date();
-    oneDayAgo.setHours(oneDayAgo.getHours() - 24);
-    
-    // Find approved purchases for this product within last 24 hours
-    const recentApprovedPurchases = await CreditPurchase.find({
-      vendorId: vendor._id,
-      status: 'approved',
-      reviewedAt: { $gte: oneDayAgo },
-      'items.productId': productId,
-    });
-
-    // If vendor updated stock and it's >= old stock + arriving quantity, mark as received
-    // We'll use a simple heuristic: if stock increased significantly, assume purchases were received
-    // This is handled by the arriving quantity calculation which checks assignment.updatedAt
-
-    // Get updated product details
-    const product = await Product.findById(productId)
-      .select('name sku category priceToVendor displayStock actualStock weight')
-      .lean();
-
-    res.status(200).json({
-      success: true,
-      data: {
-        assignment: {
-          id: assignment._id,
-          productId: assignment.productId,
-          vendorId: assignment.vendorId,
-          stock: assignment.stock,
-          isActive: assignment.isActive,
-        },
-        product: product ? {
-          id: product._id,
-          name: product.name,
-          sku: product.sku,
-          category: product.category,
-          unit: product.weight?.unit || 'kg',
-        } : null,
-        message: 'Stock updated successfully',
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Update inventory stock (legacy endpoint - kept for backward compatibility)
+ * @desc    Update inventory stock (placeholder - stock tracking to be added to ProductAssignment model)
  * @route   PUT /api/vendors/inventory/:itemId/stock
  * @access  Private (Vendor)
  */
@@ -1858,14 +1650,12 @@ exports.updateInventoryStock = async (req, res, next) => {
     const { itemId } = req.params;
     const { stock, notes } = req.body;
 
-    if (stock === undefined || stock < 0 || !Number.isInteger(Number(stock))) {
+    if (stock === undefined || stock < 0) {
       return res.status(400).json({
         success: false,
-        message: 'Valid stock quantity is required (≥ 0, must be an integer)',
+        message: 'Valid stock quantity is required (≥ 0)',
       });
     }
-
-    const stockValue = parseInt(stock);
 
     const assignment = await ProductAssignment.findOne({
       _id: itemId,
@@ -1879,25 +1669,21 @@ exports.updateInventoryStock = async (req, res, next) => {
       });
     }
 
-    // Update stock
-    const oldStock = assignment.stock || 0;
-    assignment.stock = stockValue;
-    if (notes) {
-      assignment.notes = `${assignment.notes || ''}\n[${new Date().toISOString()}] ${notes}`.trim();
-    }
-    await assignment.save();
+    // TODO: When stock tracking is added to ProductAssignment model
+    // assignment.stock = stock;
+    // assignment.lastStockUpdate = new Date();
+    // if (notes) {
+    //   assignment.stockNotes = `${assignment.stockNotes || ''}\n[${new Date().toISOString()}] ${notes}`.trim();
+    // }
+    // await assignment.save();
 
+    // For now, return a placeholder response
     res.status(200).json({
       success: true,
       data: {
-        assignment: {
-          id: assignment._id,
-          productId: assignment.productId,
-          vendorId: assignment.vendorId,
-          stock: assignment.stock,
-          isActive: assignment.isActive,
-        },
-        message: 'Stock updated successfully',
+        message: 'Stock update functionality will be available when inventory model is enhanced',
+        assignment,
+        // stock: assignment.stock, // Will be available after model update
       },
     });
   } catch (error) {
@@ -2081,14 +1867,13 @@ exports.requestCreditPurchase = async (req, res, next) => {
     // Calculate total amount
     let totalAmount = 0;
     const purchaseItems = items.map(item => {
-      // Support both pricePerUnit (from frontend) and unitPrice (model requirement)
-      const unitPrice = item.unitPrice || item.pricePerUnit || 0;
-      const itemTotal = (item.quantity || 0) * unitPrice;
+      const itemTotal = (item.quantity || 0) * (item.pricePerUnit || 0);
       totalAmount += itemTotal;
       return {
         productId: item.productId,
+        productName: item.productName || '',
         quantity: item.quantity || 0,
-        unitPrice: unitPrice, // Model requires unitPrice
+        pricePerUnit: item.pricePerUnit || 0,
         totalPrice: itemTotal,
       };
     });

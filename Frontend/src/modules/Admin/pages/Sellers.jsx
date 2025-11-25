@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Award, Gift, Users, Edit2, Eye, Wallet } from 'lucide-react'
+import { Award, Gift, Users, Edit2, Eye, Wallet, CheckCircle, XCircle } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { ProgressList } from '../components/ProgressList'
@@ -32,6 +32,8 @@ export function SellersPage() {
     getSellers,
     createSeller,
     updateSeller,
+    approveSeller,
+    rejectSeller,
     deleteSeller,
     getSellerWithdrawalRequests,
     approveSellerWithdrawal,
@@ -234,6 +236,39 @@ export function SellersPage() {
     }
   }
 
+  const handleApproveSeller = async (sellerId) => {
+    try {
+      const result = await approveSeller(sellerId)
+      if (result.data) {
+        fetchSellers()
+        success('Seller approved successfully!', 3000)
+      } else if (result.error) {
+        const errorMessage = result.error.message || 'Failed to approve seller'
+        showError(errorMessage, 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to approve seller', 5000)
+    }
+  }
+
+  const handleRejectSeller = async (sellerId) => {
+    const reason = window.prompt('Please provide a reason for rejection (optional):')
+    if (reason === null) return // User cancelled
+
+    try {
+      const result = await rejectSeller(sellerId, { reason: reason || undefined })
+      if (result.data) {
+        fetchSellers()
+        success('Seller rejected successfully.', 3000)
+      } else if (result.error) {
+        const errorMessage = result.error.message || 'Failed to reject seller'
+        showError(errorMessage, 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to reject seller', 5000)
+    }
+  }
+
   const tableColumns = columns.map((column) => {
     if (column.accessor === 'achieved') {
       return {
@@ -266,8 +301,15 @@ export function SellersPage() {
         ...column,
         Cell: (row) => {
           const status = row.status || 'Unknown'
-          const tone = status === 'On Track' || status === 'on_track' ? 'success' : 'warning'
-          return <StatusBadge tone={tone}>{status}</StatusBadge>
+          let tone = 'warning'
+          if (status === 'approved' || status === 'On Track' || status === 'on_track') {
+            tone = 'success'
+          } else if (status === 'pending') {
+            tone = 'warning'
+          } else if (status === 'rejected') {
+            tone = 'error'
+          }
+          return <StatusBadge tone={tone}>{status === 'approved' ? 'Approved' : status === 'pending' ? 'Pending' : status === 'rejected' ? 'Rejected' : status}</StatusBadge>
         },
       }
     }
@@ -276,6 +318,9 @@ export function SellersPage() {
         ...column,
         Cell: (row) => {
           const originalSeller = sellersState.data?.sellers?.find((s) => s.id === row.id) || row
+          const sellerStatus = originalSeller.status || row.status || 'unknown'
+          const isPending = sellerStatus === 'pending'
+          
           return (
             <div className="flex items-center gap-2">
               <button
@@ -286,14 +331,36 @@ export function SellersPage() {
               >
                 <Eye className="h-4 w-4" />
               </button>
-              <button
-                type="button"
-                onClick={() => handleEditSeller(originalSeller)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-700"
-                title="Edit seller"
-              >
-                <Edit2 className="h-4 w-4" />
-              </button>
+              {isPending && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleApproveSeller(originalSeller.id || row.id)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-green-300 bg-green-50 text-green-700 transition-all hover:border-green-500 hover:bg-green-100"
+                    title="Approve seller"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRejectSeller(originalSeller.id || row.id)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-700 transition-all hover:border-red-500 hover:bg-red-100"
+                    title="Reject seller"
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+              {!isPending && (
+                <button
+                  type="button"
+                  onClick={() => handleEditSeller(originalSeller)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-700"
+                  title="Edit seller"
+                >
+                  <Edit2 className="h-4 w-4" />
+                </button>
+              )}
             </div>
           )
         },

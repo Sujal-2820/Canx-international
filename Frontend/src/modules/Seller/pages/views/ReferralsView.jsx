@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useSellerState } from '../../context/SellerContext'
+import { useSellerApi } from '../../hooks/useSellerApi'
 import { sellerSnapshot } from '../../services/sellerData'
 import { cn } from '../../../../lib/cn'
 import { UsersIcon, WalletIcon, TrendingUpIcon } from '../../components/icons'
@@ -10,12 +12,32 @@ const FILTER_TABS = [
 ]
 
 export function ReferralsView({ onNavigate }) {
+  const { dashboard } = useSellerState()
+  const { fetchReferrals } = useSellerApi()
   const [activeFilter, setActiveFilter] = useState('all')
   const [expandedId, setExpandedId] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [referrals, setReferrals] = useState([])
+  const [loading, setLoading] = useState(true)
+  const commissionPolicy = sellerSnapshot.commissionPolicy // Keep policies as is
 
-  const referrals = sellerSnapshot.referrals
-  const commissionPolicy = sellerSnapshot.commissionPolicy
+  // Fetch referrals on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        const result = await fetchReferrals({ limit: 100 })
+        if (result.data?.referrals) {
+          setReferrals(result.data.referrals)
+        }
+      } catch (error) {
+        console.error('Failed to fetch referrals:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [fetchReferrals])
 
   const formatCurrency = (value = 0) => {
     const amount = Number(value) || 0
@@ -40,11 +62,17 @@ export function ReferralsView({ onNavigate }) {
   // Calculate summary stats
   const stats = useMemo(() => {
     const total = referrals.length
-    const active = referrals.filter((r) => r.status === 'Active').length
+    const active = referrals.filter((r) => r.status === 'active' || r.status === 'Active').length
     const aggregates = referrals.reduce(
       (acc, referral) => {
-        const lifetimeAmount = parseFloat(referral.totalAmount.replace(/[₹,\sL]/g, '')) || 0
-        const commissionInfo = getCommissionInfo(referral.monthlyPurchases)
+        // Handle both string and number formats
+        const lifetimeAmount = typeof referral.totalAmount === 'number' 
+          ? referral.totalAmount 
+          : parseFloat((referral.totalAmount || '0').toString().replace(/[₹,\sL]/g, '')) || 0
+        const monthlyPurchases = typeof referral.monthlyPurchases === 'number'
+          ? referral.monthlyPurchases
+          : parseFloat((referral.monthlyPurchases || '0').toString().replace(/[₹,\sL]/g, '')) || 0
+        const commissionInfo = getCommissionInfo(monthlyPurchases)
         acc.totalSales += lifetimeAmount
         acc.monthlyPurchases += commissionInfo.purchaseAmount
         acc.monthlyCommission += commissionInfo.commissionAmount
@@ -67,19 +95,21 @@ export function ReferralsView({ onNavigate }) {
 
     // Status filter
     if (activeFilter === 'active') {
-      filtered = filtered.filter((r) => r.status === 'Active')
+      filtered = filtered.filter((r) => r.status === 'active' || r.status === 'Active')
     } else if (activeFilter === 'registered') {
-      filtered = filtered.filter((r) => r.status === 'Registered')
+      filtered = filtered.filter((r) => r.status === 'registered' || r.status === 'Registered' || !r.status)
     }
 
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(
-        (r) =>
-          r.name.toLowerCase().includes(query) ||
-          r.userId.toLowerCase().includes(query) ||
-          r.totalAmount.toLowerCase().includes(query),
+        (r) => {
+          const name = (r.name || '').toLowerCase()
+          const userId = (r.userId || r.id || '').toString().toLowerCase()
+          const totalAmount = (r.totalAmount || '').toString().toLowerCase()
+          return name.includes(query) || userId.includes(query) || totalAmount.includes(query)
+        }
       )
     }
 
@@ -182,7 +212,12 @@ export function ReferralsView({ onNavigate }) {
 
       {/* Referrals List */}
       <section id="seller-referrals-list" className="seller-section">
-        {filteredReferrals.length === 0 ? (
+        {loading ? (
+          <div className="seller-referrals-empty">
+            <UsersIcon className="seller-referrals-empty__icon" />
+            <p className="seller-referrals-empty__text">Loading referrals...</p>
+          </div>
+        ) : filteredReferrals.length === 0 ? (
           <div className="seller-referrals-empty">
             <UsersIcon className="seller-referrals-empty__icon" />
             <p className="seller-referrals-empty__text">No referrals found</p>
@@ -193,40 +228,53 @@ export function ReferralsView({ onNavigate }) {
         ) : (
           <div className="seller-referrals-list">
             {filteredReferrals.map((referral) => {
-              const commissionInfo = getCommissionInfo(referral.monthlyPurchases)
+              const monthlyPurchases = typeof referral.monthlyPurchases === 'number'
+                ? referral.monthlyPurchases
+                : parseFloat((referral.monthlyPurchases || '0').toString().replace(/[₹,\sL]/g, '')) || 0
+              const commissionInfo = getCommissionInfo(monthlyPurchases)
               const monthlyPurchaseDisplay = formatCurrency(commissionInfo.purchaseAmount)
               const commissionDisplay = formatCurrency(commissionInfo.commissionAmount)
               const commissionRateLabel = `${Math.round(commissionInfo.rate * 100)}%`
               const amountToNextSlab = Math.max(50000 - commissionInfo.purchaseAmount, 0)
               const amountToNextSlabDisplay = formatCurrency(amountToNextSlab)
-              const lifetimeTotal = referral.totalAmount
+              const lifetimeTotal = typeof referral.totalAmount === 'number'
+                ? formatCurrency(referral.totalAmount)
+                : referral.totalAmount || '₹0'
+              const avatar = referral.name ? referral.name.substring(0, 2).toUpperCase() : 'U'
+              const status = referral.status || 'Registered'
+              const userId = referral.userId || referral.id || 'N/A'
+              const registeredDate = referral.registeredDate || referral.createdAt || new Date().toISOString()
+              const totalPurchases = referral.totalPurchases || referral.orderCount || 0
+              const lastPurchase = referral.lastPurchase || referral.lastOrderDate 
+                ? formatDate(referral.lastPurchase || referral.lastOrderDate)
+                : 'Never'
 
               return (
                 <div
-                  key={referral.id}
+                  key={referral.id || referral._id}
                   className={cn('seller-referral-card', expandedId === referral.id && 'is-expanded')}
                 >
                 <div
                   className="seller-referral-card__header"
                   onClick={() => setExpandedId(expandedId === referral.id ? null : referral.id)}
                 >
-                  <div className="seller-referral-card__avatar">{referral.avatar}</div>
+                  <div className="seller-referral-card__avatar">{avatar}</div>
                   <div className="seller-referral-card__info">
                     <div className="seller-referral-card__row">
-                      <h3 className="seller-referral-card__name">{referral.name}</h3>
+                      <h3 className="seller-referral-card__name">{referral.name || 'User'}</h3>
                       <span
                         className={cn(
                           'seller-referral-card__status',
-                          referral.status === 'Active' ? 'is-active' : 'is-registered',
+                          (status === 'Active' || status === 'active') ? 'is-active' : 'is-registered',
                         )}
                       >
-                        {referral.status}
+                        {status}
                       </span>
                     </div>
                     <div className="seller-referral-card__meta">
-                      <span className="seller-referral-card__id">{referral.userId}</span>
+                      <span className="seller-referral-card__id">{userId}</span>
                       <span className="seller-referral-card__date">
-                        Joined {formatDate(referral.registeredDate)}
+                        Joined {formatDate(registeredDate)}
                       </span>
                     </div>
                   </div>
@@ -242,7 +290,7 @@ export function ReferralsView({ onNavigate }) {
                     <div className="seller-referral-card__stats-grid">
                       <div className="seller-referral-stat">
                         <p className="seller-referral-stat__label">Total Purchases</p>
-                        <span className="seller-referral-stat__value">{referral.totalPurchases}</span>
+                        <span className="seller-referral-stat__value">{totalPurchases}</span>
                       </div>
                       <div className="seller-referral-stat">
                         <p className="seller-referral-stat__label">Lifetime Amount</p>
@@ -266,7 +314,7 @@ export function ReferralsView({ onNavigate }) {
                       </div>
                       <div className="seller-referral-stat">
                         <p className="seller-referral-stat__label">Last Purchase</p>
-                        <span className="seller-referral-stat__value">{referral.lastPurchase}</span>
+                        <span className="seller-referral-stat__value">{lastPurchase}</span>
                       </div>
                     </div>
                     <div className="seller-referral-card__actions">
@@ -286,7 +334,7 @@ export function ReferralsView({ onNavigate }) {
                   <div className="seller-referral-card__quick-stats">
                     <div className="seller-referral-quick-stat">
                       <span className="seller-referral-quick-stat__label">Purchases</span>
-                      <span className="seller-referral-quick-stat__value">{referral.totalPurchases}</span>
+                      <span className="seller-referral-quick-stat__value">{totalPurchases}</span>
                     </div>
                     <div className="seller-referral-quick-stat">
                       <span className="seller-referral-quick-stat__label">This Month</span>

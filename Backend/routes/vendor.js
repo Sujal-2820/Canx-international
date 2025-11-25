@@ -131,13 +131,6 @@ router.get('/products', authorizeVendor, vendorController.getProducts);
  */
 router.get('/products/:productId', authorizeVendor, vendorController.getProductDetails);
 
-/**
- * @route   PUT /api/vendors/products/:productId/stock
- * @desc    Update stock quantity for a product (when stock arrives)
- * @access  Private (Vendor)
- */
-router.put('/products/:productId/stock', authorizeVendor, vendorController.updateProductStock);
-
 // ============================================================================
 // INVENTORY MANAGEMENT ROUTES
 // ============================================================================

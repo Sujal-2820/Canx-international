@@ -9,7 +9,7 @@ import {
   VendorLanguagePage,
   VendorRolePage,
 } from './modules/Vendor'
-import { SellerDashboardPage, SellerLogin } from './modules/Seller'
+import { SellerDashboardPage, SellerLogin, SellerRegister } from './modules/Seller'
 
 function Home() {
   const links = [
@@ -23,6 +23,7 @@ function Home() {
     { label: 'Vendor Login', to: '/vendor/login' },
     { label: 'Vendor Dashboard', to: '/vendor/dashboard' },
     { label: 'Seller Login', to: '/seller/login' },
+    { label: 'Seller Register', to: '/seller/register' },
     { label: 'Seller Dashboard', to: '/seller/dashboard' },
   ]
 
@@ -75,7 +76,12 @@ function UserRegisterRoute() {
 
 function SellerLoginRoute() {
   const navigate = useNavigate()
-  return <SellerLogin onSubmit={() => navigate('/seller/dashboard')} />
+  return <SellerLogin onSubmit={() => navigate('/seller/dashboard')} onSwitchToRegister={() => navigate('/seller/register')} />
+}
+
+function SellerRegisterRoute() {
+  const navigate = useNavigate()
+  return <SellerRegister onSubmit={() => navigate('/seller/dashboard')} onSwitchToLogin={() => navigate('/seller/login')} />
 }
 
 function App() {
@@ -100,6 +106,7 @@ function App() {
         </Route>
 
         <Route path="/seller/login" element={<SellerLoginRoute />} />
+        <Route path="/seller/register" element={<SellerRegisterRoute />} />
         <Route path="/seller/dashboard" element={<SellerDashboardPage />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />

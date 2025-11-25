@@ -2,14 +2,19 @@ import { useState } from 'react'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
 import * as sellerApi from '../services/sellerApi'
 
-export function SellerRegister({ onSuccess, onSwitchToLogin }) {
-  const [step, setStep] = useState('register') // 'register' | 'otp'
+export function SellerRegister({ onSuccess, onSubmit, onSwitchToLogin }) {
+  const [step, setStep] = useState('register') // 'register' | 'otp' | 'pending'
   const [form, setForm] = useState({
     fullName: '',
     contact: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [sellerId, setSellerId] = useState(null)
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -38,16 +43,51 @@ export function SellerRegister({ onSuccess, onSwitchToLogin }) {
         setLoading(false)
         return
       }
+      if (!form.address.trim()) {
+        setError('Address is required')
+        setLoading(false)
+        return
+      }
+      if (!form.city.trim()) {
+        setError('City is required')
+        setLoading(false)
+        return
+      }
+      if (!form.state.trim()) {
+        setError('State is required')
+        setLoading(false)
+        return
+      }
+      if (!form.pincode.trim() || form.pincode.length !== 6) {
+        setError('Please enter a valid 6-digit pincode')
+        setLoading(false)
+        return
+      }
 
-      const result = await sellerApi.requestSellerOTP({ phone: form.contact })
+      // Call register endpoint which generates sellerId and sends OTP
+      const result = await sellerApi.registerSeller({
+        fullName: form.fullName,
+        phone: form.contact,
+        area: form.address || '',
+        location: {
+          address: form.address || '',
+          city: form.city || '',
+          state: form.state || '',
+          pincode: form.pincode || '',
+        },
+      })
       
       if (result.success || result.data) {
         setStep('otp')
+        // Show sellerId if generated
+        if (result.data?.sellerId) {
+          console.log('Seller ID generated:', result.data.sellerId)
+        }
       } else {
-        setError(result.error?.message || 'Failed to send OTP. Please try again.')
+        setError(result.error?.message || 'Failed to register. Please try again.')
       }
     } catch (err) {
-      setError(err.message || 'Failed to send OTP. Please try again.')
+      setError(err.message || 'Failed to register. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -58,17 +98,27 @@ export function SellerRegister({ onSuccess, onSwitchToLogin }) {
     setLoading(true)
 
     try {
-      const result = await sellerApi.registerSeller({
-        fullName: form.fullName,
+      // Call verifyOTP endpoint to complete registration
+      const result = await sellerApi.loginSellerWithOtp({
         phone: form.contact,
         otp: otpCode,
       })
 
       if (result.success || result.data) {
+        // Check if seller requires approval
+        if (result.data?.requiresApproval || result.data?.seller?.status === 'pending') {
+          setSellerId(result.data?.seller?.sellerId || result.data?.sellerId)
+          setStep('pending')
+          return
+        }
+
+        // If approved, proceed with login
         if (result.data?.token) {
           localStorage.setItem('seller_token', result.data.token)
         }
+        // Call both onSuccess and onSubmit for backward compatibility
         onSuccess?.(result.data?.seller || { name: form.fullName, phone: form.contact })
+        onSubmit?.(result.data?.seller || { name: form.fullName, phone: form.contact })
       } else {
         setError(result.error?.message || 'Invalid OTP. Please try again.')
       }
@@ -82,12 +132,77 @@ export function SellerRegister({ onSuccess, onSwitchToLogin }) {
   const handleResendOtp = async () => {
     setLoading(true)
     try {
-      await sellerApi.requestSellerOTP({ phone: form.contact })
+      // Resend OTP by calling register again (will regenerate OTP for existing seller)
+      await sellerApi.registerSeller({
+        fullName: form.fullName,
+        phone: form.contact,
+        area: form.address || '',
+        location: {
+          address: form.address || '',
+          city: form.city || '',
+          state: form.state || '',
+          pincode: form.pincode || '',
+        },
+      })
     } catch (err) {
       setError('Failed to resend OTP. Please try again.')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (step === 'pending') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-6 py-12">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-4">
+              <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <p className="text-xs uppercase tracking-wide text-yellow-600 font-semibold">Registration Successful</p>
+            <h1 className="text-3xl font-bold text-gray-900">Awaiting Admin Approval</h1>
+          </div>
+
+          <div className="rounded-3xl border border-yellow-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm">
+            <div className="space-y-6 text-center">
+              <div className="space-y-3">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-yellow-50">
+                  <svg className="w-10 h-10 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 mb-2">Your Registration is Complete!</h2>
+                  {sellerId && (
+                    <p className="text-sm text-gray-600 mb-4">
+                      Your Seller ID: <span className="font-bold text-green-600">{sellerId}</span>
+                    </p>
+                  )}
+                  <p className="text-sm text-gray-700 leading-relaxed">
+                    Your account has been created successfully. However, your account is currently pending admin approval.
+                  </p>
+                  <p className="text-sm text-gray-700 leading-relaxed mt-3">
+                    You will be able to access your dashboard once the admin approves your request. We'll notify you once your account is activated.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={onSwitchToLogin}
+                  className="w-full rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all"
+                >
+                  Go Back to Login
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (step === 'otp') {
@@ -160,6 +275,74 @@ export function SellerRegister({ onSuccess, onSwitchToLogin }) {
                 onChange={handleChange}
                 placeholder="+91 90000 00000"
                 maxLength={15}
+                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="seller-register-address" className="text-xs font-semibold text-gray-700">
+                Address <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="seller-register-address"
+                name="address"
+                required
+                value={form.address}
+                onChange={handleChange}
+                placeholder="Enter your full address"
+                rows={3}
+                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label htmlFor="seller-register-city" className="text-xs font-semibold text-gray-700">
+                  City <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="seller-register-city"
+                  name="city"
+                  type="text"
+                  required
+                  value={form.city}
+                  onChange={handleChange}
+                  placeholder="City"
+                  className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="seller-register-state" className="text-xs font-semibold text-gray-700">
+                  State <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="seller-register-state"
+                  name="state"
+                  type="text"
+                  required
+                  value={form.state}
+                  onChange={handleChange}
+                  placeholder="State"
+                  className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="seller-register-pincode" className="text-xs font-semibold text-gray-700">
+                Pincode <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="seller-register-pincode"
+                name="pincode"
+                type="text"
+                required
+                value={form.pincode}
+                onChange={handleChange}
+                placeholder="Pincode"
+                maxLength={6}
+                pattern="[0-9]*"
                 className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
               />
             </div>

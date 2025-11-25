@@ -370,22 +370,7 @@ export async function getInventoryItemDetails(itemId) {
 }
 
 /**
- * Update Product Stock (by productId)
- * PUT /vendors/products/:productId/stock
- * 
- * @param {string} productId - Product ID
- * @param {Object} stockData - { stock: number, notes?: string }
- * @returns {Promise<Object>} - { message: 'Stock updated', assignment: Object, product: Object }
- */
-export async function updateProductStock(productId, stockData) {
-  return apiRequest(`/vendors/products/${productId}/stock`, {
-    method: 'PUT',
-    body: JSON.stringify(stockData),
-  })
-}
-
-/**
- * Update Inventory Stock (by assignmentId - legacy)
+ * Update Inventory Stock
  * PUT /vendors/inventory/:itemId/stock
  * 
  * @param {string} itemId - Inventory item ID

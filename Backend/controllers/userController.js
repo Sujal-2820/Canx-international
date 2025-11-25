@@ -2265,8 +2265,7 @@ exports.confirmPayment = async (req, res, next) => {
           await commission.save();
 
           // Update seller wallet
-          seller.walletBalance = (seller.walletBalance || 0) + commissionAmount;
-          seller.totalEarnings = (seller.totalEarnings || 0) + commissionAmount;
+          seller.wallet.balance = (seller.wallet.balance || 0) + commissionAmount;
           await seller.save();
 
           console.log(`💰 Commission credited: ₹${commissionAmount} to seller ${seller.sellerId} for order ${order.orderNumber}`);
@@ -2510,8 +2509,7 @@ exports.confirmRemainingPayment = async (req, res, next) => {
           await commission.save();
 
           // Update seller wallet
-          seller.walletBalance = (seller.walletBalance || 0) + commissionAmount;
-          seller.totalEarnings = (seller.totalEarnings || 0) + commissionAmount;
+          seller.wallet.balance = (seller.wallet.balance || 0) + commissionAmount;
           await seller.save();
 
           console.log(`💰 Commission credited: ₹${commissionAmount} to seller ${seller.sellerId} for order ${order.orderNumber}`);

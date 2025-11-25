@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react'
-import { sellerSnapshot } from '../../services/sellerData'
+import { useState, useMemo, useEffect } from 'react'
+import { useSellerState } from '../../context/SellerContext'
+import { useSellerApi } from '../../hooks/useSellerApi'
+import * as sellerApi from '../../services/sellerApi'
 import { cn } from '../../../../lib/cn'
 import { WalletIcon, TrendingUpIcon, TrendingDownIcon } from '../../components/icons'
 
@@ -10,18 +12,56 @@ const FILTER_TABS = [
 ]
 
 export function WalletView({ openPanel }) {
+  const { dashboard } = useSellerState()
+  const { fetchWalletData } = useSellerApi()
   const [activeFilter, setActiveFilter] = useState('all')
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [showTransactionDetail, setShowTransactionDetail] = useState(false)
-  const wallet = sellerSnapshot.wallet
+  const [transactions, setTransactions] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const wallet = dashboard.wallet || {}
+
+  // Format currency
+  const formatCurrency = (amount) => {
+    if (typeof amount === 'number') {
+      return amount >= 100000 ? `₹${(amount / 100000).toFixed(1)} L` : `₹${amount.toLocaleString('en-IN')}`
+    }
+    return amount || '₹0'
+  }
+
+  // Fetch wallet data on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        // Fetch wallet balance (stored in context)
+        await fetchWalletData()
+        
+        // Fetch transactions
+        const result = await sellerApi.getWalletTransactions({ limit: 50 })
+        if (result.success && result.data?.transactions) {
+          setTransactions(result.data.transactions)
+        }
+      } catch (error) {
+        console.error('Failed to fetch wallet data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [fetchWalletData])
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     if (activeFilter === 'all') {
-      return wallet.transactions
+      return transactions
     }
-    return wallet.transactions.filter((txn) => txn.type === activeFilter)
-  }, [wallet.transactions, activeFilter])
+    return transactions.filter((txn) => {
+      const type = txn.type || txn.transactionType
+      return type === activeFilter || (activeFilter === 'commission' && type === 'credit') || (activeFilter === 'withdrawal' && type === 'debit')
+    })
+  }, [transactions, activeFilter])
 
   const formatDate = (dateString) => {
     try {
@@ -71,11 +111,17 @@ export function WalletView({ openPanel }) {
           <div className="seller-wallet-hero__balance">
             <div>
               <p className="seller-wallet-hero__label">Available Balance</p>
-              <p className="seller-wallet-hero__value">{wallet.balance}</p>
+              <p className="seller-wallet-hero__value">{formatCurrency(wallet.balance || 0)}</p>
             </div>
             <button
               type="button"
-              onClick={() => openPanel('request-withdrawal')}
+              onClick={() => {
+                const balance = wallet.balance || 0
+                if (balance < 5000) {
+                  // Warning will be shown in parent component
+                }
+                openPanel('request-withdrawal')
+              }}
               className="seller-wallet-hero__cta"
             >
               Withdraw
@@ -84,11 +130,11 @@ export function WalletView({ openPanel }) {
           <div className="seller-wallet-hero__stats">
             <div className="seller-wallet-stat">
               <p className="seller-wallet-stat__label">Pending</p>
-              <span className="seller-wallet-stat__value">{wallet.pending}</span>
+              <span className="seller-wallet-stat__value">{formatCurrency(wallet.pending || 0)}</span>
             </div>
             <div className="seller-wallet-stat">
               <p className="seller-wallet-stat__label">Total Earned</p>
-              <span className="seller-wallet-stat__value">{wallet.totalEarned}</span>
+              <span className="seller-wallet-stat__value">{formatCurrency(wallet.totalEarned || 0)}</span>
             </div>
           </div>
         </div>
@@ -118,7 +164,12 @@ export function WalletView({ openPanel }) {
             <p className="seller-section__subtitle">{filteredTransactions.length} transactions</p>
           </div>
         </div>
-        {filteredTransactions.length === 0 ? (
+        {loading ? (
+          <div className="seller-wallet-empty">
+            <WalletIcon className="seller-wallet-empty__icon" />
+            <p className="seller-wallet-empty__text">Loading transactions...</p>
+          </div>
+        ) : filteredTransactions.length === 0 ? (
           <div className="seller-wallet-empty">
             <WalletIcon className="seller-wallet-empty__icon" />
             <p className="seller-wallet-empty__text">No transactions found</p>
@@ -130,60 +181,71 @@ export function WalletView({ openPanel }) {
           </div>
         ) : (
           <div className="seller-wallet-transactions">
-            {filteredTransactions.map((transaction) => (
-              <div
-                key={transaction.id}
-                className="seller-transaction-card"
-                onClick={() => {
-                  setSelectedTransaction(transaction)
-                  setShowTransactionDetail(true)
-                }}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="seller-transaction-card__icon">
-                  <div
-                    className={cn(
-                      'seller-transaction-icon',
-                      transaction.type === 'commission' ? 'is-credit' : 'is-debit',
-                    )}
-                  >
-                    {getTransactionIcon(transaction.type)}
+            {filteredTransactions.map((transaction) => {
+              const type = transaction.type || transaction.transactionType || 'commission'
+              const isCredit = type === 'commission' || type === 'credit' || (transaction.amount && transaction.amount > 0)
+              const amount = typeof transaction.amount === 'number'
+                ? (isCredit ? `+₹${transaction.amount.toLocaleString('en-IN')}` : `-₹${Math.abs(transaction.amount).toLocaleString('en-IN')}`)
+                : transaction.amount || '₹0'
+              const description = transaction.description || transaction.note || transaction.reason || 'Transaction'
+              const status = transaction.status || 'Completed'
+              const date = transaction.date || transaction.createdAt || new Date().toISOString()
+              
+              return (
+                <div
+                  key={transaction.id || transaction._id}
+                  className="seller-transaction-card"
+                  onClick={() => {
+                    setSelectedTransaction(transaction)
+                    setShowTransactionDetail(true)
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="seller-transaction-card__icon">
+                    <div
+                      className={cn(
+                        'seller-transaction-icon',
+                        isCredit ? 'is-credit' : 'is-debit',
+                      )}
+                    >
+                      {getTransactionIcon(type)}
+                    </div>
+                  </div>
+                  <div className="seller-transaction-card__info">
+                    <div className="seller-transaction-card__row">
+                      <h4 className="seller-transaction-card__description">{description}</h4>
+                      <span
+                        className={cn(
+                          'seller-transaction-card__amount',
+                          amount.startsWith('+') ? 'is-credit' : 'is-debit',
+                        )}
+                      >
+                        {amount}
+                      </span>
+                    </div>
+                    <div className="seller-transaction-card__meta">
+                      <span
+                        className={cn(
+                          'seller-transaction-card__type',
+                          isCredit ? 'is-commission' : 'is-withdrawal',
+                        )}
+                      >
+                        {isCredit ? 'Commission' : 'Withdrawal'}
+                      </span>
+                      <span className="seller-transaction-card__date">{formatDate(date)}</span>
+                      <span
+                        className={cn(
+                          'seller-transaction-card__status',
+                          status === 'Completed' || status === 'completed' ? 'is-completed' : 'is-pending',
+                        )}
+                      >
+                        {status}
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <div className="seller-transaction-card__info">
-                  <div className="seller-transaction-card__row">
-                    <h4 className="seller-transaction-card__description">{transaction.description}</h4>
-                    <span
-                      className={cn(
-                        'seller-transaction-card__amount',
-                        transaction.amount.startsWith('+') ? 'is-credit' : 'is-debit',
-                      )}
-                    >
-                      {transaction.amount}
-                    </span>
-                  </div>
-                  <div className="seller-transaction-card__meta">
-                    <span
-                      className={cn(
-                        'seller-transaction-card__type',
-                        transaction.type === 'commission' ? 'is-commission' : 'is-withdrawal',
-                      )}
-                    >
-                      {transaction.type === 'commission' ? 'Commission' : 'Withdrawal'}
-                    </span>
-                    <span className="seller-transaction-card__date">{formatDate(transaction.date)}</span>
-                    <span
-                      className={cn(
-                        'seller-transaction-card__status',
-                        transaction.status === 'Completed' ? 'is-completed' : 'is-pending',
-                      )}
-                    >
-                      {transaction.status}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </section>
@@ -217,22 +279,24 @@ export function WalletView({ openPanel }) {
                   <div
                     className={cn(
                       'seller-transaction-icon',
-                      selectedTransaction.type === 'commission' ? 'is-credit' : 'is-debit',
+                      (selectedTransaction.type === 'commission' || selectedTransaction.type === 'credit') ? 'is-credit' : 'is-debit',
                     )}
                   >
-                    {getTransactionIcon(selectedTransaction.type)}
+                    {getTransactionIcon(selectedTransaction.type || selectedTransaction.transactionType)}
                   </div>
                   <div className="seller-transaction-detail__info">
                     <h3 className="seller-transaction-detail__description">
-                      {selectedTransaction.description}
+                      {selectedTransaction.description || selectedTransaction.note || 'Transaction'}
                     </h3>
                     <span
                       className={cn(
                         'seller-transaction-detail__amount',
-                        selectedTransaction.amount.startsWith('+') ? 'is-credit' : 'is-debit',
+                        (selectedTransaction.amount && selectedTransaction.amount.toString().startsWith('+')) || (typeof selectedTransaction.amount === 'number' && selectedTransaction.amount > 0) ? 'is-credit' : 'is-debit',
                       )}
                     >
-                      {selectedTransaction.amount}
+                      {typeof selectedTransaction.amount === 'number'
+                        ? (selectedTransaction.amount > 0 ? `+₹${selectedTransaction.amount.toLocaleString('en-IN')}` : `-₹${Math.abs(selectedTransaction.amount).toLocaleString('en-IN')}`)
+                        : selectedTransaction.amount || '₹0'}
                     </span>
                   </div>
                 </div>
@@ -242,10 +306,10 @@ export function WalletView({ openPanel }) {
                     <span
                       className={cn(
                         'seller-transaction-card__type',
-                        selectedTransaction.type === 'commission' ? 'is-commission' : 'is-withdrawal',
+                        (selectedTransaction.type === 'commission' || selectedTransaction.type === 'credit') ? 'is-commission' : 'is-withdrawal',
                       )}
                     >
-                      {selectedTransaction.type === 'commission' ? 'Commission' : 'Withdrawal'}
+                      {(selectedTransaction.type === 'commission' || selectedTransaction.type === 'credit') ? 'Commission' : 'Withdrawal'}
                     </span>
                   </div>
                   <div className="seller-transaction-detail__meta-item">
@@ -253,21 +317,21 @@ export function WalletView({ openPanel }) {
                     <span
                       className={cn(
                         'seller-transaction-card__status',
-                        selectedTransaction.status === 'Completed' ? 'is-completed' : 'is-pending',
+                        (selectedTransaction.status === 'Completed' || selectedTransaction.status === 'completed') ? 'is-completed' : 'is-pending',
                       )}
                     >
-                      {selectedTransaction.status}
+                      {selectedTransaction.status || 'Completed'}
                     </span>
                   </div>
                   <div className="seller-transaction-detail__meta-item">
                     <span className="seller-transaction-detail__meta-label">Date</span>
                     <span className="seller-transaction-detail__meta-value">
-                      {formatDate(selectedTransaction.date)}
+                      {formatDate(selectedTransaction.date || selectedTransaction.createdAt)}
                     </span>
                   </div>
                   <div className="seller-transaction-detail__meta-item">
                     <span className="seller-transaction-detail__meta-label">Transaction ID</span>
-                    <span className="seller-transaction-detail__meta-value">{selectedTransaction.id}</span>
+                    <span className="seller-transaction-detail__meta-value">{selectedTransaction.id || selectedTransaction._id || 'N/A'}</span>
                   </div>
                 </div>
               </div>

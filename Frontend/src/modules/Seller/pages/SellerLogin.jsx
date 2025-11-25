@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
 import * as sellerApi from '../services/sellerApi'
 
-export function SellerLogin({ onSuccess, onSwitchToRegister }) {
+export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
   const [step, setStep] = useState('phone') // 'phone' | 'otp'
   const [form, setForm] = useState({ phone: '' })
   const [loading, setLoading] = useState(false)
@@ -53,10 +53,27 @@ export function SellerLogin({ onSuccess, onSwitchToRegister }) {
       const result = await sellerApi.loginSellerWithOtp({ phone: form.phone, otp: otpCode })
 
       if (result.success || result.data) {
+        // Check if seller requires approval (pending status)
+        if (result.data?.requiresApproval || result.data?.seller?.status === 'pending') {
+          setError('Your account is pending admin approval. You will be able to access your dashboard once approved.')
+          setLoading(false)
+          return
+        }
+
+        // Check if seller is rejected
+        if (result.data?.seller?.status === 'rejected') {
+          setError('Your account has been rejected by the admin. Please contact support.')
+          setLoading(false)
+          return
+        }
+
+        // If approved, proceed with login
         if (result.data?.token) {
           localStorage.setItem('seller_token', result.data.token)
         }
+        // Call both onSuccess and onSubmit for backward compatibility
         onSuccess?.(result.data?.seller || { phone: form.phone })
+        onSubmit?.(result.data?.seller || { phone: form.phone })
       } else {
         setError(result.error?.message || 'Invalid OTP. Please try again.')
       }

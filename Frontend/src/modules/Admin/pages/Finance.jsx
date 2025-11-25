@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BadgeIndianRupee, Sparkles, Building2, Eye, AlertCircle } from 'lucide-react'
+import { BadgeIndianRupee, Sparkles, Building2, Eye, AlertCircle, Package, CheckCircle, XCircle } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { ProgressList } from '../components/ProgressList'
 import { Timeline } from '../components/Timeline'
@@ -8,6 +8,7 @@ import { VendorCreditBalanceModal } from '../components/VendorCreditBalanceModal
 import { FinancialParametersModal } from '../components/FinancialParametersModal'
 import { OutstandingCreditsView } from '../components/OutstandingCreditsView'
 import { RecoveryStatusView } from '../components/RecoveryStatusView'
+import { PurchaseRequestModal } from '../components/PurchaseRequestModal'
 import { DataTable } from '../components/DataTable'
 import { useAdminState } from '../context/AdminContext'
 import { useAdminApi } from '../hooks/useAdminApi'
@@ -34,6 +35,9 @@ export function FinancePage() {
     getOutstandingCredits,
     getRecoveryStatus,
     getVendors,
+    getVendorPurchaseRequests,
+    approveVendorPurchase,
+    rejectVendorPurchase,
     loading,
   } = useAdminApi()
   const { success, error: showError, warning: showWarning } = useToast()
@@ -42,12 +46,32 @@ export function FinancePage() {
   const [financialParameters, setFinancialParameters] = useState(null)
   const [outstandingCredits, setOutstandingCredits] = useState([])
   const [recoveryStatus, setRecoveryStatus] = useState([])
+  const [purchaseRequests, setPurchaseRequests] = useState([])
+  const [purchaseRequestsLoading, setPurchaseRequestsLoading] = useState(false)
   
   // Modal states
   const [parametersModalOpen, setParametersModalOpen] = useState(false)
   const [creditBalanceModalOpen, setCreditBalanceModalOpen] = useState(false)
   const [selectedVendorForCredit, setSelectedVendorForCredit] = useState(null)
   const [selectedVendorCreditData, setSelectedVendorCreditData] = useState(null)
+  const [purchaseRequestModalOpen, setPurchaseRequestModalOpen] = useState(false)
+  const [selectedPurchaseRequest, setSelectedPurchaseRequest] = useState(null)
+  const [approvingPurchase, setApprovingPurchase] = useState(false)
+
+  // Fetch purchase requests
+  const fetchPurchaseRequests = useCallback(async () => {
+    setPurchaseRequestsLoading(true)
+    try {
+      const result = await getVendorPurchaseRequests({ status: 'pending', limit: 50 })
+      if (result.data?.purchases) {
+        setPurchaseRequests(result.data.purchases)
+      }
+    } catch (error) {
+      console.error('Failed to fetch purchase requests:', error)
+    } finally {
+      setPurchaseRequestsLoading(false)
+    }
+  }, [getVendorPurchaseRequests])
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -77,7 +101,10 @@ export function FinancePage() {
     if (recoveryResult.data?.recoveries) {
       setRecoveryStatus(recoveryResult.data.recoveries)
     }
-  }, [getVendorCreditBalances, getFinancialParameters, getOutstandingCredits, getRecoveryStatus])
+
+    // Fetch purchase requests
+    fetchPurchaseRequests()
+  }, [getVendorCreditBalances, getFinancialParameters, getOutstandingCredits, getRecoveryStatus, fetchPurchaseRequests])
 
   useEffect(() => {
     fetchData()
@@ -144,6 +171,52 @@ export function FinancePage() {
       } catch (error) {
         showError(error.message || 'Failed to apply penalty', 5000)
       }
+    }
+  }
+
+  const handleViewPurchaseRequest = (request) => {
+    setSelectedPurchaseRequest(request)
+    setPurchaseRequestModalOpen(true)
+  }
+
+  const handleApprovePurchase = async (requestId) => {
+    setApprovingPurchase(true)
+    try {
+      const result = await approveVendorPurchase(requestId)
+      if (result.data) {
+        success('Purchase request approved successfully!', 3000)
+        setPurchaseRequestModalOpen(false)
+        setSelectedPurchaseRequest(null)
+        fetchPurchaseRequests()
+        fetchData() // Refresh credit balances
+      } else if (result.error) {
+        const errorMessage = result.error.message || 'Failed to approve purchase request'
+        showError(errorMessage, 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to approve purchase request', 5000)
+    } finally {
+      setApprovingPurchase(false)
+    }
+  }
+
+  const handleRejectPurchase = async (requestId, rejectionData) => {
+    setApprovingPurchase(true)
+    try {
+      const result = await rejectVendorPurchase(requestId, rejectionData)
+      if (result.data) {
+        success('Purchase request rejected successfully!', 3000)
+        setPurchaseRequestModalOpen(false)
+        setSelectedPurchaseRequest(null)
+        fetchPurchaseRequests()
+      } else if (result.error) {
+        const errorMessage = result.error.message || 'Failed to reject purchase request'
+        showError(errorMessage, 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to reject purchase request', 5000)
+    } finally {
+      setApprovingPurchase(false)
     }
   }
 
@@ -219,6 +292,61 @@ export function FinancePage() {
           Update Credit Settings
         </button>
       </header>
+
+      {/* Pending Purchase Requests */}
+      {purchaseRequests.length > 0 && (
+        <div className="rounded-3xl border border-orange-200 bg-white p-6 shadow-[0_4px_15px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)]">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg">
+                <Package className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Pending Purchase Requests</h3>
+                <p className="text-xs text-gray-600">{purchaseRequests.length} request{purchaseRequests.length !== 1 ? 's' : ''} awaiting approval</p>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3">
+            {purchaseRequests.slice(0, 5).map((request) => (
+              <div
+                key={request.id}
+                className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 p-4 transition-all hover:border-orange-300 hover:bg-orange-50/50 cursor-pointer"
+                onClick={() => handleViewPurchaseRequest(request)}
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <p className="font-bold text-gray-900">{request.vendorName || 'Unknown Vendor'}</p>
+                    <StatusBadge tone="warning">Pending</StatusBadge>
+                  </div>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {request.products?.length || 0} product{request.products?.length !== 1 ? 's' : ''} • {formatCurrency(request.amount || request.value || 0)}
+                  </p>
+                  {request.date && (
+                    <p className="mt-1 text-xs text-gray-500">Requested on {new Date(request.date).toLocaleDateString('en-IN')}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleViewPurchaseRequest(request)
+                  }}
+                  className="ml-4 flex h-9 w-9 items-center justify-center rounded-lg border border-orange-300 bg-white text-orange-600 transition-all hover:border-orange-500 hover:bg-orange-50"
+                  title="Review request"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+            {purchaseRequests.length > 5 && (
+              <p className="text-center text-xs text-gray-500">
+                +{purchaseRequests.length - 5} more request{purchaseRequests.length - 5 !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Vendor Credit Balances Table */}
       {vendorCredits.length > 0 && (
@@ -365,6 +493,19 @@ export function FinancePage() {
         creditData={selectedVendorCreditData}
         onApplyPenalty={handleApplyPenalty}
         loading={loading}
+      />
+
+      {/* Purchase Request Modal */}
+      <PurchaseRequestModal
+        isOpen={purchaseRequestModalOpen}
+        onClose={() => {
+          setPurchaseRequestModalOpen(false)
+          setSelectedPurchaseRequest(null)
+        }}
+        request={selectedPurchaseRequest}
+        onApprove={handleApprovePurchase}
+        onReject={handleRejectPurchase}
+        loading={approvingPurchase}
       />
     </div>
   )

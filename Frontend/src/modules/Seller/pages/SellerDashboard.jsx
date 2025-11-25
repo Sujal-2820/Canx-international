@@ -51,7 +51,7 @@ const NAV_ITEMS = [
 ]
 
 export function SellerDashboard({ onLogout }) {
-  const { profile, notifications } = useSellerState()
+  const { profile, notifications, dashboard } = useSellerState()
   const dispatch = useSellerDispatch()
   const [activeTab, setActiveTab] = useState('overview')
   const welcomeName = (profile?.name || sellerSnapshot.profile.name || 'Seller').split(' ')[0]
@@ -138,7 +138,8 @@ export function SellerDashboard({ onLogout }) {
         requestAnimationFrame(() => setActivePanel('share-seller-id'))
         break
       case 'request-withdrawal':
-        const balance = parseFloat(sellerSnapshot.wallet.balance.replace(/[₹,\s]/g, '')) || 0
+        const wallet = dashboard.wallet || {}
+        const balance = typeof wallet.balance === 'number' ? wallet.balance : parseFloat((wallet.balance || '0').toString().replace(/[₹,\s]/g, '')) || 0
         if (balance < 5000) {
           warning('Minimum withdrawal amount is ₹5,000')
         } else {
@@ -316,7 +317,7 @@ export function SellerDashboard({ onLogout }) {
     <>
       <MobileShell
         title={`Hello ${welcomeName}`}
-        subtitle={sellerSnapshot.profile.area || 'Kolhapur, Maharashtra'}
+        subtitle={profile.area || profile.location?.area || 'Location not set'}
         onSearchClick={openSearch}
         onProfileClick={() => setActiveTab('profile')}
         notificationsCount={unreadNotificationsCount}

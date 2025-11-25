@@ -225,6 +225,20 @@ router.get('/sellers', authorizeAdmin, adminController.getSellers);
  */
 
 /**
+ * @route   POST /api/admin/sellers/:sellerId/approve
+ * @desc    Approve seller registration
+ * @access  Private (Admin)
+ */
+router.post('/sellers/:sellerId/approve', authorizeAdmin, adminController.approveSeller);
+
+/**
+ * @route   POST /api/admin/sellers/:sellerId/reject
+ * @desc    Reject seller registration
+ * @access  Private (Admin)
+ */
+router.post('/sellers/:sellerId/reject', authorizeAdmin, adminController.rejectSeller);
+
+/**
  * @route   PUT /api/admin/sellers/:sellerId/target
  * @desc    Set monthly sales target
  * @access  Private (Admin)

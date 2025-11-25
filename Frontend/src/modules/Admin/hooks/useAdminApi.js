@@ -283,6 +283,30 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
+  const approveSeller = useCallback(
+    (sellerId) => {
+      return callApi(adminApi.approveSeller, sellerId).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
+  const rejectSeller = useCallback(
+    (sellerId, rejectionData) => {
+      return callApi(adminApi.rejectSeller, sellerId, rejectionData).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
   const deleteSeller = useCallback(
     (sellerId) => {
       return callApi(adminApi.deleteSeller, sellerId).then((result) => {
@@ -588,6 +612,8 @@ export function useAdminApi() {
     getSellerDetails,
     createSeller,
     updateSeller,
+    approveSeller,
+    rejectSeller,
     deleteSeller,
     approveSellerWithdrawal,
     rejectSellerWithdrawal,

@@ -590,30 +590,19 @@ exports.getProducts = async (req, res, next) => {
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-    // Execute query - explicitly select stock fields to ensure they're returned
+    // Execute query
     const products = await Product.find(query)
       .sort(sort)
       .skip(skip)
       .limit(limitNum)
-      .select('name description category priceToVendor priceToUser actualStock displayStock stock images sku weight expiry brand specifications tags isActive createdAt updatedAt')
-      .lean(); // Use lean() for better performance and to ensure fresh data
+      .select('-__v');
 
     const total = await Product.countDocuments(query);
-
-    // Ensure stock fields are properly formatted
-    const formattedProducts = products.map(product => ({
-      ...product,
-      id: product._id,
-      // Ensure stock values are numbers, not undefined
-      actualStock: product.actualStock ?? product.stock ?? 0,
-      displayStock: product.displayStock ?? product.stock ?? 0,
-      stock: product.displayStock ?? product.stock ?? product.actualStock ?? 0,
-    }));
 
     res.status(200).json({
       success: true,
       data: {
-        products: formattedProducts,
+        products,
         pagination: {
           currentPage: pageNum,
           totalPages: Math.ceil(total / limitNum),
@@ -1600,8 +1589,8 @@ exports.approveVendorPurchase = async (req, res, next) => {
   try {
     const { requestId } = req.params;
 
-    // Get purchase without populating to work with raw IDs
-    const purchase = await CreditPurchase.findById(requestId);
+    const purchase = await CreditPurchase.findById(requestId)
+      .populate('items.productId', 'name sku priceToVendor');
 
     if (!purchase) {
       return res.status(404).json({
@@ -1650,117 +1639,22 @@ exports.approveVendorPurchase = async (req, res, next) => {
     }
     await vendor.save();
 
-    // Update product stock and vendor inventory
-    // Note: Product and ProductAssignment are already imported at the top of the file
-    const updatedProducts = [];
-    
-    for (const item of purchase.items) {
-      // Handle both populated and non-populated productId
-      const productId = item.productId?._id || item.productId;
-      
-      if (!productId) {
-        console.warn(`⚠️ Product ID is missing in purchase item, skipping stock update`);
-        continue;
-      }
-
-      // Get fresh product from database (not populated version)
-      const product = await Product.findById(productId);
-      if (!product) {
-        console.warn(`⚠️ Product ${productId} not found, skipping stock update`);
-        continue;
-      }
-
-      // Validate stock availability
-      const currentActualStock = product.actualStock || 0;
-      const currentDisplayStock = product.displayStock || product.stock || 0;
-      
-      if (currentActualStock < item.quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for ${product.name}. Available: ${currentActualStock}, Requested: ${item.quantity}`,
-        });
-      }
-
-      // Reduce product stock (both actualStock and displayStock)
-      const newActualStock = Math.max(0, currentActualStock - item.quantity);
-      const newDisplayStock = Math.max(0, currentDisplayStock - item.quantity);
-      
-      product.actualStock = newActualStock;
-      product.displayStock = newDisplayStock;
-      // Also update legacy stock field for backward compatibility
-      product.stock = newDisplayStock;
-      
-      // Save product with validation
-      try {
-        await product.save();
-        updatedProducts.push({
-          productId: product._id,
-          productName: product.name,
-          oldActualStock: currentActualStock,
-          newActualStock,
-          oldDisplayStock: currentDisplayStock,
-          newDisplayStock,
-          quantity: item.quantity,
-        });
-        console.log(`✅ Updated stock for ${product.name}: actualStock ${currentActualStock} → ${newActualStock}, displayStock ${currentDisplayStock} → ${newDisplayStock}`);
-      } catch (saveError) {
-        console.error(`❌ Failed to save product ${product.name}:`, saveError);
-        return res.status(500).json({
-          success: false,
-          message: `Failed to update stock for ${product.name}: ${saveError.message}`,
-        });
-      }
-
-      // Create or update ProductAssignment (vendor inventory)
-      let assignment = await ProductAssignment.findOne({
-        vendorId: vendor._id,
-        productId: productId,
-      });
-
-      if (assignment) {
-        // Update existing assignment stock
-        assignment.stock = (assignment.stock || 0) + item.quantity;
-        assignment.isActive = true;
-        await assignment.save();
-        console.log(`✅ Updated ProductAssignment stock for ${product.name}: ${assignment.stock - item.quantity} → ${assignment.stock}`);
-      } else {
-        // Create new assignment
-        assignment = await ProductAssignment.create({
-          vendorId: vendor._id,
-          productId: productId,
-          stock: item.quantity,
-          isActive: true,
-          assignedBy: req.admin._id,
-          assignedAt: new Date(),
-        });
-        console.log(`✅ Created ProductAssignment for ${product.name} with stock: ${item.quantity}`);
-      }
-    }
-
-    console.log(`✅ Stock update completed for ${updatedProducts.length} products`);
-
+    // TODO: Create Inventory entries for vendor when Inventory model is created
     // TODO: Send notification to vendor
 
     console.log(`✅ Purchase approved: ₹${purchase.totalAmount} for vendor ${vendor.name}`);
 
-    // Reload purchase with populated data for response
-    const populatedPurchase = await CreditPurchase.findById(purchase._id)
-      .populate('items.productId', 'name sku category')
-      .populate('reviewedBy', 'name email')
-      .lean();
-
     res.status(200).json({
       success: true,
       data: {
-        purchase: populatedPurchase,
+        purchase,
         vendor: {
           id: vendor._id,
           name: vendor.name,
           creditUsed: vendor.creditUsed,
           creditLimit: vendor.creditPolicy.limit,
         },
-        updatedProducts, // Include stock update details
-        message: 'Purchase request approved successfully. Product stock has been updated.',
+        message: 'Purchase request approved successfully',
       },
     });
   } catch (error) {
@@ -2334,6 +2228,115 @@ exports.updateSeller = async (req, res, next) => {
         message: `${field === 'phone' ? 'Phone number' : 'Email'} already exists`,
       });
     }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Approve seller registration
+ * @route   POST /api/admin/sellers/:sellerId/approve
+ * @access  Private (Admin)
+ */
+exports.approveSeller = async (req, res, next) => {
+  try {
+    const { sellerId } = req.params;
+
+    const seller = await Seller.findById(sellerId);
+
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        message: 'Seller not found',
+      });
+    }
+
+    if (seller.status === 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Seller is already approved',
+      });
+    }
+
+    // Approve seller
+    seller.status = 'approved';
+    seller.isActive = true;
+    seller.approvedAt = new Date();
+    seller.approvedBy = req.admin._id;
+    await seller.save();
+
+    // TODO: Send notification to seller (SMS/Email)
+    console.log(`✅ Seller approved: ${seller.sellerId} - ${seller.name} (${seller.phone})`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        seller: {
+          id: seller._id,
+          sellerId: seller.sellerId,
+          name: seller.name,
+          phone: seller.phone,
+          status: seller.status,
+          isActive: seller.isActive,
+        },
+        message: 'Seller approved successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Reject seller registration
+ * @route   POST /api/admin/sellers/:sellerId/reject
+ * @access  Private (Admin)
+ */
+exports.rejectSeller = async (req, res, next) => {
+  try {
+    const { sellerId } = req.params;
+    const { reason } = req.body;
+
+    const seller = await Seller.findById(sellerId);
+
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        message: 'Seller not found',
+      });
+    }
+
+    if (seller.status === 'rejected') {
+      return res.status(400).json({
+        success: false,
+        message: 'Seller is already rejected',
+      });
+    }
+
+    // Reject seller
+    seller.status = 'rejected';
+    seller.isActive = false;
+    if (reason) {
+      seller.rejectionReason = reason;
+    }
+    await seller.save();
+
+    // TODO: Send notification to seller (SMS/Email)
+    console.log(`❌ Seller rejected: ${seller.sellerId} - ${seller.name} (${seller.phone})${reason ? ` - Reason: ${reason}` : ''}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        seller: {
+          id: seller._id,
+          sellerId: seller.sellerId,
+          name: seller.name,
+          phone: seller.phone,
+          status: seller.status,
+        },
+        message: 'Seller rejected successfully',
+      },
+    });
+  } catch (error) {
     next(error);
   }
 };

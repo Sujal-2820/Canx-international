@@ -902,22 +902,37 @@ export async function deleteVendor(vendorId, deleteData = {}) {
  * Transform backend purchase request to frontend format
  */
 function transformPurchaseRequest(backendPurchase) {
+  // Handle populated vendorId (object) or vendorId (string)
+  const vendorName = typeof backendPurchase.vendorId === 'object' 
+    ? backendPurchase.vendorId?.name 
+    : backendPurchase.vendor?.name || backendPurchase.vendorName || ''
+  
+  const vendorId = typeof backendPurchase.vendorId === 'object'
+    ? backendPurchase.vendorId?._id?.toString() || backendPurchase.vendorId?.id
+    : backendPurchase.vendorId?.toString() || backendPurchase.vendorId
+
   return {
     id: backendPurchase._id?.toString() || backendPurchase.id,
     requestId: backendPurchase._id?.toString() || backendPurchase.id,
-    vendorId: backendPurchase.vendorId?.toString() || backendPurchase.vendorId,
-    vendor: backendPurchase.vendorId?.name || backendPurchase.vendor?.name || backendPurchase.vendorName || '',
-    vendorName: backendPurchase.vendorId?.name || backendPurchase.vendor?.name || backendPurchase.vendorName || '',
+    vendorId: vendorId,
+    vendor: vendorName,
+    vendorName: vendorName,
     amount: backendPurchase.totalAmount || 0,
     value: backendPurchase.totalAmount || 0,
     date: backendPurchase.createdAt ? new Date(backendPurchase.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
     status: backendPurchase.status || 'pending',
     description: backendPurchase.notes || '',
-    products: backendPurchase.items?.map(item => ({
-      name: item.productId?.name || item.productName || 'Unknown Product',
-      quantity: item.quantity || 0,
-      price: item.unitPrice || 0,
-    })) || [],
+    products: backendPurchase.items?.map(item => {
+      // Handle populated productId (object) or productId (string)
+      const productName = typeof item.productId === 'object'
+        ? item.productId?.name
+        : item.productName || 'Unknown Product'
+      return {
+        name: productName,
+        quantity: item.quantity || 0,
+        price: item.unitPrice || item.pricePerUnit || 0,
+      }
+    }) || [],
     documents: [], // Backend doesn't store documents yet
     vendorPerformance: {
       creditUtilization: 0, // Will be calculated from vendor data
@@ -1253,6 +1268,60 @@ export async function updateSeller(sellerId, sellerData) {
       data: {
         seller: transformSeller(response.data.seller),
         message: response.data.message || 'Seller updated successfully',
+      },
+    }
+  }
+
+  return response
+}
+
+/**
+ * Approve Seller Registration
+ * POST /admin/sellers/:sellerId/approve
+ * 
+ * @param {string} sellerId - Seller ID
+ * @returns {Promise<Object>} - { seller: Object, message: string }
+ */
+export async function approveSeller(sellerId) {
+  const response = await apiRequest(`/admin/sellers/${sellerId}/approve`, {
+    method: 'POST',
+  })
+
+  // Transform backend response to frontend format
+  if (response.success && response.data?.seller) {
+    return {
+      success: true,
+      data: {
+        seller: transformSeller(response.data.seller),
+        message: response.data.message || 'Seller approved successfully',
+      },
+    }
+  }
+
+  return response
+}
+
+/**
+ * Reject Seller Registration
+ * POST /admin/sellers/:sellerId/reject
+ * 
+ * @param {string} sellerId - Seller ID
+ * @param {Object} rejectionData - { reason?: string }
+ * @returns {Promise<Object>} - { seller: Object, message: string }
+ */
+export async function rejectSeller(sellerId, rejectionData = {}) {
+  const response = await apiRequest(`/admin/sellers/${sellerId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify(rejectionData),
+  })
+
+  // Transform backend response to frontend format
+  if (response.success && response.data?.seller) {
+    return {
+      success: true,
+      data: {
+        seller: transformSeller(response.data.seller),
+        message: response.data.message || 'Seller rejected successfully',
       },
     }
   }

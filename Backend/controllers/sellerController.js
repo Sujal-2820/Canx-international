@@ -22,7 +22,7 @@ const { checkPhoneExists, checkPhoneInRole } = require('../utils/phoneValidation
  */
 exports.register = async (req, res, next) => {
   try {
-    const { name, phone, area } = req.body;
+    const { name, phone, area, location } = req.body;
 
     if (!name || !phone) {
       return res.status(400).json({
@@ -40,23 +40,88 @@ exports.register = async (req, res, next) => {
       });
     }
 
-    // Check if seller already exists
+    // Check if seller already exists in seller collection
     const existingSeller = await Seller.findOne({ phone });
 
     if (existingSeller) {
       return res.status(400).json({
         success: false,
-        message: 'Seller with this phone number already exists',
+        message: 'Seller with this phone number already exists. Please login instead.',
       });
     }
 
+    // Generate unique sellerId in SLR-XXX format
+    const lastSeller = await Seller.findOne()
+      .sort({ sellerId: -1 })
+      .select('sellerId');
+
+    let nextNumber = 101;
+    if (lastSeller && lastSeller.sellerId) {
+      // Extract number from SLR-XXX or IRA-XXXX format
+      const match = lastSeller.sellerId.match(/\d+$/);
+      if (match) {
+        const lastNum = parseInt(match[0]);
+        // If last was IRA-XXXX format, start from 101
+        // If last was SLR-XXX format, increment
+        if (lastSeller.sellerId.startsWith('SLR-')) {
+          nextNumber = lastNum + 1;
+        } else {
+          // If last was IRA-XXXX, find highest SLR number or start from 101
+          const lastSLRSeller = await Seller.findOne({ sellerId: /^SLR-/ })
+            .sort({ sellerId: -1 })
+            .select('sellerId');
+          if (lastSLRSeller && lastSLRSeller.sellerId) {
+            const slrMatch = lastSLRSeller.sellerId.match(/\d+$/);
+            if (slrMatch) {
+              nextNumber = parseInt(slrMatch[0]) + 1;
+            }
+          }
+        }
+      }
+    }
+
+    const generatedSellerId = `SLR-${nextNumber}`;
+
+    // Check if generated sellerId already exists (shouldn't happen, but safety check)
+    const existingSellerId = await Seller.findOne({ sellerId: generatedSellerId });
+    if (existingSellerId) {
+      // Find next available number
+      let found = false;
+      let attempt = nextNumber + 1;
+      while (!found && attempt < 10000) {
+        const testId = `SLR-${attempt}`;
+        const exists = await Seller.findOne({ sellerId: testId });
+        if (!exists) {
+          nextNumber = attempt;
+          found = true;
+        } else {
+          attempt++;
+        }
+      }
+    }
+
+    const finalSellerId = `SLR-${nextNumber}`;
+
     // Create seller (requires admin approval)
-    const seller = new Seller({
+    const sellerData = {
+      sellerId: finalSellerId,
       name,
       phone,
       area: area || '',
       status: 'pending', // Requires admin approval
-    });
+    };
+
+    // Add location if provided
+    if (location) {
+      sellerData.location = {
+        address: location.address || '',
+        city: location.city || '',
+        state: location.state || '',
+        pincode: location.pincode || '',
+      };
+    }
+
+    const seller = new Seller(sellerData);
 
     // Clear any existing OTP before generating new one
     seller.clearOTP();
@@ -73,9 +138,12 @@ exports.register = async (req, res, next) => {
       console.log('🔐 SELLER OTP GENERATED (Registration)');
       console.log('='.repeat(60));
       console.log(`📱 Phone: ${phone}`);
+      console.log(`🆔 Seller ID: ${seller.sellerId}`);
+      console.log(`👤 Name: ${seller.name}`);
       console.log(`🔢 OTP Code: ${otpCode}`);
       console.log(`⏰ Generated At: ${timestamp}`);
       console.log(`⏳ Expires In: 5 minutes`);
+      console.log(`📊 Status: ${seller.status} (Pending Admin Approval)`);
       console.log('='.repeat(60) + '\n');
       
       // Try to send OTP (will use dummy in development)
@@ -88,7 +156,8 @@ exports.register = async (req, res, next) => {
       success: true,
       data: {
         message: 'Registration request submitted. OTP sent to phone.',
-        sellerId: seller._id,
+        sellerId: seller.sellerId, // Return the generated sellerId
+        sellerIdCode: seller.sellerId,
         requiresApproval: true,
         expiresIn: OTP_EXPIRY_MINUTES * 60, // seconds
       },
@@ -125,9 +194,37 @@ exports.requestOTP = async (req, res, next) => {
 
     let seller = await Seller.findOne({ phone });
 
-    // If seller doesn't exist, create pending registration
+    // If seller doesn't exist, create pending registration with sellerId
     if (!seller) {
+      // Generate unique sellerId in SLR-XXX format
+      const lastSeller = await Seller.findOne()
+        .sort({ sellerId: -1 })
+        .select('sellerId');
+
+      let nextNumber = 101;
+      if (lastSeller && lastSeller.sellerId) {
+        const match = lastSeller.sellerId.match(/\d+$/);
+        if (match) {
+          const lastNum = parseInt(match[0]);
+          if (lastSeller.sellerId.startsWith('SLR-')) {
+            nextNumber = lastNum + 1;
+          } else {
+            const lastSLRSeller = await Seller.findOne({ sellerId: /^SLR-/ })
+              .sort({ sellerId: -1 })
+              .select('sellerId');
+            if (lastSLRSeller && lastSLRSeller.sellerId) {
+              const slrMatch = lastSLRSeller.sellerId.match(/\d+$/);
+              if (slrMatch) {
+                nextNumber = parseInt(slrMatch[0]) + 1;
+              }
+            }
+          }
+        }
+      }
+
+      const generatedSellerId = `SLR-${nextNumber}`;
       seller = new Seller({
+        sellerId: generatedSellerId,
         phone,
         status: 'pending',
       });
@@ -199,7 +296,7 @@ exports.verifyOTP = async (req, res, next) => {
 
     // Check if phone exists in seller role
     const sellerCheck = await checkPhoneInRole(phone, 'seller');
-    const seller = sellerCheck.data;
+    let seller = sellerCheck.data;
 
     if (!seller) {
       return res.status(404).json({
@@ -219,11 +316,65 @@ exports.verifyOTP = async (req, res, next) => {
       });
     }
 
-    // Check if seller is approved and active
-    if (seller.status !== 'approved' || !seller.isActive) {
+    // If seller doesn't have sellerId yet (registration completion), generate it
+    if (!seller.sellerId) {
+      const lastSeller = await Seller.findOne()
+        .sort({ sellerId: -1 })
+        .select('sellerId');
+
+      let nextNumber = 101;
+      if (lastSeller && lastSeller.sellerId) {
+        const match = lastSeller.sellerId.match(/\d+$/);
+        if (match) {
+          const lastNum = parseInt(match[0]);
+          if (lastSeller.sellerId.startsWith('SLR-')) {
+            nextNumber = lastNum + 1;
+          } else {
+            const lastSLRSeller = await Seller.findOne({ sellerId: /^SLR-/ })
+              .sort({ sellerId: -1 })
+              .select('sellerId');
+            if (lastSLRSeller && lastSLRSeller.sellerId) {
+              const slrMatch = lastSLRSeller.sellerId.match(/\d+$/);
+              if (slrMatch) {
+                nextNumber = parseInt(slrMatch[0]) + 1;
+              }
+            }
+          }
+        }
+      }
+
+      const generatedSellerId = `SLR-${nextNumber}`;
+      seller.sellerId = generatedSellerId;
+      await seller.save();
+      console.log(`✅ Seller ID generated: ${generatedSellerId} for seller ${seller.name} (${seller.phone})`);
+    }
+
+    // If seller is pending (just registered), return success with pending status
+    if (seller.status === 'pending' || !seller.isActive) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          seller: {
+            id: seller._id,
+            sellerId: seller.sellerId,
+            name: seller.name,
+            phone: seller.phone,
+            area: seller.area,
+            status: seller.status,
+            isActive: seller.isActive,
+          },
+          requiresApproval: true,
+          message: 'Registration successful. Your account is pending admin approval.',
+        },
+      });
+    }
+
+    // If seller is rejected or suspended, return error
+    if (seller.status === 'rejected' || seller.status === 'suspended') {
       return res.status(403).json({
         success: false,
-        message: 'Seller account is pending approval or inactive. Please contact admin.',
+        message: `Seller account is ${seller.status}. Please contact admin.`,
+        sellerId: seller.sellerId,
       });
     }
 

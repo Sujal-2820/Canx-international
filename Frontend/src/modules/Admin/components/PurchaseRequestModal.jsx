@@ -38,13 +38,21 @@ export function PurchaseRequestModal({ isOpen, onClose, request, onApprove, onRe
                 <Package className="h-6 w-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Request #{request.id || request.requestId}</h3>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Request #{request.id?.slice(-8) || request.requestId?.slice(-8) || 'N/A'}
+                </h3>
                 <p className="text-sm text-gray-600">Vendor: {request.vendorName || request.vendor}</p>
                 <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
                   {request.date && (
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" />
-                      <span>{request.date}</span>
+                      <span>{new Date(request.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    </div>
+                  )}
+                  {request.createdAt && !request.date && (
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>{new Date(request.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                     </div>
                   )}
                 </div>
