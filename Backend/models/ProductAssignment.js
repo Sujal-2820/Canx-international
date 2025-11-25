@@ -49,6 +49,11 @@ const productAssignmentSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Stock cannot be negative'],
   },
+  // Track when vendor manually updated stock (not when admin creates/updates assignment)
+  lastManualStockUpdate: {
+    type: Date,
+    default: null,
+  },
 }, {
   timestamps: true,
 });

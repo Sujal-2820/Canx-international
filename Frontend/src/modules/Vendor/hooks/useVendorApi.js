@@ -122,6 +122,18 @@ export function useVendorApi() {
 
   const getInventoryItemDetails = useCallback((itemId) => callApi(vendorApi.getInventoryItemDetails, itemId), [callApi])
 
+  const updateProductStock = useCallback(
+    (productId, stockData) => {
+      return callApi(vendorApi.updateProductStock, productId, stockData).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'UPDATE_PRODUCT_STOCK', payload: { productId, stock: stockData.stock } })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
   const updateInventoryStock = useCallback(
     (itemId, stockData) => {
       return callApi(vendorApi.updateInventoryStock, itemId, stockData).then((result) => {
@@ -184,6 +196,7 @@ export function useVendorApi() {
     // Products
     getProducts,
     getProductDetails,
+    updateProductStock,
     // Inventory
     getInventory,
     getInventoryItemDetails,

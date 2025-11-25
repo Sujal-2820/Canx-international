@@ -57,7 +57,7 @@ const NAV_ITEMS = [
 export function VendorDashboard({ onLogout }) {
   const { profile, dashboard } = useVendorState()
   const dispatch = useVendorDispatch()
-  const { acceptOrder, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData } = useVendorApi()
+  const { acceptOrder, acceptOrderPartially, rejectOrder, updateInventoryStock, updateProductStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getProductDetails } = useVendorApi()
   const [activeTab, setActiveTab] = useState('overview')
   const welcomeName = (profile?.name || 'Partner').split(' ')[0]
   const { isOpen, isMounted, currentAction, openPanel, closePanel } = useButtonAction()
@@ -1538,11 +1538,14 @@ function InventoryView({ openPanel }) {
   const { dashboard, profile } = useVendorState()
   const dispatch = useVendorDispatch()
   const { success, error: showError } = useToast()
-  const { getProducts, getProductDetails } = useVendorApi()
+  const { getProducts, getProductDetails, updateProductStock } = useVendorApi()
   const [productsData, setProductsData] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [showPurchaseScreen, setShowPurchaseScreen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [isUpdatingStock, setIsUpdatingStock] = useState(false)
+  const [stockUpdateValue, setStockUpdateValue] = useState('')
+  const [showStockUpdateForm, setShowStockUpdateForm] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('vendor_token')
@@ -1664,6 +1667,41 @@ function InventoryView({ openPanel }) {
     const vendorStock = selectedProduct.vendorStock ?? 0
     const vendorStockStatus = getVendorStockStatus(vendorStock)
     const ordersCount = selectedProduct.vendorOrdersCount ?? 0
+    const arrivingQuantity = selectedProduct.arrivingQuantity || 0
+
+    const handleStockUpdate = async () => {
+      const newStock = parseInt(stockUpdateValue)
+      if (isNaN(newStock) || newStock < 0) {
+        showError('Please enter a valid stock quantity (≥ 0)')
+        return
+      }
+
+      setIsUpdatingStock(true)
+      try {
+        const productId = selectedProduct.id || selectedProduct._id
+        const result = await updateProductStock(productId, {
+          stock: newStock,
+          notes: `Stock updated manually. Previous: ${vendorStock}, New: ${newStock}${arrivingQuantity > 0 ? ` (includes ${arrivingQuantity} from approved purchase)` : ''}`,
+        })
+
+        if (result.data) {
+          // Refresh product details
+          const updatedProduct = await getProductDetails(productId)
+          if (updatedProduct.data?.product) {
+            setSelectedProduct(updatedProduct.data.product)
+          }
+          setShowStockUpdateForm(false)
+          setStockUpdateValue('')
+          success('Stock updated successfully!')
+        } else {
+          showError(result.error?.message || 'Failed to update stock')
+        }
+      } catch (err) {
+        showError(err.message || 'Failed to update stock')
+      } finally {
+        setIsUpdatingStock(false)
+      }
+    }
 
     return (
       <div className="space-y-6">
@@ -1707,14 +1745,94 @@ function InventoryView({ openPanel }) {
             </div>
 
             {/* Arriving Products Note */}
-            {selectedProduct.arrivingQuantity > 0 && (
+            {arrivingQuantity > 0 && !showStockUpdateForm && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <p className="text-sm font-semibold text-blue-900">
-                  📦 {selectedProduct.arrivingQuantity} {selectedProduct.unit || 'kg'} arriving in 24 hours
+                  📦 {arrivingQuantity} {selectedProduct.unit || 'kg'} arriving in 24 hours
                 </p>
                 <p className="text-xs text-blue-700 mt-1">
-                  This quantity is from your approved purchase request and will be added to your stock soon.
+                  This quantity is from your approved purchase request. Update stock when it arrives.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowStockUpdateForm(true)
+                    setStockUpdateValue(String(vendorStock + arrivingQuantity))
+                  }}
+                  className="mt-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
+                >
+                  Update Stock When Arrived
+                </button>
+              </div>
+            )}
+
+            {/* Stock Update Form */}
+            {showStockUpdateForm && (
+              <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
+                <h4 className="text-sm font-semibold text-purple-900 mb-2">Update Stock Quantity</h4>
+                <p className="text-xs text-purple-700 mb-3">
+                  Enter the total stock quantity you currently have (including the {arrivingQuantity > 0 ? `${arrivingQuantity} ${selectedProduct.unit || 'kg'} that arrived` : 'new stock'}).
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    value={stockUpdateValue}
+                    onChange={(e) => setStockUpdateValue(e.target.value)}
+                    placeholder="Enter stock quantity"
+                    className="flex-1 rounded-lg border border-purple-300 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    disabled={isUpdatingStock}
+                  />
+                  <span className="text-sm text-gray-600">{selectedProduct.unit || 'kg'}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={handleStockUpdate}
+                    disabled={isUpdatingStock || !stockUpdateValue}
+                    className={cn(
+                      'rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors',
+                      isUpdatingStock || !stockUpdateValue
+                        ? 'bg-purple-300 cursor-not-allowed'
+                        : 'bg-purple-600 hover:bg-purple-700'
+                    )}
+                  >
+                    {isUpdatingStock ? 'Updating...' : 'Confirm Update'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStockUpdateForm(false)
+                      setStockUpdateValue('')
+                    }}
+                    disabled={isUpdatingStock}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Manual Stock Update Button (when no arriving stock) */}
+            {arrivingQuantity === 0 && vendorStock >= 0 && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-600">Need to update stock?</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Manually update your stock quantity</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStockUpdateForm(true)
+                      setStockUpdateValue(String(vendorStock))
+                    }}
+                    className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 transition-colors"
+                  >
+                    Update Stock
+                  </button>
+                </div>
               </div>
             )}
 
