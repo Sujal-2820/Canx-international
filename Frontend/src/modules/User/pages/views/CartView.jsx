@@ -109,7 +109,13 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
             className="flex gap-3 p-4 rounded-2xl border border-[rgba(34,94,65,0.16)] bg-gradient-to-br from-white to-[rgba(239,246,240,0.92)] shadow-[0_20px_42px_-30px_rgba(16,44,30,0.36)]"
           >
             <div className="flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden bg-gray-100">
-              <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+              {item.image ? (
+                <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                  No image
+                </div>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-sm font-semibold text-[#172022] mb-1 line-clamp-2">{item.name}</h3>

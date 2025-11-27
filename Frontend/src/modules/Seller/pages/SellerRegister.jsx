@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
 import * as sellerApi from '../services/sellerApi'
+import { useSellerDispatch } from '../context/SellerContext'
 
 export function SellerRegister({ onSuccess, onSubmit, onSwitchToLogin }) {
   const [step, setStep] = useState('register') // 'register' | 'otp' | 'pending'
@@ -15,6 +16,7 @@ export function SellerRegister({ onSuccess, onSubmit, onSwitchToLogin }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [sellerId, setSellerId] = useState(null)
+  const dispatch = useSellerDispatch()
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -116,6 +118,23 @@ export function SellerRegister({ onSuccess, onSubmit, onSwitchToLogin }) {
         if (result.data?.token) {
           localStorage.setItem('seller_token', result.data.token)
         }
+        
+        // Update context with seller data
+        if (result.data?.seller) {
+          dispatch({
+            type: 'AUTH_LOGIN',
+            payload: {
+              id: result.data.seller.id || result.data.seller._id,
+              name: result.data.seller.name,
+              phone: result.data.seller.phone,
+              sellerId: result.data.seller.sellerId,
+              area: result.data.seller.area,
+              status: result.data.seller.status,
+              isActive: result.data.seller.isActive,
+            },
+          })
+        }
+        
         // Call both onSuccess and onSubmit for backward compatibility
         onSuccess?.(result.data?.seller || { name: form.fullName, phone: form.contact })
         onSubmit?.(result.data?.seller || { name: form.fullName, phone: form.contact })

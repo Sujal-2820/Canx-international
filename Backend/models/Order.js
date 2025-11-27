@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { ORDER_STATUS, DELIVERY_CHARGE, DELIVERY_TIMELINE_HOURS } = require('../utils/constants');
+const { ORDER_STATUS, PAYMENT_STATUS, DELIVERY_CHARGE, DELIVERY_TIMELINE_HOURS } = require('../utils/constants');
 
 /**
  * Order Schema
@@ -140,7 +140,7 @@ const orderSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: Object.values(ORDER_STATUS),
-    default: ORDER_STATUS.PENDING,
+    default: ORDER_STATUS.AWAITING,
   },
   statusTimeline: [{
     status: {
@@ -163,6 +163,67 @@ const orderSchema = new mongoose.Schema({
   isPartialFulfillment: {
     type: Boolean,
     default: false,
+  },
+  // Acceptance grace period (1 hour window for vendor to confirm or escalate)
+  acceptanceGracePeriod: {
+    isActive: {
+      type: Boolean,
+      default: false,
+    },
+    previousStatus: {
+      type: String,
+    },
+    acceptedAt: {
+      type: Date,
+      // When vendor initially accepted the order
+    },
+    expiresAt: {
+      type: Date,
+      // 1 hour after acceptedAt
+    },
+    confirmedAt: {
+      type: Date,
+      // When vendor confirms acceptance (or auto-confirmed after 1 hour)
+    },
+    cancelledAt: {
+      type: Date,
+      // When vendor cancels acceptance during grace period
+    },
+  },
+  // Status update grace period (1 hour window to revert status change)
+  statusUpdateGracePeriod: {
+    isActive: {
+      type: Boolean,
+      default: false,
+    },
+    previousStatus: {
+      type: String,
+      // Previous status before update
+    },
+    updatedAt: {
+      type: Date,
+      // When status was updated
+    },
+    expiresAt: {
+      type: Date,
+      // 1 hour after updatedAt
+    },
+    finalizedAt: {
+      type: Date,
+      // When status is finalized (after 1 hour or manually confirmed)
+    },
+    updatedBy: {
+      type: String,
+      enum: ['vendor', 'admin'],
+      // Who updated the status
+    },
+    previousPaymentStatus: {
+      type: String,
+      enum: Object.values(PAYMENT_STATUS),
+    },
+    previousRemainingAmount: {
+      type: Number,
+    },
   },
   parentOrderId: {
     type: mongoose.Schema.Types.ObjectId,

@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
 import * as sellerApi from '../services/sellerApi'
+import { useSellerDispatch } from '../context/SellerContext'
 
 export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
-  const [step, setStep] = useState('phone') // 'phone' | 'otp'
+  const [step, setStep] = useState('phone') // 'phone' | 'otp' | 'pending'
   const [form, setForm] = useState({ phone: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [sellerId, setSellerId] = useState(null)
+  const dispatch = useSellerDispatch()
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -55,7 +58,8 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
       if (result.success || result.data) {
         // Check if seller requires approval (pending status)
         if (result.data?.requiresApproval || result.data?.seller?.status === 'pending') {
-          setError('Your account is pending admin approval. You will be able to access your dashboard once approved.')
+          setSellerId(result.data?.seller?.sellerId || result.data?.sellerId)
+          setStep('pending')
           setLoading(false)
           return
         }
@@ -71,6 +75,23 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
         if (result.data?.token) {
           localStorage.setItem('seller_token', result.data.token)
         }
+        
+        // Update context with seller data
+        if (result.data?.seller) {
+          dispatch({
+            type: 'AUTH_LOGIN',
+            payload: {
+              id: result.data.seller.id || result.data.seller._id,
+              name: result.data.seller.name,
+              phone: result.data.seller.phone,
+              sellerId: result.data.seller.sellerId,
+              area: result.data.seller.area,
+              status: result.data.seller.status,
+              isActive: result.data.seller.isActive,
+            },
+          })
+        }
+        
         // Call both onSuccess and onSubmit for backward compatibility
         onSuccess?.(result.data?.seller || { phone: form.phone })
         onSubmit?.(result.data?.seller || { phone: form.phone })
@@ -93,6 +114,60 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (step === 'pending') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-6 py-12">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-yellow-100 mb-4">
+              <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <p className="text-xs uppercase tracking-wide text-yellow-600 font-semibold">Account Pending</p>
+            <h1 className="text-3xl font-bold text-gray-900">Awaiting Admin Approval</h1>
+          </div>
+
+          <div className="rounded-3xl border border-yellow-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm">
+            <div className="space-y-6 text-center">
+              <div className="space-y-3">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-yellow-50">
+                  <svg className="w-10 h-10 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 mb-2">Your Account is Pending Approval</h2>
+                  {sellerId && (
+                    <p className="text-sm text-gray-600 mb-4">
+                      Your Seller ID: <span className="font-bold text-green-600">{sellerId}</span>
+                    </p>
+                  )}
+                  <p className="text-sm text-gray-700 leading-relaxed">
+                    Your account is currently pending admin approval. You will be able to access your dashboard once the admin approves your request.
+                  </p>
+                  <p className="text-sm text-gray-700 leading-relaxed mt-3">
+                    We'll notify you once your account is activated.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={onSwitchToRegister}
+                  className="w-full rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all"
+                >
+                  Go Back to Login
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (step === 'otp') {

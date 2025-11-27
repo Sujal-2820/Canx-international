@@ -13,7 +13,7 @@ const CreditPurchase = require('../models/CreditPurchase');
 
 const { generateOTP, sendOTP } = require('../config/sms');
 const { generateToken } = require('../middleware/auth');
-const { OTP_EXPIRY_MINUTES, MIN_VENDOR_PURCHASE, MAX_VENDOR_PURCHASE, VENDOR_COVERAGE_RADIUS_KM, DELIVERY_TIMELINE_HOURS } = require('../utils/constants');
+const { OTP_EXPIRY_MINUTES, MIN_VENDOR_PURCHASE, MAX_VENDOR_PURCHASE, VENDOR_COVERAGE_RADIUS_KM, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 const { checkPhoneExists, checkPhoneInRole } = require('../utils/phoneValidation');
 
 const DELIVERY_WINDOW_HOURS = DELIVERY_TIMELINE_HOURS || 24;
@@ -684,6 +684,78 @@ exports.getDashboard = async (req, res, next) => {
 // ORDER MANAGEMENT CONTROLLERS
 // ============================================================================
 
+// Auto-confirm expired acceptances (runs in background)
+async function processExpiredAcceptances(vendorId) {
+  try {
+    const now = new Date();
+    const expiredOrders = await Order.find({
+      vendorId,
+      'acceptanceGracePeriod.isActive': true,
+      'acceptanceGracePeriod.expiresAt': { $lte: now },
+    });
+
+    if (expiredOrders.length === 0) {
+      return;
+    }
+
+    for (const order of expiredOrders) {
+      const previousStatus = order.acceptanceGracePeriod?.previousStatus || ORDER_STATUS.AWAITING;
+
+      order.acceptanceGracePeriod.isActive = false;
+      order.acceptanceGracePeriod.confirmedAt = now;
+      order.status = ORDER_STATUS.ACCEPTED;
+      order.assignedTo = 'vendor';
+
+      order.statusTimeline.push({
+        status: ORDER_STATUS.ACCEPTED,
+        timestamp: now,
+        updatedBy: 'system',
+        note: `Order acceptance auto-confirmed after 1-hour grace period expired (previous status: ${previousStatus}).`,
+      });
+
+      await order.save();
+      console.log(`✅ Order ${order.orderNumber} auto-confirmed after grace period expired`);
+    }
+  } catch (error) {
+    console.error(`Failed to process expired acceptances for vendor ${vendorId}:`, error);
+  }
+}
+
+// Auto-finalize expired status update grace periods (runs in background)
+async function processExpiredStatusUpdates(vendorId) {
+  try {
+    const now = new Date();
+    const expiredStatusUpdates = await Order.find({
+      vendorId: vendorId,
+      'statusUpdateGracePeriod.isActive': true,
+      'statusUpdateGracePeriod.expiresAt': { $lte: now },
+    });
+
+    if (expiredStatusUpdates.length === 0) {
+      return;
+    }
+
+    for (const order of expiredStatusUpdates) {
+      order.statusUpdateGracePeriod.isActive = false;
+      order.statusUpdateGracePeriod.finalizedAt = now;
+      order.statusUpdateGracePeriod.previousPaymentStatus = undefined;
+      order.statusUpdateGracePeriod.previousRemainingAmount = undefined;
+
+      order.statusTimeline.push({
+        status: order.status,
+        timestamp: now,
+        updatedBy: 'system',
+        note: `Status update finalized after 1-hour grace period expired. Status is now locked at ${order.status}.`,
+      });
+
+      await order.save();
+      console.log(`✅ Order ${order.orderNumber} status update finalized after grace period expired`);
+    }
+  } catch (error) {
+    console.error(`Failed to process expired status updates for vendor ${vendorId}:`, error);
+  }
+}
+
 /**
  * @desc    Get all orders with filtering
  * @route   GET /api/vendors/orders
@@ -692,6 +764,10 @@ exports.getDashboard = async (req, res, next) => {
 exports.getOrders = async (req, res, next) => {
   try {
     const vendor = req.vendor;
+    
+    // Process expired acceptances and status updates in background (non-blocking)
+    processExpiredAcceptances(vendor._id).catch(() => {});
+    processExpiredStatusUpdates(vendor._id).catch(() => {});
     const {
       page = 1,
       limit = 20,
@@ -857,6 +933,9 @@ exports.getOrderDetails = async (req, res, next) => {
   try {
     const vendor = req.vendor;
     const { orderId } = req.params;
+    
+    // Process expired acceptances in background (non-blocking)
+    processExpiredAcceptances(vendor._id).catch(() => {});
 
     const order = await Order.findOne({
       _id: orderId,
@@ -969,45 +1048,269 @@ exports.acceptOrder = async (req, res, next) => {
       });
     }
 
-    if (order.status !== 'pending') {
+    const currentStatus = order.status || ORDER_STATUS.AWAITING;
+    const canAcceptStatuses = [ORDER_STATUS.AWAITING, ORDER_STATUS.PENDING];
+
+    if (!canAcceptStatuses.includes(currentStatus)) {
       return res.status(400).json({
         success: false,
         message: `Order cannot be accepted. Current status: ${order.status}`,
       });
     }
 
-    // Accept order - change status to 'awaiting' (awaiting dispatch)
-    order.status = 'awaiting';
+    // Check if order is already in grace period
+    if (order.acceptanceGracePeriod?.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order acceptance is already in progress. Please confirm or cancel the acceptance.',
+      });
+    }
+
+    // Start grace period - don't immediately accept
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+
+    const normalizedPreviousStatus = currentStatus === ORDER_STATUS.PENDING ? ORDER_STATUS.AWAITING : currentStatus;
+
+    order.acceptanceGracePeriod = {
+      isActive: true,
+      acceptedAt: now,
+      expiresAt: expiresAt,
+      previousStatus: normalizedPreviousStatus,
+    };
+    order.status = ORDER_STATUS.ACCEPTED;
     order.assignedTo = 'vendor';
 
     // Add note if provided
     if (notes) {
-      order.notes = `${order.notes || ''}\n[Vendor] ${notes}`.trim();
+      order.notes = `${order.notes || ''}\n[Vendor Initial Acceptance] ${notes}`.trim();
     }
 
     // Update status timeline
     order.statusTimeline.push({
-      status: 'awaiting',
-      timestamp: new Date(),
+      status: ORDER_STATUS.ACCEPTED,
+      timestamp: now,
       updatedBy: 'vendor',
-      note: 'Order accepted by vendor. Ready for processing.',
+      note: 'Order acceptance initiated. Vendor has 1 hour to confirm or revert to awaiting.',
     });
 
     await order.save();
 
-    // TODO: Send notification to user
-
-    console.log(`✅ Order ${order.orderNumber} accepted by vendor ${vendor.name}`);
+    console.log(`⏳ Order ${order.orderNumber} acceptance grace period started by vendor ${vendor.name}. Expires at: ${expiresAt}`);
 
     res.status(200).json({
       success: true,
       data: {
-        order,
-        message: 'Order accepted successfully',
+        order: {
+          id: order._id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          acceptanceGracePeriod: order.acceptanceGracePeriod,
+        },
+        message: 'Order acceptance initiated. You have 1 hour to confirm or escalate. Order will auto-confirm after 1 hour if no action is taken.',
+        gracePeriodExpiresAt: expiresAt,
       },
     });
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * @desc    Confirm order acceptance (finalize after grace period)
+ * @route   POST /api/vendors/orders/:orderId/confirm-acceptance
+ * @access  Private (Vendor)
+ */
+exports.confirmOrderAcceptance = async (req, res, next) => {
+  try {
+    const vendor = req.vendor;
+    const { orderId } = req.params;
+    const { notes } = req.body;
+
+    const order = await Order.findOne({
+      _id: orderId,
+      vendorId: vendor._id,
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found or not assigned to you',
+      });
+    }
+
+    // Check if order is in grace period
+    if (!order.acceptanceGracePeriod?.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order is not in acceptance grace period. Cannot confirm.',
+      });
+    }
+
+    // Check if grace period has expired
+    const now = new Date();
+    if (order.acceptanceGracePeriod.expiresAt < now) {
+      return res.status(400).json({
+        success: false,
+        message: 'Grace period has expired. Order should be auto-confirmed.',
+      });
+    }
+
+    // Finalize acceptance
+    const confirmedAt = new Date();
+    order.acceptanceGracePeriod.isActive = false;
+    order.acceptanceGracePeriod.confirmedAt = confirmedAt;
+    order.status = ORDER_STATUS.ACCEPTED;
+    order.assignedTo = 'vendor';
+
+    // Add note if provided
+    if (notes) {
+      order.notes = `${order.notes || ''}\n[Vendor Confirmed Acceptance] ${notes}`.trim();
+    }
+
+    // Update status timeline
+    order.statusTimeline.push({
+      status: ORDER_STATUS.ACCEPTED,
+      timestamp: confirmedAt,
+      updatedBy: 'vendor',
+      note: 'Order acceptance confirmed by vendor. Ready for dispatch workflow.',
+    });
+
+    await order.save();
+
+    // TODO: Send notification to user and admin
+
+    console.log(`✅ Order ${order.orderNumber} acceptance confirmed by vendor ${vendor.name}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        order: {
+          id: order._id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+        },
+        message: 'Order acceptance confirmed successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Cancel order acceptance during grace period (allows escalation)
+ * @route   POST /api/vendors/orders/:orderId/cancel-acceptance
+ * @access  Private (Vendor)
+ */
+exports.cancelOrderAcceptance = async (req, res, next) => {
+  try {
+    const vendor = req.vendor;
+    const { orderId } = req.params;
+    const { reason } = req.body;
+
+    const order = await Order.findOne({
+      _id: orderId,
+      vendorId: vendor._id,
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found or not assigned to you',
+      });
+    }
+
+    // Check if order is in grace period
+    if (!order.acceptanceGracePeriod?.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order is not in acceptance grace period. Cannot cancel.',
+      });
+    }
+
+    // Cancel acceptance - reset to pending
+    const cancelledAt = new Date();
+    order.acceptanceGracePeriod.isActive = false;
+    order.acceptanceGracePeriod.cancelledAt = cancelledAt;
+    const previousStatus = order.acceptanceGracePeriod?.previousStatus || ORDER_STATUS.AWAITING;
+    order.status = previousStatus;
+    // Keep assignedTo as 'vendor' so vendor can still escalate
+
+    // Add note
+    const cancelReason = reason || 'Vendor cancelled acceptance during grace period';
+    order.notes = `${order.notes || ''}\n[Vendor Cancelled Acceptance] ${cancelReason}`.trim();
+
+    // Update status timeline
+    order.statusTimeline.push({
+      status: previousStatus,
+      timestamp: cancelledAt,
+      updatedBy: 'vendor',
+      note: `Order acceptance cancelled by vendor. Reason: ${cancelReason}`,
+    });
+
+    await order.save();
+
+    console.log(`⚠️ Order ${order.orderNumber} acceptance cancelled by vendor ${vendor.name}. Reason: ${cancelReason}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        order: {
+          id: order._id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+        },
+        message: 'Order acceptance cancelled. You can now escalate the order if needed.',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Auto-confirm orders after grace period expires
+ * @desc    This should be called periodically (e.g., every 5 minutes via cron job)
+ * @access  Internal
+ */
+exports.autoConfirmExpiredAcceptances = async () => {
+  try {
+    const now = new Date();
+    const expiredOrders = await Order.find({
+      'acceptanceGracePeriod.isActive': true,
+      'acceptanceGracePeriod.expiresAt': { $lte: now },
+    });
+
+    if (expiredOrders.length === 0) {
+      return { confirmed: 0 };
+    }
+
+    let confirmedCount = 0;
+    for (const order of expiredOrders) {
+      const previousStatus = order.acceptanceGracePeriod?.previousStatus || ORDER_STATUS.AWAITING;
+      order.acceptanceGracePeriod.isActive = false;
+      order.acceptanceGracePeriod.confirmedAt = now;
+      order.status = ORDER_STATUS.ACCEPTED;
+      order.assignedTo = 'vendor';
+
+      order.statusTimeline.push({
+        status: ORDER_STATUS.ACCEPTED,
+        timestamp: now,
+        updatedBy: 'system',
+        note: `Order acceptance auto-confirmed after 1-hour grace period expired (previous status: ${previousStatus}).`,
+      });
+
+      await order.save();
+      confirmedCount++;
+
+      console.log(`✅ Order ${order.orderNumber} auto-confirmed after grace period expired`);
+    }
+
+    return { confirmed: confirmedCount };
+  } catch (error) {
+    console.error('Error auto-confirming expired acceptances:', error);
+    throw error;
   }
 };
 
@@ -1041,11 +1344,19 @@ exports.rejectOrder = async (req, res, next) => {
       });
     }
 
-    if (order.status !== 'pending') {
+    // Allow rejection if order is pending OR in grace period
+    const isInGracePeriod = order.acceptanceGracePeriod?.isActive;
+    if (order.status !== 'pending' && !isInGracePeriod) {
       return res.status(400).json({
         success: false,
         message: `Order cannot be rejected. Current status: ${order.status}`,
       });
+    }
+
+    // If in grace period, cancel the acceptance first
+    if (isInGracePeriod) {
+      order.acceptanceGracePeriod.isActive = false;
+      order.acceptanceGracePeriod.cancelledAt = new Date();
     }
 
     // Reject order - escalate to admin
@@ -1503,7 +1814,7 @@ exports.updateOrderStatus = async (req, res, next) => {
   try {
     const vendor = req.vendor;
     const { orderId } = req.params;
-    const { status, notes } = req.body;
+    const { status, notes, finalizeGracePeriod } = req.body;
 
     if (!status) {
       return res.status(400).json({
@@ -1513,7 +1824,7 @@ exports.updateOrderStatus = async (req, res, next) => {
     }
 
     // Valid status transitions for vendor
-    const validStatuses = ['awaiting', 'processing', 'dispatched', 'delivered'];
+    const validStatuses = ['awaiting', 'accepted', 'processing', 'dispatched', 'delivered', 'fully_paid'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -1533,27 +1844,184 @@ exports.updateOrderStatus = async (req, res, next) => {
       });
     }
 
-    // Validate status transition
-    const statusFlow = ['pending', 'awaiting', 'processing', 'dispatched', 'delivered'];
-    const currentIndex = statusFlow.indexOf(order.status);
-    const newIndex = statusFlow.indexOf(status);
+    const normalizeStatusValue = (value) => {
+      if (!value) {
+        return ORDER_STATUS.AWAITING;
+      }
+      const normalized = value.toString().toLowerCase();
+      if (normalized === ORDER_STATUS.PENDING) {
+        return ORDER_STATUS.AWAITING;
+      }
+      if (normalized === ORDER_STATUS.PROCESSING) {
+        return ORDER_STATUS.ACCEPTED;
+      }
+      return normalized;
+    };
 
-    if (newIndex <= currentIndex) {
+    const paymentPreference = order.paymentPreference || 'partial';
+    const normalizedCurrentStatus = normalizeStatusValue(order.status);
+    const normalizedNewStatus = status === ORDER_STATUS.FULLY_PAID
+      ? ORDER_STATUS.FULLY_PAID
+      : normalizeStatusValue(status);
+
+    const statusFlow = paymentPreference === 'partial'
+      ? [ORDER_STATUS.AWAITING, ORDER_STATUS.ACCEPTED, ORDER_STATUS.DISPATCHED, ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID]
+      : [ORDER_STATUS.AWAITING, ORDER_STATUS.ACCEPTED, ORDER_STATUS.DISPATCHED, ORDER_STATUS.DELIVERED];
+
+    const finalStageStatus = paymentPreference === 'partial'
+      ? ORDER_STATUS.FULLY_PAID
+      : ORDER_STATUS.DELIVERED;
+
+    // Check if there's an active status update grace period that hasn't expired
+    const now = new Date();
+    const hasActiveGracePeriod = order.statusUpdateGracePeriod?.isActive && 
+                                 order.statusUpdateGracePeriod.expiresAt > now;
+    
+    // Allow finalizing grace period without status change
+    if (finalizeGracePeriod === true && hasActiveGracePeriod) {
+      order.statusUpdateGracePeriod.isActive = false;
+      order.statusUpdateGracePeriod.finalizedAt = now;
+      await order.save();
+      return res.status(200).json({
+        success: true,
+        data: {
+          order: {
+            ...order.toObject(),
+            statusUpdateGracePeriod: order.statusUpdateGracePeriod,
+          },
+          message: 'Status update grace period finalized successfully.',
+        },
+      });
+    }
+
+    if (hasActiveGracePeriod) {
+      // During grace period, only allow reverting to previous status
+      const isReverting = order.statusUpdateGracePeriod.previousStatus === status;
+      
+      if (!isReverting) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot update status. Previous status update is still in grace period. Please wait for it to finalize (expires in ${Math.ceil((order.statusUpdateGracePeriod.expiresAt - now) / 1000 / 60)} minutes) or revert to previous status.`,
+        });
+      }
+    } else if (order.statusUpdateGracePeriod?.isActive && order.statusUpdateGracePeriod.expiresAt <= now) {
+      // Grace period expired, finalize it
+      order.statusUpdateGracePeriod.isActive = false;
+      order.statusUpdateGracePeriod.finalizedAt = now;
+    }
+
+    // Prevent updates once the workflow is complete (after grace period)
+    if (!hasActiveGracePeriod && normalizedCurrentStatus === finalStageStatus) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order has already completed its workflow. Further updates are not allowed.',
+      });
+    }
+
+    // Allow fully_paid only after delivered and for partial payment preference
+    if (normalizedNewStatus === ORDER_STATUS.FULLY_PAID) {
+      if (paymentPreference !== 'partial') {
+        return res.status(400).json({
+          success: false,
+          message: 'Fully paid status is only applicable for partial payment orders.',
+        });
+      }
+      if (normalizedCurrentStatus !== ORDER_STATUS.DELIVERED) {
+        return res.status(400).json({
+          success: false,
+          message: 'Order must be delivered before marking as fully paid.',
+        });
+      }
+    }
+
+    // Validate status transition order
+    const currentIndex = statusFlow.indexOf(normalizedCurrentStatus);
+    const newIndex = statusFlow.indexOf(normalizedNewStatus);
+
+    if (newIndex === -1 && normalizedNewStatus !== ORDER_STATUS.FULLY_PAID) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot change status. ${status} is not part of the workflow for this payment preference.`,
+      });
+    }
+
+    // If reverting to previous status during grace period, allow it
+    const isReverting = hasActiveGracePeriod && 
+      order.statusUpdateGracePeriod.previousStatus === normalizedNewStatus;
+
+    if (!isReverting && normalizedNewStatus !== ORDER_STATUS.FULLY_PAID && newIndex !== -1 && newIndex <= currentIndex) {
       return res.status(400).json({
         success: false,
         message: `Cannot change status from ${order.status} to ${status}. Invalid transition.`,
       });
     }
 
-    // Update order status
-    order.status = status;
+    // Store previous status for grace period (only if not reverting)
+    const previousStatus = normalizeStatusValue(order.status);
+    const isStatusChange = normalizedNewStatus !== previousStatus;
+
+    const startGracePeriod = (extra = {}) => {
+      const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+      order.statusUpdateGracePeriod = {
+        isActive: true,
+        previousStatus,
+        updatedAt: now,
+        expiresAt,
+        updatedBy: 'vendor',
+        previousPaymentStatus: undefined,
+        previousRemainingAmount: undefined,
+        ...extra,
+      };
+    };
+
+    const finalizeStatusUpdateGracePeriod = () => {
+      order.statusUpdateGracePeriod.isActive = false;
+      order.statusUpdateGracePeriod.finalizedAt = now;
+    };
+
+    // If status is fully_paid, update order + payment status together
+    if (normalizedNewStatus === ORDER_STATUS.FULLY_PAID) {
+      const previousPaymentStatus = order.paymentStatus;
+      const previousRemainingAmount = order.remainingAmount;
+
+      order.status = ORDER_STATUS.FULLY_PAID;
+      order.paymentStatus = PAYMENT_STATUS.FULLY_PAID;
+      order.remainingAmount = 0;
+
+      if (!isReverting && isStatusChange) {
+        startGracePeriod({
+          previousPaymentStatus,
+          previousRemainingAmount,
+        });
+      } else if (isReverting && order.statusUpdateGracePeriod?.isActive) {
+        order.paymentStatus = order.statusUpdateGracePeriod.previousPaymentStatus || previousPaymentStatus;
+        if (typeof order.statusUpdateGracePeriod.previousRemainingAmount === 'number') {
+          order.remainingAmount = order.statusUpdateGracePeriod.previousRemainingAmount;
+        }
+        finalizeStatusUpdateGracePeriod();
+      }
+    } else {
+      // Update order status for all other statuses
+      order.status = normalizedNewStatus;
+      
+      // Start grace period for status changes (not for reverts)
+      if (isStatusChange && !isReverting) {
+        startGracePeriod();
+      } else if (isReverting && order.statusUpdateGracePeriod?.isActive) {
+        // Reverting to previous status - end grace period and restore payment state if needed
+        if (order.statusUpdateGracePeriod.previousPaymentStatus) {
+          order.paymentStatus = order.statusUpdateGracePeriod.previousPaymentStatus;
+        }
+        if (typeof order.statusUpdateGracePeriod.previousRemainingAmount === 'number') {
+          order.remainingAmount = order.statusUpdateGracePeriod.previousRemainingAmount;
+        }
+        finalizeStatusUpdateGracePeriod();
+      }
+    }
 
     // Update delivery date if delivered
-    if (status === 'delivered') {
+    if (normalizedNewStatus === ORDER_STATUS.DELIVERED && !order.deliveredAt) {
       order.deliveredAt = new Date();
-      
-      // TODO: Trigger remaining payment if partial payment order
-      // This would be handled by a background job or payment service
     }
 
     // Add note if provided
@@ -1562,24 +2030,43 @@ exports.updateOrderStatus = async (req, res, next) => {
     }
 
     // Update status timeline
+    const timelineStatus = order.status;
+    const timelineNote = isReverting 
+      ? (notes || `Status reverted to ${timelineStatus} from ${previousStatus}`)
+      : (notes || `Order status updated to ${timelineStatus}`);
+    
     order.statusTimeline.push({
-      status,
-      timestamp: new Date(),
+      status: timelineStatus,
+      timestamp: now,
       updatedBy: 'vendor',
-      note: notes || `Order status updated to ${status}`,
+      note: timelineNote,
     });
 
     await order.save();
 
     // TODO: Send real-time notification to user (WebSocket/SSE)
 
-    console.log(`✅ Order ${order.orderNumber} status updated to ${status} by vendor ${vendor.name}`);
+    const message = isReverting 
+      ? `Order status reverted to ${timelineStatus}`
+      : isStatusChange
+        ? `Order status updated to ${timelineStatus}. You have 1 hour to revert this change.`
+        : `Order status updated to ${timelineStatus}`;
+
+    console.log(`✅ Order ${order.orderNumber} status updated to ${status} by vendor ${vendor.name}${isStatusChange ? ' (grace period active)' : ''}`);
 
     res.status(200).json({
       success: true,
       data: {
-        order,
-        message: `Order status updated to ${status}`,
+        order: {
+          ...order.toObject(),
+          statusUpdateGracePeriod: order.statusUpdateGracePeriod,
+        },
+        message,
+        gracePeriod: isStatusChange ? {
+          isActive: true,
+          expiresAt: order.statusUpdateGracePeriod.expiresAt,
+          previousStatus: order.statusUpdateGracePeriod.previousStatus,
+        } : null,
       },
     });
   } catch (error) {
@@ -1622,8 +2109,8 @@ exports.getOrderStats = async (req, res, next) => {
       {
         $match: {
           vendorId: vendor._id,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
         },
       },
@@ -2051,7 +2538,7 @@ exports.getInventoryItemDetails = async (req, res, next) => {
     const orderCount = await Order.countDocuments({
       vendorId: vendor._id,
       'items.productId': assignment.productId._id,
-      status: 'delivered',
+      status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
     });
 
     res.status(200).json({
@@ -2154,7 +2641,7 @@ exports.getInventoryStats = async (req, res, next) => {
       {
         $match: {
           vendorId: vendor._id,
-          status: 'delivered',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
         },
       },
       {
@@ -2656,8 +3143,8 @@ exports.getReports = async (req, res, next) => {
       {
         $match: {
           vendorId: vendor._id,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
         },
       },
@@ -2754,8 +3241,8 @@ exports.getPerformanceAnalytics = async (req, res, next) => {
       {
         $match: {
           vendorId: vendor._id,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
         },
       },
@@ -2778,8 +3265,8 @@ exports.getPerformanceAnalytics = async (req, res, next) => {
       {
         $match: {
           vendorId: vendor._id,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
         },
       },

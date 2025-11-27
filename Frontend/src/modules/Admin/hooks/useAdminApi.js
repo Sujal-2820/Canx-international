@@ -544,6 +544,18 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
+  const updateOrderStatus = useCallback(
+    (orderId, statusData) => {
+      return callApi(adminApi.updateOrderStatus, orderId, statusData).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_ORDERS_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
   const getNotifications = useCallback(() => callApi(adminApi.getNotifications), [callApi])
 
   const createNotification = useCallback(
@@ -666,6 +678,7 @@ export function useAdminApi() {
     getEscalatedOrders,
     fulfillOrderFromWarehouse,
     revertEscalation,
+    updateOrderStatus,
     getNotifications,
     createNotification,
     updateNotification,

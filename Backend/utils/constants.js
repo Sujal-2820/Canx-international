@@ -34,9 +34,11 @@ const OTP_EXPIRY_MINUTES = parseInt(process.env.OTP_EXPIRY_MINUTES) || 5;
 const ORDER_STATUS = {
   PENDING: 'pending',
   AWAITING: 'awaiting',
-  PROCESSING: 'processing',
+  ACCEPTED: 'accepted',
+  PROCESSING: 'processing', // legacy support
   DISPATCHED: 'dispatched',
   DELIVERED: 'delivered',
+  FULLY_PAID: 'fully_paid',
   CANCELLED: 'cancelled',
   REJECTED: 'rejected',
   PARTIALLY_ACCEPTED: 'partially_accepted',

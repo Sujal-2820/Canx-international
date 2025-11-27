@@ -34,7 +34,7 @@ export function OrderEscalationModal({ isOpen, onClose, order, onFulfillFromWare
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
           <div className="mb-3 flex items-center gap-2">
             <Package className="h-5 w-5 text-gray-600" />
-            <p className="text-sm font-bold text-gray-900">Order #{order.id}</p>
+            <p className="text-sm font-bold text-gray-900">Order #{order.orderNumber || order.id}</p>
           </div>
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between">
@@ -61,8 +61,13 @@ export function OrderEscalationModal({ isOpen, onClose, order, onFulfillFromWare
             <div>
               <p className="text-sm font-bold text-orange-900">Escalation Reason</p>
               <p className="mt-1 text-xs text-orange-700">
-                Vendor marked this order as "Not Available". You can manually fulfill this order from the master warehouse.
+                {order.escalationReason || order.escalation?.escalationReason || order.notes || 'Vendor marked this order as "Not Available". You can manually fulfill this order from the master warehouse.'}
               </p>
+              {order.escalation?.escalatedAt && (
+                <p className="mt-2 text-xs text-orange-600">
+                  Escalated on: {new Date(order.escalation.escalatedAt).toLocaleString('en-IN')}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -72,17 +77,25 @@ export function OrderEscalationModal({ isOpen, onClose, order, onFulfillFromWare
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="mb-3 text-sm font-bold text-gray-900">Order Items</p>
             <div className="space-y-2">
-              {order.items.map((item, index) => (
-                <div key={item.id || index} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-2">
-                  <div>
-                    <p className="text-sm font-bold text-gray-900">{item.name || item.product}</p>
-                    <p className="text-xs text-gray-600">Qty: {item.quantity || 1}</p>
+              {order.items.map((item, index) => {
+                const itemId = item._id || item.id || index
+                const productName = item.productName || item.productId?.name || item.name || item.product || 'Unknown Product'
+                const quantity = item.quantity || 1
+                const unitPrice = item.unitPrice || item.price || item.amount || 0
+                const totalPrice = item.totalPrice || (unitPrice * quantity)
+                
+                return (
+                  <div key={itemId} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-2">
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{productName}</p>
+                      <p className="text-xs text-gray-600">Qty: {quantity} {item.unit || 'units'}</p>
+                    </div>
+                    <p className="text-sm font-bold text-gray-900">
+                      {formatCurrency(totalPrice)}
+                    </p>
                   </div>
-                  <p className="text-sm font-bold text-gray-900">
-                    {formatCurrency(item.price || item.amount || 0)}
-                  </p>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}

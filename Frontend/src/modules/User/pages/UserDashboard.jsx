@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useUserDispatch, useUserState } from '../context/UserContext'
 import { MobileShell } from '../components/MobileShell'
 import { BottomNavItem } from '../components/BottomNavItem'
@@ -120,6 +120,55 @@ function UserDashboardContent({ onLogout }) {
 
   // Fetch orders and cart from API
   const { fetchOrders, fetchCart } = useUserApi()
+
+  const resolveId = useCallback((value) => {
+    if (!value) return ''
+    if (typeof value === 'string' || typeof value === 'number') return value.toString()
+    if (typeof value === 'object') {
+      if (value._id) return value._id.toString()
+      if (value.id) return value.id.toString()
+      if (typeof value.toString === 'function') return value.toString()
+    }
+    return ''
+  }, [])
+
+  const mapCartItemsFromResponse = useCallback((cartData) => {
+    if (!cartData?.items) return []
+    return cartData.items
+      .map((item) => {
+        const cartItemId = resolveId(item.id || item._id)
+        const product = item.product || item.productId || {}
+        const productId = resolveId(product.id || product._id || item.productId)
+        if (!productId) return null
+        const price =
+          typeof item.unitPrice === 'number'
+            ? item.unitPrice
+            : typeof product.priceToUser === 'number'
+              ? product.priceToUser
+              : typeof product.price === 'number'
+                ? product.price
+                : 0
+        return {
+          cartItemId,
+          productId,
+          name: product.name || item.productName || 'Unknown Product',
+          price,
+          image: item.image || product.images?.[0]?.url || product.primaryImage || product.image || '',
+          quantity: item.quantity || 1,
+          vendor: product.vendor || null,
+          deliveryTime: product.deliveryTime || null,
+        }
+      })
+      .filter(Boolean)
+  }, [resolveId])
+
+  const syncCartState = useCallback(
+    (cartData) => {
+      const items = mapCartItemsFromResponse(cartData)
+      dispatch({ type: 'SET_CART_ITEMS', payload: items })
+    },
+    [dispatch, mapCartItemsFromResponse],
+  )
   useEffect(() => {
     const token = localStorage.getItem('user_token')
     if (token) {
@@ -146,22 +195,10 @@ function UserDashboardContent({ onLogout }) {
 
           // Fetch cart
           const cartResult = await fetchCart()
-          if (cartResult.data?.cart?.items && cartResult.data.cart.items.length > 0) {
-            // Clear existing cart first
-            dispatch({ type: 'CLEAR_CART' })
-            // Add items from API
-            cartResult.data.cart.items.forEach((item) => {
-              const productId = item.product?.id || item.product?._id || item.productId
-              if (productId) {
-                dispatch({
-                  type: 'ADD_TO_CART',
-                  payload: {
-                    productId: productId,
-                    quantity: item.quantity || 1,
-                  },
-                })
-              }
-            })
+          if (cartResult.data?.cart) {
+            syncCartState(cartResult.data.cart)
+          } else {
+            dispatch({ type: 'SET_CART_ITEMS', payload: [] })
           }
 
           // Fetch addresses
@@ -194,7 +231,7 @@ function UserDashboardContent({ onLogout }) {
       }
       loadData()
     }
-  }, [fetchOrders, fetchCart, dispatch])
+  }, [fetchOrders, fetchCart, dispatch, syncCartState])
 
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
   const favouritesCount = useMemo(() => favourites.length, [favourites])
@@ -342,44 +379,59 @@ function UserDashboardContent({ onLogout }) {
         return
       }
       
-      // Add to cart via API
+      // Add to cart via API and sync state
       const cartResult = await userApi.addToCart({ productId, quantity })
-      if (cartResult.error) {
-        error(cartResult.error.message || 'Failed to add to cart')
-        return
+      if (cartResult?.data?.cart) {
+        syncCartState(cartResult.data.cart)
       }
-      
-      // Update local state
-      dispatch({
-        type: 'ADD_TO_CART',
-        payload: {
-          productId: product._id || product.id,
-          name: product.name,
-          price: product.priceToUser || product.price,
-          image: product.images?.[0]?.url || product.primaryImage || product.image,
-          quantity,
-          vendor: product.vendor,
-          deliveryTime: product.deliveryTime,
-        },
-      })
       success(`${product.name} added to cart`)
     } catch (err) {
-      error('Failed to add product to cart')
+      error(err?.error?.message || err.message || 'Failed to add product to cart')
       console.error('Error adding to cart:', err)
     }
   }
 
-  const handleRemoveFromCart = (productId) => {
-    dispatch({ type: 'REMOVE_FROM_CART', payload: { productId } })
-    success('Item removed from cart')
-  }
-
-  const handleUpdateCartQuantity = (productId, quantity) => {
-    if (quantity <= 0) {
-      handleRemoveFromCart(productId)
+  const handleRemoveFromCart = async (productId) => {
+    const cartItem = cart.find((item) => item.productId === productId)
+    if (!cartItem?.cartItemId) {
+      error('Unable to remove item from cart')
       return
     }
-    dispatch({ type: 'UPDATE_CART_ITEM', payload: { productId, quantity } })
+    try {
+      const result = await userApi.removeFromCart(cartItem.cartItemId)
+      if (result?.data?.cart) {
+        syncCartState(result.data.cart)
+      } else {
+        dispatch({ type: 'REMOVE_FROM_CART', payload: { productId } })
+      }
+      success('Item removed from cart')
+    } catch (err) {
+      error(err?.error?.message || err.message || 'Failed to remove item from cart')
+      console.error('Error removing from cart:', err)
+    }
+  }
+
+  const handleUpdateCartQuantity = async (productId, quantity) => {
+    const cartItem = cart.find((item) => item.productId === productId)
+    if (!cartItem?.cartItemId) {
+      error('Unable to update cart item')
+      return
+    }
+    if (quantity <= 0) {
+      await handleRemoveFromCart(productId)
+      return
+    }
+    try {
+      const result = await userApi.updateCartItem(cartItem.cartItemId, { quantity })
+      if (result?.data?.cart) {
+        syncCartState(result.data.cart)
+      } else {
+        dispatch({ type: 'UPDATE_CART_ITEM', payload: { productId, quantity } })
+      }
+    } catch (err) {
+      error(err?.error?.message || err.message || 'Failed to update quantity')
+      console.error('Error updating cart quantity:', err)
+    }
   }
 
   const handleProceedToCheckout = () => {

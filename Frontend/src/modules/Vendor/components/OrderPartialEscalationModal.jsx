@@ -37,16 +37,25 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
 
   const loadOrderDetails = async () => {
     try {
-      const result = await getOrderDetails(order.id)
+      const orderId = order._id || order.id
+      if (!orderId) {
+        showError('Invalid order ID')
+        return
+      }
+      
+      const result = await getOrderDetails(orderId)
       if (result.data?.order) {
         setOrderDetails(result.data.order)
         // Initialize selected items
         const items = result.data.order.items || []
         const initialSelected = {}
         items.forEach((item) => {
-          initialSelected[item._id || item.id] = {
-            accept: true,
-            quantity: item.quantity,
+          const itemId = (item._id || item.id)?.toString()
+          if (itemId) {
+            initialSelected[itemId] = {
+              accept: true,
+              quantity: item.quantity,
+            }
           }
         })
         setSelectedItems(initialSelected)
@@ -84,17 +93,19 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
       const rejectedItems = []
 
       orderDetails?.items?.forEach((item) => {
-        const itemId = item._id || item.id
+        const itemId = (item._id || item.id)?.toString()
+        if (!itemId) return
+        
         const selection = selectedItems[itemId]
         
         if (selection?.accept) {
           acceptedItems.push({
-            itemId,
+            itemId: itemId,
             quantity: item.quantity,
           })
         } else {
           rejectedItems.push({
-            itemId,
+            itemId: itemId,
             quantity: item.quantity,
             reason: reason || 'Item not available',
           })
@@ -112,7 +123,13 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
       }
 
       try {
-        const result = await acceptOrderPartially(order.id, {
+        const orderId = order._id || order.id
+        if (!orderId) {
+          showError('Invalid order ID')
+          return
+        }
+        
+        const result = await acceptOrderPartially(orderId, {
           acceptedItems,
           rejectedItems,
           notes: notes.trim() || undefined,
@@ -120,8 +137,8 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
 
         if (result.data) {
           success('Order partially accepted. Rejected items escalated to admin.')
-          onSuccess?.(result.data)
-          onClose()
+          onClose() // Close modal first
+          onSuccess?.(result.data) // Then trigger refresh
         } else if (result.error) {
           showError(result.error.message || 'Failed to process partial acceptance')
         }
@@ -133,12 +150,14 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
       const escalatedItems = []
 
       orderDetails?.items?.forEach((item) => {
-        const itemId = item._id || item.id
+        const itemId = (item._id || item.id)?.toString()
+        if (!itemId) return
+        
         const escalatedQty = escalatedQuantities[itemId] || 0
         
         if (escalatedQty > 0 && escalatedQty < item.quantity) {
           escalatedItems.push({
-            itemId,
+            itemId: itemId,
             escalatedQuantity: escalatedQty,
             reason: reason || 'Partial quantity not available',
           })
@@ -156,7 +175,13 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
       }
 
       try {
-        const result = await escalateOrderPartial(order.id, {
+        const orderId = order._id || order.id
+        if (!orderId) {
+          showError('Invalid order ID')
+          return
+        }
+        
+        const result = await escalateOrderPartial(orderId, {
           escalatedItems,
           reason: reason.trim(),
           notes: notes.trim() || undefined,
@@ -164,8 +189,8 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
 
         if (result.data) {
           success('Order partially escalated. Remaining quantities will be fulfilled by you.')
-          onSuccess?.(result.data)
-          onClose()
+          onClose() // Close modal first
+          onSuccess?.(result.data) // Then trigger refresh
         } else if (result.error) {
           showError(result.error.message || 'Failed to escalate order')
         }
@@ -180,36 +205,38 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
   const items = orderDetails?.items || order.items || []
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl my-8">
-        <div className="flex items-center justify-between border-b border-gray-200 p-4">
+    <div className={cn('vendor-activity-sheet', isOpen && 'is-open')}>
+      <div className={cn('vendor-activity-sheet__overlay', isOpen && 'is-open')} onClick={onClose} />
+      <div className={cn('vendor-activity-sheet__panel', isOpen && 'is-open')}>
+        <div className="vendor-activity-sheet__header">
           <div className="flex items-center gap-2">
             <Package className="h-5 w-5 text-purple-600" />
-            <h3 className="text-lg font-bold text-gray-900">
+            <h4>
               {escalationType === 'items' ? 'Partial Item Escalation' : 'Partial Quantity Escalation'}
-            </h3>
+            </h4>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            <X className="h-5 w-5" />
+          <button type="button" onClick={onClose}>
+            Close
           </button>
         </div>
 
-        <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+        <div className="vendor-activity-sheet__body">
           {/* Order Info */}
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
             <p className="text-sm font-semibold text-gray-900">Order #{order.orderNumber || order.id}</p>
-            <p className="text-xs text-gray-600">Customer: {order.farmer || 'Unknown'}</p>
+            <div className="text-xs text-gray-600 space-y-1 mt-1">
+              <p>Customer: {order.userId?.name || order.farmer || 'Unknown'}</p>
+              <p>Contact: {order.userId?.phone || order.customerPhone || 'N/A'}</p>
+            </div>
           </div>
 
           {/* Items List */}
           <div className="space-y-3">
             <h4 className="text-sm font-semibold text-gray-900">Order Items</h4>
             {items.map((item) => {
-              const itemId = item._id || item.id
+              const itemId = (item._id || item.id)?.toString()
+              if (!itemId) return null
+              
               const selection = selectedItems[itemId] || { accept: true, quantity: item.quantity }
               const escalatedQty = escalatedQuantities[itemId] || 0
               const requestedQty = item.quantity || 0
@@ -337,12 +364,12 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
           </div>
         </div>
 
-        <div className="flex gap-3 border-t border-gray-200 p-4">
+        <div className="vendor-action-panel__actions">
           <button
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-50"
+            className="vendor-action-panel__button is-secondary"
           >
             Cancel
           </button>
@@ -350,14 +377,16 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
             type="button"
             onClick={handleSubmit}
             disabled={loading}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            className="vendor-action-panel__button is-primary flex items-center justify-center gap-1.5"
           >
             {loading ? (
               'Processing...'
             ) : (
               <>
-                <CheckCircle className="h-4 w-4" />
-                {escalationType === 'items' ? 'Accept & Escalate' : 'Escalate Quantities'}
+                <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="text-[0.7rem]">
+                  {escalationType === 'items' ? 'Accept & Escalate' : 'Escalate Quantities'}
+                </span>
               </>
             )}
           </button>

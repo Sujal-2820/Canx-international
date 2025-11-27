@@ -213,6 +213,37 @@ export const BUTTON_CONFIGS = {
       type: 'escalation',
     },
   },
+  'confirm-acceptance': {
+    intent: BUTTON_INTENT.UPDATION,
+    title: 'Confirm Order Acceptance',
+    data: {
+      type: 'confirmation',
+      fields: [
+        {
+          name: 'notes',
+          label: 'Notes (optional)',
+          value: '',
+          type: 'textarea',
+        },
+      ],
+    },
+  },
+  'cancel-acceptance': {
+    intent: BUTTON_INTENT.UPDATION,
+    title: 'Cancel Order Acceptance',
+    data: {
+      type: 'cancellation',
+      fields: [
+        {
+          name: 'reason',
+          label: 'Reason for Cancellation',
+          value: '',
+          type: 'textarea',
+          required: true,
+        },
+      ],
+    },
+  },
   'update-order-status': {
     intent: BUTTON_INTENT.UPDATION,
     title: 'Update Order Status',
@@ -222,13 +253,14 @@ export const BUTTON_CONFIGS = {
         {
           name: 'status',
           label: 'Select Status',
-          value: 'awaiting',
+          value: 'accepted',
           type: 'select',
           required: true,
           options: [
-            { value: 'awaiting', label: 'Awaiting' },
+            { value: 'accepted', label: 'Accepted' },
             { value: 'dispatched', label: 'Dispatched' },
             { value: 'delivered', label: 'Delivered' },
+            { value: 'fully_paid', label: 'Paid In Full' },
           ],
         },
         {
@@ -298,6 +330,20 @@ export function useButtonAction() {
         }
         if (field.name === 'sku' && additionalData.itemId !== undefined) {
           return { ...field, value: additionalData.itemId }
+        }
+        // For status field, map normalized status to valid options
+        if (field.name === 'status' && additionalData.status !== undefined) {
+          const currentStatus = additionalData.status
+          // Map to valid status values
+          let mappedStatus = currentStatus
+          if (currentStatus === 'pending' || currentStatus === 'awaiting') mappedStatus = 'accepted'
+          else if (currentStatus === 'processing') mappedStatus = 'accepted'
+          else if (currentStatus === 'ready_for_delivery' || currentStatus === 'out_for_delivery') mappedStatus = 'dispatched'
+          // Only set if it's a valid option
+          const validOptions = field.options?.map(opt => typeof opt === 'object' ? opt.value : opt) || []
+          if (validOptions.includes(mappedStatus)) {
+            return { ...field, value: mappedStatus }
+          }
         }
         return field
       })

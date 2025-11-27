@@ -1566,25 +1566,11 @@ exports.createOrder = async (req, res, next) => {
     } = req.body;
 
     // Validate cart
-    const cart = await Cart.findOne({ userId }).populate('items.productId');
+    const cart = await Cart.findOne({ userId }).populate('items.productId', 'name priceToUser isActive stock');
     if (!cart || !cart.items || cart.items.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Cart is empty',
-      });
-    }
-
-    // Validate cart minimum order value
-    // Skip minimum order check if paymentPreference is 'partial' (30% advance)
-    const validation = cart.validateForCheckout(paymentPreference);
-    if (!validation.valid) {
-      return res.status(400).json({
-        success: false,
-        message: validation.message,
-        data: {
-          total: cart.subtotal,
-          shortfall: Math.max(0, MIN_ORDER_VALUE - cart.subtotal),
-        },
       });
     }
 
@@ -1652,14 +1638,15 @@ exports.createOrder = async (req, res, next) => {
     const sellerId = userWithSeller?.sellerId || null;
     const seller = userWithSeller?.seller?._id || null;
 
-    // Validate products exist and are active (but don't block on stock availability)
+    // Validate products exist and are active, and prepare order items with correct prices
     // Orders are always created and assigned to vendor, vendor can then escalate if needed
+    const orderItems = [];
     for (const item of cart.items) {
       const product = await Product.findById(item.productId._id);
       if (!product) {
         return res.status(404).json({
           success: false,
-          message: `Product ${item.productId.name} not found`,
+          message: `Product ${item.productId.name || 'Unknown'} not found`,
         });
       }
       
@@ -1667,28 +1654,46 @@ exports.createOrder = async (req, res, next) => {
       if (!product.isActive) {
         return res.status(400).json({
           success: false,
-          message: `Product ${item.productId.name} is no longer available`,
+          message: `Product ${product.name} is no longer available`,
         });
       }
+      
+      // Use the fetched product's priceToUser to ensure accuracy
+      const unitPrice = product.priceToUser;
+      const quantity = item.quantity;
+      const totalPrice = quantity * unitPrice; // Recalculate to ensure accuracy
+      
+      orderItems.push({
+        productId: product._id,
+        productName: product.name,
+        quantity: quantity,
+        unitPrice: unitPrice,
+        totalPrice: totalPrice,
+        status: 'pending', // Item status for partial acceptance
+      });
       
       // Note: Stock validation is removed - orders are always created
       // Vendor will receive the order and can escalate if stock is insufficient
     }
 
-    // Prepare order items
-    const orderItems = cart.items.map(item => ({
-      productId: item.productId._id,
-      productName: item.productId.name,
-      quantity: item.quantity,
-      unitPrice: item.productId.priceToUser,
-      totalPrice: item.totalPrice,
-      status: 'pending', // Item status for partial acceptance
-    }));
-
-    // Calculate pricing
-    const subtotal = cart.subtotal;
+    // Calculate pricing - recalculate subtotal from order items to ensure accuracy
+    const subtotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const deliveryCharge = paymentPreference === 'full' ? 0 : DELIVERY_CHARGE;
     const totalAmount = subtotal + deliveryCharge;
+    
+    // Validate cart minimum order value using calculated totalAmount
+    // Skip minimum order check if paymentPreference is 'partial' (30% advance)
+    if (paymentPreference === 'full' && totalAmount < MIN_ORDER_VALUE) {
+      return res.status(400).json({
+        success: false,
+        message: `Minimum order value is ₹${MIN_ORDER_VALUE}. Current total: ₹${totalAmount.toFixed(2)}`,
+        data: {
+          total: totalAmount,
+          shortfall: Math.max(0, MIN_ORDER_VALUE - totalAmount),
+        },
+      });
+    }
+    
     const upfrontAmount = paymentPreference === 'full' ? totalAmount : Math.round(totalAmount * (ADVANCE_PAYMENT_PERCENTAGE / 100));
     const remainingAmount = paymentPreference === 'full' ? 0 : totalAmount - upfrontAmount;
 
@@ -1724,7 +1729,7 @@ exports.createOrder = async (req, res, next) => {
       remainingAmount,
       paymentStatus: PAYMENT_STATUS.PENDING,
       deliveryAddress,
-      status: ORDER_STATUS.PENDING,
+      status: ORDER_STATUS.AWAITING,
       notes,
     });
 
@@ -1817,29 +1822,34 @@ exports.getOrders = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        orders: orders.map(order => ({
-          id: order._id,
-          orderNumber: order.orderNumber,
-          items: order.items,
-          subtotal: order.subtotal,
-          deliveryCharge: order.deliveryCharge,
-          totalAmount: order.totalAmount,
-          paymentPreference: order.paymentPreference,
-          upfrontAmount: order.upfrontAmount,
-          remainingAmount: order.remainingAmount,
-          paymentStatus: order.paymentStatus,
-          status: order.status,
-          vendor: order.vendorId ? {
-            id: order.vendorId._id,
-            name: order.vendorId.name,
-            phone: order.vendorId.phone,
-          } : null,
-          assignedTo: order.assignedTo,
-          deliveryAddress: order.deliveryAddress,
-          expectedDeliveryDate: order.expectedDeliveryDate,
-          deliveredAt: order.deliveredAt,
-          createdAt: order.createdAt,
-        })),
+        orders: orders.map(order => {
+          // If order is in grace period, show status as 'awaiting' to user (not accepted yet)
+          const displayStatus = order.acceptanceGracePeriod?.isActive ? ORDER_STATUS.AWAITING : order.status;
+          
+          return {
+            id: order._id,
+            orderNumber: order.orderNumber,
+            items: order.items,
+            subtotal: order.subtotal,
+            deliveryCharge: order.deliveryCharge,
+            totalAmount: order.totalAmount,
+            paymentPreference: order.paymentPreference,
+            upfrontAmount: order.upfrontAmount,
+            remainingAmount: order.remainingAmount,
+            paymentStatus: order.paymentStatus,
+            status: displayStatus,
+            vendor: order.vendorId ? {
+              id: order.vendorId._id,
+              name: order.vendorId.name,
+              phone: order.vendorId.phone,
+            } : null,
+            assignedTo: order.assignedTo,
+            deliveryAddress: order.deliveryAddress,
+            expectedDeliveryDate: order.expectedDeliveryDate,
+            deliveredAt: order.deliveredAt,
+            createdAt: order.createdAt,
+          };
+        }),
         pagination: {
           page: pageNum,
           limit: limitNum,

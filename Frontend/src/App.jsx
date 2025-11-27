@@ -9,7 +9,7 @@ import {
   VendorLanguagePage,
   VendorRolePage,
 } from './modules/Vendor'
-import { SellerDashboardPage, SellerLogin, SellerRegister } from './modules/Seller'
+import { SellerDashboardPage, SellerLogin, SellerRegister, SellerProvider } from './modules/Seller'
 
 function Home() {
   const links = [
@@ -76,12 +76,20 @@ function UserRegisterRoute() {
 
 function SellerLoginRoute() {
   const navigate = useNavigate()
-  return <SellerLogin onSubmit={() => navigate('/seller/dashboard')} onSwitchToRegister={() => navigate('/seller/register')} />
+  return (
+    <SellerProvider>
+      <SellerLogin onSubmit={() => navigate('/seller/dashboard')} onSwitchToRegister={() => navigate('/seller/register')} />
+    </SellerProvider>
+  )
 }
 
 function SellerRegisterRoute() {
   const navigate = useNavigate()
-  return <SellerRegister onSubmit={() => navigate('/seller/dashboard')} onSwitchToLogin={() => navigate('/seller/login')} />
+  return (
+    <SellerProvider>
+      <SellerRegister onSubmit={() => navigate('/seller/dashboard')} onSwitchToLogin={() => navigate('/seller/login')} />
+    </SellerProvider>
+  )
 }
 
 function App() {

@@ -96,6 +96,11 @@ function reducer(state, action) {
         ...state,
         cart: [],
       }
+    case 'SET_CART_ITEMS':
+      return {
+        ...state,
+        cart: Array.isArray(action.payload) ? action.payload : [],
+      }
     case 'ADD_ORDER':
       return {
         ...state,

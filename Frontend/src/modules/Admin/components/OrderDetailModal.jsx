@@ -4,7 +4,7 @@ import { StatusBadge } from './StatusBadge'
 import { Timeline } from './Timeline'
 import { cn } from '../../../lib/cn'
 
-export function OrderDetailModal({ isOpen, onClose, order, onReassign, onGenerateInvoice, onProcessRefund, loading }) {
+export function OrderDetailModal({ isOpen, onClose, order, onReassign, onGenerateInvoice, onProcessRefund, onUpdateStatus, loading }) {
   if (!order) return null
 
   const formatCurrency = (value) => {
@@ -291,6 +291,53 @@ export function OrderDetailModal({ isOpen, onClose, order, onReassign, onGenerat
             )}
           </div>
         ) : null}
+
+        {/* Status Update Section (for admin-fulfilled orders) */}
+        {order.assignedTo === 'admin' && onUpdateStatus && order.status !== 'fully_paid' && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-blue-600" />
+              <h4 className="text-sm font-bold text-gray-900">Update Order Status</h4>
+            </div>
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {(order.status === 'processing' || order.status === 'awaiting') && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStatus(orderId, { status: 'dispatched' })}
+                    disabled={loading}
+                    className="rounded-lg border border-blue-300 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-50 disabled:opacity-50"
+                  >
+                    Mark as Dispatched
+                  </button>
+                )}
+                {(order.status === 'dispatched' || order.status === 'processing' || order.status === 'awaiting') && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStatus(orderId, { status: 'delivered' })}
+                    disabled={loading}
+                    className="rounded-lg border border-green-300 bg-white px-4 py-2 text-sm font-semibold text-green-700 transition-all hover:bg-green-50 disabled:opacity-50"
+                  >
+                    Mark as Delivered
+                  </button>
+                )}
+                {order.status === 'delivered' && (
+                  <button
+                    type="button"
+                    onClick={() => onUpdateStatus(orderId, { status: 'fully_paid' })}
+                    disabled={loading}
+                    className="rounded-lg border border-purple-300 bg-white px-4 py-2 text-sm font-semibold text-purple-700 transition-all hover:bg-purple-50 disabled:opacity-50"
+                  >
+                    Mark as Paid Full Amount
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-600">
+                Current status: <span className="font-semibold">{order.status || 'processing'}</span>
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:justify-end">

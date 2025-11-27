@@ -12,7 +12,7 @@ const WithdrawalRequest = require('../models/WithdrawalRequest');
 
 const { generateOTP, sendOTP } = require('../config/sms');
 const { generateToken } = require('../middleware/auth');
-const { OTP_EXPIRY_MINUTES, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH } = require('../utils/constants');
+const { OTP_EXPIRY_MINUTES, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 const { checkPhoneExists, checkPhoneInRole } = require('../utils/phoneValidation');
 
 /**
@@ -581,8 +581,8 @@ exports.getDashboard = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: currentMonthStart },
         },
       },
@@ -657,8 +657,8 @@ exports.getOverview = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: currentMonthStart },
         },
       },
@@ -684,8 +684,8 @@ exports.getOverview = async (req, res, next) => {
     // Get active referrals (users who made purchases this month)
     const activeReferrals = await Order.distinct('userId', {
       sellerId: seller.sellerId,
-      status: 'delivered',
-      paymentStatus: 'fully_paid',
+      status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+      paymentStatus: PAYMENT_STATUS.FULLY_PAID,
       createdAt: { $gte: currentMonthStart },
     });
 
@@ -777,8 +777,8 @@ exports.getReferrals = async (req, res, next) => {
             $match: {
               userId: referral._id,
               sellerId: seller.sellerId,
-              status: 'delivered',
-              paymentStatus: 'fully_paid',
+              status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+              paymentStatus: PAYMENT_STATUS.FULLY_PAID,
               createdAt: { $gte: currentMonthStart },
             },
           },
@@ -841,8 +841,8 @@ exports.getPerformance = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: currentMonthStart },
         },
       },
@@ -863,8 +863,8 @@ exports.getPerformance = async (req, res, next) => {
     // Get active users count
     const activeUsers = await Order.distinct('userId', {
       sellerId: seller.sellerId,
-      status: 'delivered',
-      paymentStatus: 'fully_paid',
+      status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+      paymentStatus: PAYMENT_STATUS.FULLY_PAID,
       createdAt: { $gte: currentMonthStart },
     });
 
@@ -1182,8 +1182,8 @@ exports.getReferralDetails = async (req, res, next) => {
     const currentMonthOrders = await Order.find({
       userId: user._id,
       sellerId: seller.sellerId,
-      status: 'delivered',
-      paymentStatus: 'fully_paid',
+      status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+      paymentStatus: PAYMENT_STATUS.FULLY_PAID,
       createdAt: { $gte: currentMonthStart },
     })
       .sort({ createdAt: -1 })
@@ -1224,8 +1224,8 @@ exports.getReferralDetails = async (req, res, next) => {
         $match: {
           userId: user._id,
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
         },
       },
       {
@@ -1283,8 +1283,8 @@ exports.getReferralStats = async (req, res, next) => {
     // Get active referrals (made purchases this month)
     const activeReferrals = await Order.distinct('userId', {
       sellerId: seller.sellerId,
-      status: 'delivered',
-      paymentStatus: 'fully_paid',
+      status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+      paymentStatus: PAYMENT_STATUS.FULLY_PAID,
       createdAt: { $gte: currentMonthStart },
     });
 
@@ -1293,8 +1293,8 @@ exports.getReferralStats = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: currentMonthStart },
         },
       },
@@ -1428,8 +1428,8 @@ exports.getTarget = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: currentMonthStart },
         },
       },
@@ -1503,8 +1503,8 @@ exports.getPerformanceAnalytics = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
         },
       },
@@ -1544,8 +1544,8 @@ exports.getPerformanceAnalytics = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
         },
       },
@@ -1588,8 +1588,8 @@ exports.getPerformanceAnalytics = async (req, res, next) => {
     const totalReferrals = await User.countDocuments({ sellerId: seller.sellerId });
     const activeReferrals = await Order.distinct('userId', {
       sellerId: seller.sellerId,
-      status: 'delivered',
-      paymentStatus: 'fully_paid',
+      status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+      paymentStatus: PAYMENT_STATUS.FULLY_PAID,
       createdAt: { $gte: daysAgo },
     });
 
@@ -1638,8 +1638,8 @@ exports.getDashboardHighlights = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: currentMonthStart },
         },
       },
@@ -1818,8 +1818,8 @@ exports.getTargetHistory = async (req, res, next) => {
         {
           $match: {
             sellerId: seller.sellerId,
-            status: 'delivered',
-            paymentStatus: 'fully_paid',
+            status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+            paymentStatus: PAYMENT_STATUS.FULLY_PAID,
             createdAt: { $gte: monthStart, $lte: monthEnd },
           },
         },
@@ -1877,8 +1877,8 @@ exports.getTargetIncentives = async (req, res, next) => {
       {
         $match: {
           sellerId: seller.sellerId,
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: currentMonthStart },
         },
       },
@@ -1902,8 +1902,8 @@ exports.getTargetIncentives = async (req, res, next) => {
         {
           $match: {
             sellerId: seller.sellerId,
-            status: 'delivered',
-            paymentStatus: 'fully_paid',
+            status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+            paymentStatus: PAYMENT_STATUS.FULLY_PAID,
             createdAt: { $gte: monthStart, $lte: monthEnd },
           },
         },

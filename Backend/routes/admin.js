@@ -367,6 +367,13 @@ router.put('/orders/:orderId/reassign', authorizeAdmin, adminController.reassign
 router.post('/orders/:orderId/fulfill', authorizeAdmin, adminController.fulfillOrderFromWarehouse);
 
 /**
+ * @route   PUT /api/admin/orders/:orderId/status
+ * @desc    Update order status (for admin-fulfilled orders)
+ * @access  Private (Admin)
+ */
+router.put('/orders/:orderId/status', authorizeAdmin, adminController.updateOrderStatus);
+
+/**
  * @route   GET /api/admin/orders/:orderId
  * @desc    Get order details
  * @access  Private (Admin)

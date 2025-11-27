@@ -73,10 +73,24 @@ router.get('/orders/stats', authorizeVendor, vendorController.getOrderStats);
 
 /**
  * @route   POST /api/vendors/orders/:orderId/accept
- * @desc    Accept order (full availability)
+ * @desc    Accept order (starts 1-hour grace period)
  * @access  Private (Vendor)
  */
 router.post('/orders/:orderId/accept', authorizeVendor, vendorController.acceptOrder);
+
+/**
+ * @route   POST /api/vendors/orders/:orderId/confirm-acceptance
+ * @desc    Confirm order acceptance (finalizes after grace period)
+ * @access  Private (Vendor)
+ */
+router.post('/orders/:orderId/confirm-acceptance', authorizeVendor, vendorController.confirmOrderAcceptance);
+
+/**
+ * @route   POST /api/vendors/orders/:orderId/cancel-acceptance
+ * @desc    Cancel order acceptance during grace period (allows escalation)
+ * @access  Private (Vendor)
+ */
+router.post('/orders/:orderId/cancel-acceptance', authorizeVendor, vendorController.cancelOrderAcceptance);
 
 /**
  * @route   POST /api/vendors/orders/:orderId/reject

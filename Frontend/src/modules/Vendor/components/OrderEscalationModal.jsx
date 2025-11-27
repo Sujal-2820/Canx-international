@@ -32,56 +32,93 @@ export function OrderEscalationModal({ isOpen, onClose, order, onSuccess }) {
   }, [isOpen])
 
   const handleEscalate = async () => {
-    if (!selectedReason && !reason.trim()) {
+    if (!selectedReason && (!reason || !reason.trim())) {
       showError('Please select or provide an escalation reason')
       return
     }
 
-    const escalationReason = selectedReason === 'other' ? reason : escalationReasons.find(r => r.value === selectedReason)?.label || reason
+    let escalationReason = ''
+    if (selectedReason === 'other') {
+      escalationReason = reason?.trim() || ''
+    } else if (selectedReason) {
+      const reasonOption = escalationReasons.find(r => r.value === selectedReason)
+      escalationReason = reasonOption?.label || reason?.trim() || ''
+    } else {
+      escalationReason = reason?.trim() || ''
+    }
 
-    if (!escalationReason.trim()) {
+    if (!escalationReason || !escalationReason.trim()) {
       showError('Please provide an escalation reason')
       return
     }
 
     try {
-      const result = await rejectOrder(order.id, {
-        reason: escalationReason,
-        notes: notes.trim() || undefined,
-      })
+      const orderId = (order._id || order.id)?.toString()
+      if (!orderId) {
+        console.error('OrderEscalationModal: Invalid order object', order)
+        showError('Invalid order ID')
+        return
+      }
+      
+      if (!escalationReason || !escalationReason.trim()) {
+        showError('Please provide an escalation reason')
+        return
+      }
+      
+      const requestPayload = {
+        reason: escalationReason.trim(),
+        notes: notes?.trim() || undefined,
+      }
+      
+      console.log('OrderEscalationModal: Sending request', { orderId, payload: requestPayload })
+      
+      const result = await rejectOrder(orderId, requestPayload)
 
       if (result.data) {
         success('Order escalated to admin successfully')
-        onSuccess?.(result.data)
-        onClose()
+        onClose() // Close modal first
+        onSuccess?.(result.data) // Then trigger refresh
       } else if (result.error) {
+        console.error('OrderEscalationModal: API error', result.error)
         showError(result.error.message || 'Failed to escalate order')
+      } else {
+        console.error('OrderEscalationModal: Unexpected response', result)
+        showError('Failed to escalate order. Please try again.')
       }
     } catch (err) {
+      console.error('OrderEscalationModal: Exception', err)
       showError(err.message || 'Failed to escalate order')
     }
   }
 
   if (!isOpen || !order) return null
 
+  // Debug: Log order structure
+  if (isOpen && order) {
+    console.log('OrderEscalationModal: Order object', {
+      id: order.id,
+      _id: order._id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      vendorId: order.vendorId,
+    })
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-200 p-4">
+    <div className={cn('vendor-activity-sheet', isOpen && 'is-open')}>
+      <div className={cn('vendor-activity-sheet__overlay', isOpen && 'is-open')} onClick={onClose} />
+      <div className={cn('vendor-activity-sheet__panel', isOpen && 'is-open')}>
+        <div className="vendor-activity-sheet__header">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-orange-600" />
-            <h3 className="text-lg font-bold text-gray-900">Escalate Order to Admin</h3>
+            <h4>Escalate Order to Admin</h4>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            <X className="h-5 w-5" />
+          <button type="button" onClick={onClose}>
+            Close
           </button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="vendor-activity-sheet__body">
           {/* Order Info */}
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
             <div className="flex items-center gap-2 mb-2">
@@ -89,8 +126,9 @@ export function OrderEscalationModal({ isOpen, onClose, order, onSuccess }) {
               <p className="text-sm font-semibold text-gray-900">Order #{order.orderNumber || order.id}</p>
             </div>
             <div className="text-xs text-gray-600 space-y-1">
-              <p>Customer: {order.farmer || 'Unknown'}</p>
-              <p>Order Value: {order.value || 'N/A'}</p>
+              <p>Customer: {order.userId?.name || order.farmer || 'Unknown'}</p>
+              <p>Contact: {order.userId?.phone || order.customerPhone || 'N/A'}</p>
+              <p>Order Value: {order.value || order.totalAmount ? `₹${(order.totalAmount || 0).toLocaleString('en-IN')}` : 'N/A'}</p>
             </div>
           </div>
 
@@ -190,27 +228,27 @@ export function OrderEscalationModal({ isOpen, onClose, order, onSuccess }) {
           </div>
         </div>
 
-        <div className="flex gap-3 border-t border-gray-200 p-4">
+        <div className="vendor-action-panel__actions">
           <button
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-50"
+            className="vendor-action-panel__button is-secondary"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleEscalate}
-            disabled={loading || (!selectedReason && !reason.trim())}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading || (!selectedReason && (!reason || !reason.trim()))}
+            className="vendor-action-panel__button is-primary flex items-center justify-center gap-1.5"
           >
             {loading ? (
               'Escalating...'
             ) : (
               <>
-                <AlertCircle className="h-4 w-4" />
-                Escalate to Admin
+                <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="text-[0.7rem]">Escalate to Admin</span>
               </>
             )}
           </button>

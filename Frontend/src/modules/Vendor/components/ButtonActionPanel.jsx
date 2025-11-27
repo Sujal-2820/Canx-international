@@ -1,13 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { Package } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 import { BUTTON_INTENT } from '../hooks/useButtonAction'
 import { vendorSnapshot } from '../services/vendorDashboard'
+import { useVendorApi } from '../hooks/useVendorApi'
 
 export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNotification }) {
   const [uploadedFile, setUploadedFile] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
   const [formErrors, setFormErrors] = useState({})
+  const [orderInfo, setOrderInfo] = useState(null)
   const fileInputRef = useRef(null)
+  const { getOrderDetails } = useVendorApi()
 
   if (!action) return null
 
@@ -25,6 +29,21 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
   }, [intent, data])
 
   const [formData, setFormData] = useState(initializeFormData)
+
+  // Fetch order details if orderId is present
+  useEffect(() => {
+    if (isOpen && data?.orderId && (buttonId === 'update-order-status' || buttonId === 'order-available' || buttonId === 'order-not-available')) {
+      getOrderDetails(data.orderId).then((result) => {
+        if (result.data?.order) {
+          setOrderInfo(result.data.order)
+        }
+      }).catch(() => {
+        setOrderInfo(null)
+      })
+    } else {
+      setOrderInfo(null)
+    }
+  }, [isOpen, data?.orderId, buttonId, getOrderDetails])
 
   // Reset formData when action changes
   useEffect(() => {
@@ -182,7 +201,8 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
       onShowNotification?.('File uploaded successfully', 'success')
       onClose()
     } else if (intent === BUTTON_INTENT.INSTANT_ACTION) {
-      onAction?.({ type: 'confirm', buttonId })
+      // Include data (like orderId) when confirming instant actions
+      onAction?.({ type: 'confirm', buttonId, data: data || {} })
       onShowNotification?.('Action completed successfully', 'success')
       onClose()
     }
@@ -206,10 +226,34 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
   }, [isOpen])
 
   const renderContent = () => {
+    // Helper to render order customer info
+    const renderOrderInfo = () => {
+      if (!orderInfo && !data?.orderId) return null
+      const order = orderInfo || {}
+      const customerName = order.userId?.name || order.farmer || 'Unknown'
+      const customerPhone = order.userId?.phone || order.customerPhone || 'N/A'
+      
+      return (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="h-4 w-4 text-gray-600" />
+            <p className="text-sm font-semibold text-gray-900">
+              Order #{order.orderNumber || order.id || data.orderId}
+            </p>
+          </div>
+          <div className="text-xs text-gray-600 space-y-1">
+            <p>Customer: {customerName}</p>
+            <p>Contact: {customerPhone}</p>
+          </div>
+        </div>
+      )
+    }
+
     switch (intent) {
       case BUTTON_INTENT.UPDATION:
         return (
           <div className="vendor-action-panel__form">
+            {renderOrderInfo()}
             {data.fields?.map((field) => (
               <div key={field.name} className="vendor-action-panel__field">
                 <label className="vendor-action-panel__label">
@@ -228,25 +272,76 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
                     rows={4}
                   />
                 ) : field.type === 'select' ? (
-                  <select
-                    className={cn(
-                      'vendor-action-panel__input',
-                      formErrors[field.name] && 'is-error',
-                    )}
-                    value={formData[field.name] || field.value || ''}
-                    onChange={(e) => handleFormChange(field.name, e.target.value)}
-                  >
-                    {field.options?.map((option) => {
-                      // Handle both string and object options
-                      const optionValue = typeof option === 'object' ? option.value : option
-                      const optionLabel = typeof option === 'object' ? option.label : option.charAt(0).toUpperCase() + option.slice(1)
-                      return (
-                        <option key={optionValue} value={optionValue}>
-                          {optionLabel}
-                        </option>
-                      )
-                    })}
-                  </select>
+                  (() => {
+                    // For status field, filter to only show current and next status
+                    let filteredOptions = field.options || []
+                    if (field.name === 'status' && orderInfo) {
+                      const normalizeStatus = (status) => {
+                        if (!status) return 'awaiting'
+                        const normalized = status.toLowerCase()
+                        if (normalized === 'fully_paid') return 'fully_paid'
+                        if (normalized === 'delivered') return 'delivered'
+                        if (normalized === 'dispatched' || normalized === 'out_for_delivery') return 'dispatched'
+                        if (normalized === 'accepted' || normalized === 'processing') return 'accepted'
+                        if (normalized === 'awaiting' || normalized === 'pending') return 'awaiting'
+                        return 'awaiting'
+                      }
+                      
+                      const currentStatus = normalizeStatus(orderInfo.status)
+                      const paymentPreference = orderInfo.paymentPreference || 'partial'
+                      const isInGracePeriod = orderInfo.statusUpdateGracePeriod?.isActive
+                      
+                      // Define status flow based on payment preference
+                      const statusFlow = paymentPreference === 'partial'
+                        ? ['awaiting', 'accepted', 'dispatched', 'delivered', 'fully_paid']
+                        : ['awaiting', 'accepted', 'dispatched', 'delivered']
+                      
+                      const currentIndex = statusFlow.indexOf(currentStatus)
+                      
+                      if (currentIndex >= 0 && !isInGracePeriod) {
+                        // Only show current status and next status
+                        const nextIndex = currentIndex + 1
+                        const allowedStatuses = [
+                          statusFlow[currentIndex], // Current status
+                          ...(nextIndex < statusFlow.length ? [statusFlow[nextIndex]] : []) // Next status if exists
+                        ]
+                        
+                        filteredOptions = field.options.filter((option) => {
+                          const optionValue = typeof option === 'object' ? option.value : option
+                          return allowedStatuses.includes(optionValue)
+                        })
+                      } else if (isInGracePeriod) {
+                        // During grace period, only show current status (for reverting)
+                        filteredOptions = field.options.filter((option) => {
+                          const optionValue = typeof option === 'object' ? option.value : option
+                          return optionValue === currentStatus
+                        })
+                      }
+                    }
+                    
+                    return (
+                      <select
+                        className={cn(
+                          'vendor-action-panel__input',
+                          formErrors[field.name] && 'is-error',
+                        )}
+                        value={formData[field.name] || field.value || ''}
+                        onChange={(e) => handleFormChange(field.name, e.target.value)}
+                      >
+                        {filteredOptions.map((option) => {
+                          // Handle both string and object options
+                          const optionValue = typeof option === 'object' ? option.value : option
+                          const optionLabel = typeof option === 'object' ? option.label : option.charAt(0).toUpperCase() + option.slice(1)
+                          
+                          return (
+                            <option key={optionValue} value={optionValue}>
+                              {optionLabel}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    )
+                  })()
                 ) : field.type === 'file' ? (
                   <div className="vendor-action-panel__file-field">
                     <input
@@ -420,6 +515,7 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
       case BUTTON_INTENT.INSTANT_ACTION:
         return (
           <div className="vendor-action-panel__confirmation">
+            {renderOrderInfo()}
             <p className="vendor-action-panel__confirmation-message">{data.message}</p>
             <div className="vendor-action-panel__actions">
               <button type="button" onClick={handleCancel} className="vendor-action-panel__button is-secondary">

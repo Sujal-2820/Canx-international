@@ -2419,7 +2419,7 @@ export async function getEscalatedOrders(params = {}) {
             value: order.value || order.orderValue || 0,
             orderValue: order.orderValue || order.value || 0,
             escalatedAt: order.escalatedAt ? new Date(order.escalatedAt).toISOString() : new Date().toISOString(),
-            status: order.status || 'rejected',
+            status: order.status || 'escalated',
             items: order.items || [],
             userId: order.userId,
             userName: order.userName,
@@ -2502,6 +2502,44 @@ export async function revertEscalation(orderId, revertData = {}) {
       }
     }
 
+    return response
+  } catch (error) {
+    throw error
+  }
+}
+
+/**
+ * Update Order Status (for admin-fulfilled orders)
+ * PUT /admin/orders/:orderId/status
+ * 
+ * @param {string} orderId - Order ID
+ * @param {Object} statusData - { status: string, notes?: string }
+ * @returns {Promise<Object>} - { order: Object, message: string }
+ */
+export async function updateOrderStatus(orderId, statusData = {}) {
+  try {
+    const requestBody = {}
+    if (statusData.status) requestBody.status = statusData.status
+    if (statusData.paymentStatus) requestBody.paymentStatus = statusData.paymentStatus
+    if (statusData.notes) requestBody.notes = statusData.notes
+    if (statusData.isRevert !== undefined) requestBody.isRevert = statusData.isRevert
+
+    const response = await apiRequest(`/admin/orders/${orderId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify(requestBody),
+    })
+    
+    // Transform backend response to frontend format
+    if (response.success && response.data) {
+      return {
+        success: true,
+        data: {
+          order: response.data.order ? transformOrder(response.data.order) : undefined,
+          message: response.data.message || 'Order status updated successfully',
+        },
+      }
+    }
+    
     return response
   } catch (error) {
     throw error

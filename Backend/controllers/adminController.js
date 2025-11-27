@@ -19,11 +19,45 @@ const Payment = require('../models/Payment');
 const Commission = require('../models/Commission');
 const Settings = require('../models/Settings');
 const Notification = require('../models/Notification');
-const { VENDOR_COVERAGE_RADIUS_KM, MIN_VENDOR_PURCHASE, DELIVERY_TIMELINE_HOURS } = require('../utils/constants');
+const { VENDOR_COVERAGE_RADIUS_KM, MIN_VENDOR_PURCHASE, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 
 const { generateOTP, sendOTP } = require('../config/sms');
 const { OTP_EXPIRY_MINUTES } = require('../utils/constants');
 const { generateToken } = require('../middleware/auth');
+
+// Auto-finalize expired status update grace periods (runs in background)
+async function processExpiredStatusUpdates() {
+  try {
+    const now = new Date();
+    const expiredStatusUpdates = await Order.find({
+      'statusUpdateGracePeriod.isActive': true,
+      'statusUpdateGracePeriod.expiresAt': { $lte: now },
+    });
+
+    if (expiredStatusUpdates.length === 0) {
+      return;
+    }
+
+    for (const order of expiredStatusUpdates) {
+      order.statusUpdateGracePeriod.isActive = false;
+      order.statusUpdateGracePeriod.finalizedAt = now;
+      order.statusUpdateGracePeriod.previousPaymentStatus = undefined;
+      order.statusUpdateGracePeriod.previousRemainingAmount = undefined;
+
+      order.statusTimeline.push({
+        status: order.status,
+        timestamp: now,
+        updatedBy: 'system',
+        note: `Status update finalized after 1-hour grace period expired. Status is now locked at ${order.status}.`,
+      });
+
+      await order.save();
+      console.log(`✅ Order ${order.orderNumber} status update finalized after grace period expired`);
+    }
+  } catch (error) {
+    console.error('Failed to process expired status updates:', error);
+  }
+}
 
 /**
  * @desc    Admin login (Step 1: Email/Password)
@@ -334,7 +368,7 @@ exports.getDashboard = async (req, res, next) => {
       Order.countDocuments(),
       Order.countDocuments({ status: 'pending' }),
       Order.countDocuments({ status: { $in: ['awaiting', 'processing', 'dispatched'] } }),
-      Order.countDocuments({ status: 'delivered' }),
+      Order.countDocuments({ status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] } }),
       Order.countDocuments({ status: 'cancelled' }),
       
       // Payments
@@ -353,8 +387,8 @@ exports.getDashboard = async (req, res, next) => {
     const revenueStats = await Order.aggregate([
       {
         $match: {
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
         },
       },
       {
@@ -378,8 +412,8 @@ exports.getDashboard = async (req, res, next) => {
       Order.aggregate([
         {
           $match: {
-            status: 'delivered',
-            paymentStatus: 'fully_paid',
+            status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+            paymentStatus: PAYMENT_STATUS.FULLY_PAID,
             createdAt: { $gte: thirtyDaysAgo },
           },
         },
@@ -394,8 +428,8 @@ exports.getDashboard = async (req, res, next) => {
       Order.aggregate([
         {
           $match: {
-            status: 'delivered',
-            paymentStatus: 'fully_paid',
+            status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+            paymentStatus: PAYMENT_STATUS.FULLY_PAID,
             createdAt: { $gte: sevenDaysAgo },
           },
         },
@@ -2823,7 +2857,7 @@ exports.getUserDetails = async (req, res, next) => {
     
     const ordersCount = await Order.countDocuments({ userId: user._id });
     const totalSpentResult = await Order.aggregate([
-      { $match: { userId: user._id, status: 'delivered', paymentStatus: 'fully_paid' } },
+      { $match: { userId: user._id, status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] }, paymentStatus: PAYMENT_STATUS.FULLY_PAID } },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]);
     const totalSpent = totalSpentResult[0]?.total || 0;
@@ -2932,6 +2966,9 @@ exports.blockUser = async (req, res, next) => {
  */
 exports.getOrders = async (req, res, next) => {
   try {
+    // Process expired status updates in background (non-blocking)
+    processExpiredStatusUpdates().catch(() => {});
+    
     const {
       page = 1,
       limit = 20,
@@ -3010,10 +3047,22 @@ exports.getOrders = async (req, res, next) => {
 
     const total = await Order.countDocuments(query);
 
+    // Filter orders in grace period - show as 'pending' to admin (not accepted yet)
+    const filteredOrders = orders.map(order => {
+      // If order is in grace period, show status as 'pending' instead of actual status
+      if (order.acceptanceGracePeriod?.isActive) {
+        return {
+          ...order,
+          status: 'pending', // Show as pending during grace period
+        };
+      }
+      return order;
+    });
+
     res.status(200).json({
       success: true,
       data: {
-        orders,
+        orders: filteredOrders,
         pagination: {
           currentPage: pageNum,
           totalPages: Math.ceil(total / limitNum),
@@ -3793,7 +3842,16 @@ exports.revertEscalation = async (req, res, next) => {
     }
 
     // Revert escalation - assign back to vendor
-    order.vendorId = originalVendor._id;
+    // Handle case where vendorId might already be set (no error if same)
+    if (order.vendorId && order.vendorId.toString() !== originalVendor._id.toString()) {
+      // If vendorId exists but is different, update it
+      order.vendorId = originalVendor._id;
+    } else if (!order.vendorId) {
+      // If vendorId doesn't exist, set it
+      order.vendorId = originalVendor._id;
+    }
+    // If vendorId is already the same, no need to change it
+    
     order.assignedTo = 'vendor';
     order.status = 'pending'; // Reset to pending for vendor to handle
 
@@ -3940,6 +3998,274 @@ exports.reassignOrder = async (req, res, next) => {
           phone: newVendor.phone,
         },
         message: 'Order reassigned successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update order status (for admin-fulfilled orders)
+ * @route   PUT /api/admin/orders/:orderId/status
+ * @access  Private (Admin)
+ */
+exports.updateOrderStatus = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { status, notes, isRevert, finalizeGracePeriod } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status is required',
+      });
+    }
+
+    // Valid status transitions for admin (Awaiting -> Accepted -> Dispatched -> Delivered -> Fully paid)
+    const validStatuses = ['awaiting', 'accepted', 'processing', 'dispatched', 'delivered', 'fully_paid'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Allowed: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+      });
+    }
+
+    // Admin can update status for any order (vendor-assigned or admin-assigned)
+    // No restriction needed
+
+    const normalizeStatusValue = (value) => {
+      if (!value) {
+        return ORDER_STATUS.AWAITING;
+      }
+      const normalized = value.toString().toLowerCase();
+      if (normalized === ORDER_STATUS.PENDING) {
+        return ORDER_STATUS.AWAITING;
+      }
+      if (normalized === ORDER_STATUS.PROCESSING) {
+        return ORDER_STATUS.ACCEPTED;
+      }
+      return normalized;
+    };
+
+    const paymentPreference = order.paymentPreference || 'partial';
+    const normalizedCurrentStatus = normalizeStatusValue(order.status);
+    const normalizedNewStatus = status === ORDER_STATUS.FULLY_PAID
+      ? ORDER_STATUS.FULLY_PAID
+      : normalizeStatusValue(status);
+
+    const statusFlow = paymentPreference === 'partial'
+      ? [ORDER_STATUS.AWAITING, ORDER_STATUS.ACCEPTED, ORDER_STATUS.DISPATCHED, ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID]
+      : [ORDER_STATUS.AWAITING, ORDER_STATUS.ACCEPTED, ORDER_STATUS.DISPATCHED, ORDER_STATUS.DELIVERED];
+
+    const finalStageStatus = paymentPreference === 'partial'
+      ? ORDER_STATUS.FULLY_PAID
+      : ORDER_STATUS.DELIVERED;
+
+    // Check if there's an active status update grace period that hasn't expired
+    const now = new Date();
+    const hasActiveGracePeriod = order.statusUpdateGracePeriod?.isActive && 
+                                 order.statusUpdateGracePeriod.expiresAt > now;
+    
+    // Allow finalizing grace period without status change
+    if (finalizeGracePeriod === true && hasActiveGracePeriod) {
+      order.statusUpdateGracePeriod.isActive = false;
+      order.statusUpdateGracePeriod.finalizedAt = now;
+      await order.save();
+      return res.status(200).json({
+        success: true,
+        data: {
+          order: {
+            id: order._id,
+            orderNumber: order.orderNumber,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            statusUpdateGracePeriod: order.statusUpdateGracePeriod,
+          },
+          message: 'Status update grace period finalized successfully.',
+        },
+      });
+    }
+
+    if (hasActiveGracePeriod) {
+      // During grace period, only allow reverting to previous status
+      const isReverting = order.statusUpdateGracePeriod.previousStatus === status;
+      
+      if (!isReverting) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot update status. Previous status update is still in grace period. Please wait for it to finalize (expires in ${Math.ceil((order.statusUpdateGracePeriod.expiresAt - now) / 1000 / 60)} minutes) or revert to previous status.`,
+        });
+      }
+    } else if (order.statusUpdateGracePeriod?.isActive && order.statusUpdateGracePeriod.expiresAt <= now) {
+      // Grace period expired, finalize it
+      order.statusUpdateGracePeriod.isActive = false;
+      order.statusUpdateGracePeriod.finalizedAt = now;
+      order.statusUpdateGracePeriod.previousPaymentStatus = undefined;
+      order.statusUpdateGracePeriod.previousRemainingAmount = undefined;
+    }
+
+    if (!hasActiveGracePeriod && normalizedCurrentStatus === finalStageStatus) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order has already completed its workflow. Further updates are not allowed.',
+      });
+    }
+
+    if (normalizedNewStatus === ORDER_STATUS.FULLY_PAID) {
+      if (paymentPreference !== 'partial') {
+        return res.status(400).json({
+          success: false,
+          message: 'Fully paid status is only applicable for partial payment orders.',
+        });
+      }
+      if (normalizedCurrentStatus !== ORDER_STATUS.DELIVERED) {
+        return res.status(400).json({
+          success: false,
+          message: 'Order must be delivered before marking as fully paid.',
+        });
+      }
+    }
+
+    // If reverting to previous status during grace period, allow it
+    // Also check if isRevert flag is explicitly set
+    const isReverting = (hasActiveGracePeriod &&
+      order.statusUpdateGracePeriod.previousStatus === normalizedNewStatus) ||
+      (isRevert === true);
+
+    const currentIndex = statusFlow.indexOf(normalizedCurrentStatus);
+    const newIndex = statusFlow.indexOf(normalizedNewStatus);
+
+    if (newIndex === -1 && normalizedNewStatus !== ORDER_STATUS.FULLY_PAID && !isReverting) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot change status. ${status} is not part of the workflow for this payment preference.`,
+      });
+    }
+
+    if (!isReverting && normalizedNewStatus !== ORDER_STATUS.FULLY_PAID && newIndex !== -1 && newIndex <= currentIndex) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot change status from ${order.status} to ${status}. Invalid transition.`,
+      });
+    }
+
+    // Store previous status for grace period (only if not reverting)
+    const previousStatus = normalizeStatusValue(order.status);
+    const isStatusChange = normalizedNewStatus !== previousStatus;
+
+    const startGracePeriod = (extra = {}) => {
+      const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+      order.statusUpdateGracePeriod = {
+        isActive: true,
+        previousStatus,
+        updatedAt: now,
+        expiresAt,
+        updatedBy: 'admin',
+        previousPaymentStatus: undefined,
+        previousRemainingAmount: undefined,
+        ...extra,
+      };
+    };
+
+    const finalizeStatusUpdateGracePeriod = () => {
+      order.statusUpdateGracePeriod.isActive = false;
+      order.statusUpdateGracePeriod.finalizedAt = now;
+    };
+
+    if (normalizedNewStatus === ORDER_STATUS.FULLY_PAID) {
+      const previousPaymentStatus = order.paymentStatus;
+      const previousRemainingAmount = order.remainingAmount;
+
+      order.status = ORDER_STATUS.FULLY_PAID;
+      order.paymentStatus = PAYMENT_STATUS.FULLY_PAID;
+      order.remainingAmount = 0;
+
+      if (!isReverting && isStatusChange) {
+        startGracePeriod({
+          previousPaymentStatus,
+          previousRemainingAmount,
+        });
+      } else if (isReverting && order.statusUpdateGracePeriod?.isActive) {
+        order.paymentStatus = order.statusUpdateGracePeriod.previousPaymentStatus || previousPaymentStatus;
+        if (typeof order.statusUpdateGracePeriod.previousRemainingAmount === 'number') {
+          order.remainingAmount = order.statusUpdateGracePeriod.previousRemainingAmount;
+        }
+        finalizeStatusUpdateGracePeriod();
+      }
+    } else {
+      order.status = normalizedNewStatus;
+      
+      if (isStatusChange && !isReverting) {
+        startGracePeriod();
+      } else if (isReverting && order.statusUpdateGracePeriod?.isActive) {
+        if (order.statusUpdateGracePeriod.previousPaymentStatus) {
+          order.paymentStatus = order.statusUpdateGracePeriod.previousPaymentStatus;
+        }
+        if (typeof order.statusUpdateGracePeriod.previousRemainingAmount === 'number') {
+          order.remainingAmount = order.statusUpdateGracePeriod.previousRemainingAmount;
+        }
+        finalizeStatusUpdateGracePeriod();
+      }
+    }
+
+    // Update delivery date if delivered
+    if (normalizedNewStatus === ORDER_STATUS.DELIVERED && !order.deliveredAt) {
+      order.deliveredAt = new Date();
+    }
+
+    // Add notes if provided
+    if (notes) {
+      order.notes = `${order.notes || ''}\n[Admin Status Update] ${notes}`.trim();
+    }
+
+    const timelineStatus = order.status;
+    const timelineNote = isReverting 
+      ? (notes ? `Status reverted to ${timelineStatus} from ${previousStatus}. Note: ${notes}` : `Status reverted to ${timelineStatus} from ${previousStatus}`)
+      : (notes ? `Status updated from ${previousStatus} to ${timelineStatus}. Note: ${notes}` : `Status updated from ${previousStatus} to ${timelineStatus}`);
+    
+    order.statusTimeline.push({
+      status: timelineStatus,
+      timestamp: now,
+      updatedBy: 'admin',
+      note: timelineNote,
+    });
+
+    await order.save();
+
+    const message = isReverting 
+      ? `Order status reverted to ${timelineStatus}`
+      : isStatusChange
+        ? `Order status updated to ${timelineStatus}. You have 1 hour to revert this change.`
+        : `Order status updated to ${timelineStatus} successfully`;
+
+    console.log(`✅ Order ${order.orderNumber} status updated to ${status} by admin${isStatusChange ? ' (grace period active)' : ''}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        order: {
+          id: order._id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          statusUpdateGracePeriod: order.statusUpdateGracePeriod,
+        },
+        message,
+        gracePeriod: isStatusChange ? {
+          isActive: true,
+          expiresAt: order.statusUpdateGracePeriod.expiresAt,
+          previousStatus: order.statusUpdateGracePeriod.previousStatus,
+        } : null,
       },
     });
   } catch (error) {
@@ -4485,8 +4811,8 @@ exports.getAnalytics = async (req, res, next) => {
     const revenueTrends = await Order.aggregate([
       {
         $match: {
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
         },
       },
@@ -4518,7 +4844,13 @@ exports.getAnalytics = async (req, res, next) => {
           },
           count: { $sum: 1 },
           delivered: {
-            $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] },
+            $sum: {
+              $cond: [
+                { $in: ['$status', [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID]] },
+                1,
+                0,
+              ],
+            },
           },
           cancelled: {
             $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] },
@@ -4534,8 +4866,8 @@ exports.getAnalytics = async (req, res, next) => {
     const topVendors = await Order.aggregate([
       {
         $match: {
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
           vendorId: { $ne: null },
         },
@@ -4579,8 +4911,8 @@ exports.getAnalytics = async (req, res, next) => {
     const topSellers = await Order.aggregate([
       {
         $match: {
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
           sellerId: { $ne: null },
         },
@@ -4612,8 +4944,8 @@ exports.getAnalytics = async (req, res, next) => {
     const topProducts = await Order.aggregate([
       {
         $match: {
-          status: 'delivered',
-          paymentStatus: 'fully_paid',
+          status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+          paymentStatus: PAYMENT_STATUS.FULLY_PAID,
           createdAt: { $gte: daysAgo },
         },
       },
@@ -4736,8 +5068,8 @@ exports.generateReports = async (req, res, next) => {
       const revenueSummary = await Order.aggregate([
         {
           $match: {
-            status: 'delivered',
-            paymentStatus: 'fully_paid',
+            status: { $in: [ORDER_STATUS.DELIVERED, ORDER_STATUS.FULLY_PAID] },
+            paymentStatus: PAYMENT_STATUS.FULLY_PAID,
             createdAt: { $gte: startDate },
           },
         },

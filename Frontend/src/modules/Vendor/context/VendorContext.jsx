@@ -133,7 +133,24 @@ function reducer(state, action) {
           error: null,
         },
       }
-    case 'UPDATE_ORDER_STATUS':
+    case 'UPDATE_ORDER_STATUS': {
+      const targetId = action.payload.orderId?.toString?.() ?? String(action.payload.orderId || '')
+      const applyOrderUpdates = (order) => {
+        const currentId =
+          order.id?.toString?.() ??
+          order._id?.toString?.() ??
+          order.orderId?.toString?.() ??
+          ''
+        if (currentId && targetId && currentId === targetId) {
+          return {
+            ...order,
+            status: action.payload.status ?? order.status,
+            ...(action.payload.updates || {}),
+          }
+        }
+        return order
+      }
+
       return {
         ...state,
         dashboard: {
@@ -141,16 +158,13 @@ function reducer(state, action) {
           orders: state.dashboard.orders
             ? {
                 ...state.dashboard.orders,
-                orders: state.dashboard.orders.orders?.map((order) =>
-                  order.id === action.payload.orderId
-                    ? { ...order, status: action.payload.status }
-                    : order,
-                ),
+                orders: state.dashboard.orders.orders?.map(applyOrderUpdates),
               }
             : null,
         },
         ordersUpdated: true,
       }
+    }
     case 'UPDATE_INVENTORY_STOCK':
       return {
         ...state,

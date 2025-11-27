@@ -63,10 +63,34 @@ export function useVendorApi() {
   const getOrderDetails = useCallback((orderId) => callApi(vendorApi.getOrderDetails, orderId), [callApi])
 
   const acceptOrder = useCallback(
-    (orderId) => {
-      return callApi(vendorApi.acceptOrder, orderId).then((result) => {
+    (orderId, notes) => {
+      return callApi(vendorApi.acceptOrder, orderId, notes).then((result) => {
         if (result.data) {
-          dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { orderId, status: 'processing' } })
+          dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { orderId, status: 'pending' } })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
+  const confirmOrderAcceptance = useCallback(
+    (orderId, data) => {
+      return callApi(vendorApi.confirmOrderAcceptance, orderId, data).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { orderId, status: 'awaiting' } })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
+  const cancelOrderAcceptance = useCallback(
+    (orderId, data) => {
+      return callApi(vendorApi.cancelOrderAcceptance, orderId, data).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'UPDATE_ORDER_STATUS', payload: { orderId, status: 'pending' } })
         }
         return result
       })
@@ -189,6 +213,8 @@ export function useVendorApi() {
     getOrders,
     getOrderDetails,
     acceptOrder,
+    confirmOrderAcceptance,
+    cancelOrderAcceptance,
     acceptOrderPartially,
     rejectOrder,
     escalateOrderPartial,

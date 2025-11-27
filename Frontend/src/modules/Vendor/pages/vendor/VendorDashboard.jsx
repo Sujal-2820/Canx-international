@@ -60,8 +60,11 @@ const NAV_ITEMS = [
 export function VendorDashboard({ onLogout }) {
   const { profile, dashboard } = useVendorState()
   const dispatch = useVendorDispatch()
-  const { acceptOrder, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getOrders } = useVendorApi()
+  const { acceptOrder, confirmOrderAcceptance, cancelOrderAcceptance, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getOrders } = useVendorApi()
   const [activeTab, setActiveTab] = useState('overview')
+  const [showAllOrders, setShowAllOrders] = useState(false)
+  const [showOrderDetails, setShowOrderDetails] = useState(false)
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null)
   const welcomeName = (profile?.name || 'Partner').split(' ')[0]
   const { isOpen, isMounted, currentAction, openPanel, closePanel } = useButtonAction()
   const { toasts, dismissToast, success, error, info, warning } = useToast()
@@ -371,7 +374,7 @@ export function VendorDashboard({ onLogout }) {
         <section className="space-y-6">
           {activeTab === 'overview' && <OverviewView onNavigate={navigateTo} welcomeName={welcomeName} openPanel={openPanel} />}
           {activeTab === 'inventory' && <InventoryView onNavigate={navigateTo} openPanel={openPanel} />}
-          {activeTab === 'orders' && (
+          {activeTab === 'orders' && !showAllOrders && !showOrderDetails && (
             <OrdersView 
               openPanel={openPanel}
               onOpenEscalationModal={(order) => {
@@ -382,6 +385,60 @@ export function VendorDashboard({ onLogout }) {
                 setSelectedOrderForEscalation(order)
                 setEscalationType(type)
                 setPartialEscalationModalOpen(true)
+              }}
+              onShowAllOrders={() => setShowAllOrders(true)}
+              onViewOrderDetails={(order) => {
+                setSelectedOrderForDetails(order)
+                setShowOrderDetails(true)
+              }}
+            />
+          )}
+          {activeTab === 'orders' && showAllOrders && !showOrderDetails && (
+            <AllOrdersView 
+              openPanel={openPanel}
+              onOpenEscalationModal={(order) => {
+                setSelectedOrderForEscalation(order)
+                setEscalationModalOpen(true)
+              }}
+              onOpenPartialEscalationModal={(order, type) => {
+                setSelectedOrderForEscalation(order)
+                setEscalationType(type)
+                setPartialEscalationModalOpen(true)
+              }}
+              onBack={() => setShowAllOrders(false)}
+              onViewOrderDetails={(order) => {
+                setSelectedOrderForDetails(order)
+                setShowOrderDetails(true)
+              }}
+            />
+          )}
+          {activeTab === 'orders' && showOrderDetails && selectedOrderForDetails && (
+            <OrderDetailsView
+              order={selectedOrderForDetails}
+              openPanel={openPanel}
+              onBack={() => {
+                setShowOrderDetails(false)
+                setSelectedOrderForDetails(null)
+              }}
+              onOpenEscalationModal={(order) => {
+                setSelectedOrderForEscalation(order)
+                setEscalationModalOpen(true)
+              }}
+              onOpenPartialEscalationModal={(order, type) => {
+                setSelectedOrderForEscalation(order)
+                setEscalationType(type)
+                setPartialEscalationModalOpen(true)
+              }}
+              onOrderUpdated={() => {
+                // Refresh order details after update
+                getOrders().then((result) => {
+                  if (result.data?.orders) {
+                    const updatedOrder = result.data.orders.find(o => o._id === selectedOrderForDetails.id || o.id === selectedOrderForDetails.id)
+                    if (updatedOrder) {
+                      setSelectedOrderForDetails(updatedOrder)
+                    }
+                  }
+                })
               }}
             />
           )}
@@ -450,11 +507,88 @@ export function VendorDashboard({ onLogout }) {
             try {
               // Order actions
               if (buttonId === 'order-available' && data.orderId) {
-                const result = await acceptOrder(data.orderId)
+                const result = await acceptOrder(data.orderId, data.notes)
                 if (result.data) {
-                  success('Order accepted successfully!')
+                  success('Order acceptance initiated. You have 1 hour to confirm or escalate.')
+                  getOrders().then((result) => {
+                    if (result.data) {
+                      dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                      if (showOrderDetails && selectedOrderForDetails) {
+                        const updatedOrder = result.data.orders?.find((o) => {
+                          const candidateId =
+                            o._id?.toString?.() ||
+                            o.id?.toString?.() ||
+                            ''
+                          const selectedId =
+                            selectedOrderForDetails.id?.toString?.() ||
+                            selectedOrderForDetails._id?.toString?.() ||
+                            ''
+                          return candidateId && selectedId && candidateId === selectedId
+                        })
+                        if (updatedOrder) {
+                          setSelectedOrderForDetails(updatedOrder)
+                        }
+                      }
+                    }
+                  })
                 } else if (result.error) {
                   error(result.error.message || 'Failed to accept order')
+                }
+              } else if (buttonId === 'confirm-acceptance' && data.orderId) {
+                const result = await confirmOrderAcceptance(data.orderId, { notes: data.notes })
+                if (result.data) {
+                  success('Order acceptance confirmed successfully!')
+                  getOrders().then((result) => {
+                    if (result.data) {
+                      dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                      if (showOrderDetails && selectedOrderForDetails) {
+                        const updatedOrder = result.data.orders?.find((o) => {
+                          const candidateId =
+                            o._id?.toString?.() ||
+                            o.id?.toString?.() ||
+                            ''
+                          const selectedId =
+                            selectedOrderForDetails.id?.toString?.() ||
+                            selectedOrderForDetails._id?.toString?.() ||
+                            ''
+                          return candidateId && selectedId && candidateId === selectedId
+                        })
+                        if (updatedOrder) {
+                          setSelectedOrderForDetails(updatedOrder)
+                        }
+                      }
+                    }
+                  })
+                } else if (result.error) {
+                  error(result.error.message || 'Failed to confirm acceptance')
+                }
+              } else if (buttonId === 'cancel-acceptance' && data.orderId) {
+                const result = await cancelOrderAcceptance(data.orderId, { reason: data.reason })
+                if (result.data) {
+                  success('Order acceptance cancelled. You can now escalate if needed.')
+                  getOrders().then((result) => {
+                    if (result.data) {
+                      dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                      if (showOrderDetails && selectedOrderForDetails) {
+                        const updatedOrder = result.data.orders?.find((o) => {
+                          const candidateId =
+                            o._id?.toString?.() ||
+                            o.id?.toString?.() ||
+                            ''
+                          const selectedId =
+                            selectedOrderForDetails.id?.toString?.() ||
+                            selectedOrderForDetails._id?.toString?.() ||
+                            ''
+                          return candidateId && selectedId && candidateId === selectedId
+                        })
+                        if (updatedOrder) {
+                          setSelectedOrderForDetails(updatedOrder)
+                        }
+                      }
+                    }
+                  })
+                } else if (result.error) {
+                  error(result.error.message || 'Failed to cancel acceptance')
                 }
               } else if (buttonId === 'order-not-available' && data.orderId) {
                 // Open a panel to get reason for rejection
@@ -502,7 +636,26 @@ export function VendorDashboard({ onLogout }) {
               } else if (buttonId === 'update-order-status' && data.orderId && data.status) {
                 const result = await updateOrderStatus(data.orderId, { status: data.status })
                 if (result.data) {
-                  success('Order status updated successfully!')
+                  // Show message from backend (includes grace period info if applicable)
+                  success(result.data.message || 'Order status updated successfully!')
+                  // Refresh orders and dashboard
+                  getOrders().then((result) => {
+                    if (result.data) {
+                      dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                      // If viewing order details, refresh the order
+                      if (showOrderDetails && selectedOrderForDetails) {
+                        const updatedOrder = result.data.orders?.find(o => 
+                          (o._id && selectedOrderForDetails.id && o._id.toString() === selectedOrderForDetails.id.toString()) ||
+                          (o.id && selectedOrderForDetails.id && o.id.toString() === selectedOrderForDetails.id.toString()) ||
+                          (o._id && selectedOrderForDetails._id && o._id.toString() === selectedOrderForDetails._id.toString())
+                        )
+                        if (updatedOrder) {
+                          setSelectedOrderForDetails(updatedOrder)
+                        }
+                      }
+                    }
+                  })
+                  fetchDashboardData()
                 } else if (result.error) {
                   error(result.error.message || 'Failed to update order status')
                 }
@@ -515,6 +668,12 @@ export function VendorDashboard({ onLogout }) {
                 })
                 if (result.data) {
                   success('Stock updated successfully!')
+                  // Refresh dashboard data to update inventory stats
+                  fetchDashboardData()
+                  // Refresh inventory if on inventory tab
+                  if (activeTab === 'inventory') {
+                    // Inventory will refresh via useEffect when products data changes
+                  }
                 } else if (result.error) {
                   error(result.error.message || 'Failed to update stock')
                 }
@@ -529,6 +688,8 @@ export function VendorDashboard({ onLogout }) {
                 const result = await requestCreditPurchase(purchaseData)
                 if (result.data) {
                   success('Purchase request submitted successfully. Waiting for Admin approval.')
+                  // Refresh credit info and dashboard
+                  fetchDashboardData()
                 } else if (result.error) {
                   error(result.error.message || 'Failed to submit purchase request')
                 }
@@ -563,13 +724,25 @@ export function VendorDashboard({ onLogout }) {
         }}
         order={selectedOrderForEscalation}
         onSuccess={() => {
-          // Refresh orders
+          // Refresh orders - modal already closes itself
           if (activeTab === 'orders') {
-            getOrders({ status: selectedFilter === 'all' ? undefined : selectedFilter }).then((result) => {
+            getOrders().then((result) => {
               if (result.data) {
                 dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                // If viewing order details, refresh the order
+                if (showOrderDetails && selectedOrderForDetails) {
+                  const updatedOrder = result.data.orders?.find(o => 
+                    (o._id && selectedOrderForDetails.id && o._id.toString() === selectedOrderForDetails.id.toString()) ||
+                    (o.id && selectedOrderForDetails.id && o.id.toString() === selectedOrderForDetails.id.toString()) ||
+                    (o._id && selectedOrderForDetails._id && o._id.toString() === selectedOrderForDetails._id.toString())
+                  )
+                  if (updatedOrder) {
+                    setSelectedOrderForDetails(updatedOrder)
+                  }
+                }
               }
             })
+            fetchDashboardData()
           }
         }}
       />
@@ -583,13 +756,25 @@ export function VendorDashboard({ onLogout }) {
         order={selectedOrderForEscalation}
         escalationType={escalationType}
         onSuccess={() => {
-          // Refresh orders
+          // Refresh orders - modal already closes itself
           if (activeTab === 'orders') {
-            getOrders({ status: selectedFilter === 'all' ? undefined : selectedFilter }).then((result) => {
+            getOrders().then((result) => {
               if (result.data) {
                 dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                // If viewing order details, refresh the order
+                if (showOrderDetails && selectedOrderForDetails) {
+                  const updatedOrder = result.data.orders?.find(o => 
+                    (o._id && selectedOrderForDetails.id && o._id.toString() === selectedOrderForDetails.id.toString()) ||
+                    (o.id && selectedOrderForDetails.id && o.id.toString() === selectedOrderForDetails.id.toString()) ||
+                    (o._id && selectedOrderForDetails._id && o._id.toString() === selectedOrderForDetails._id.toString())
+                  )
+                  if (updatedOrder) {
+                    setSelectedOrderForDetails(updatedOrder)
+                  }
+                }
               }
             })
+            fetchDashboardData()
           }
         }}
       />
@@ -1157,6 +1342,8 @@ function InventoryView({ openPanel }) {
       if (result.data) {
         success('Order request submitted. Admin will review and approve.')
         setSelectedProduct(null)
+        // Refresh dashboard to update credit info
+        fetchDashboardData()
       } else if (result.error) {
         const message = result.error.message || 'Failed to submit order request.'
         setOrderError(message)
@@ -1283,6 +1470,8 @@ function InventoryView({ openPanel }) {
         resetOrderRequestForm()
         setShowOrderRequestScreen(false)
         loadPurchaseRequests()
+        // Refresh dashboard to update credit info
+        fetchDashboardData()
       } else if (result.error) {
         const message = result.error.message || 'Failed to submit stock request.'
         setOrderRequestError(message)
@@ -1330,34 +1519,36 @@ function InventoryView({ openPanel }) {
 
   const metricIcons = [BoxIcon, ChartIcon, SparkIcon, TruckIcon]
 
-  const alerts = [
-    {
+  // Generate dynamic alerts based on low stock items from dashboard
+  const lowStockItems = dashboard.overview?.inventory?.lowStockItems || []
+  const alerts = []
+  
+  // Add alert for low stock items if any exist
+  if (lowStockItems.length > 0) {
+    const lowStockCount = lowStockItems.length
+    alerts.push({
       title: 'Need to order more',
-      body: 'Micro nutrients getting low. Request before deadline.',
-      badge: 'Time to get • 3 days',
+      body: `${lowStockCount} product${lowStockCount > 1 ? 's' : ''} running low. Request stock before deadline.`,
+      badge: 'Low stock • Action needed',
       tone: 'warn',
       action: 'Raise request',
-    },
-    {
-      title: 'Talk to supplier',
-      body: 'Confirm NPK 24:24:0 availability with admin hub.',
-      badge: 'Supplier • Admin hub',
-      tone: 'teal',
-      action: 'Contact admin',
-    },
-    {
-      title: 'Papers to upload',
-      body: '2 products waiting for quality certificates before sending.',
-      badge: 'Quality check pending',
-      tone: 'neutral',
-      action: 'Upload docs',
-    },
-  ]
-
+    })
+  }
+  
+  // Calculate stock progress from actual inventory data
   const stockProgress = {
-    Healthy: 86,
-    Low: 48,
-    Critical: 22,
+    Healthy: products.filter(p => {
+      const stock = p.vendorStock ?? 0
+      return stock > 75
+    }).length,
+    Low: products.filter(p => {
+      const stock = p.vendorStock ?? 0
+      return stock > 0 && stock <= 75
+    }).length,
+    Critical: products.filter(p => {
+      const stock = p.vendorStock ?? 0
+      return stock === 0
+    }).length,
   }
 
   if (selectedProduct) {
@@ -1693,7 +1884,7 @@ function InventoryView({ openPanel }) {
             {hasUnpaidCredits && (
               <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4">
                 <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0">
+                  <div className="shrink-0">
                     <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
@@ -2194,11 +2385,11 @@ function InventoryView({ openPanel }) {
               <button
                 type="button"
                 onClick={() => {
-                  if (card.title === 'Restock advisory') {
+                  if (card.title === 'Need to order more' || card.action === 'Raise request') {
                     openPanel('raise-request')
-                  } else if (card.title === 'Vendor coordination') {
+                  } else if (card.action === 'Contact admin') {
                     openPanel('ping-admin')
-                  } else if (card.title === 'Document updates') {
+                  } else if (card.action === 'Upload docs') {
                     openPanel('upload-docs')
                   }
                 }}
@@ -2262,7 +2453,7 @@ function InventoryView({ openPanel }) {
                     {isArriving && (
                       <div className="rounded-lg border border-orange-200 bg-orange-50 p-2">
                         <div className="flex items-center gap-2">
-                          <TruckIcon className="h-4 w-4 text-orange-600 flex-shrink-0" />
+                          <TruckIcon className="h-4 w-4 text-orange-600 shrink-0" />
                           <p className="text-xs font-semibold text-orange-800">
                             Product is arriving within 24 hours
                           </p>
@@ -2321,30 +2512,33 @@ function InventoryView({ openPanel }) {
         )}
       </section>
 
-      <div id="inventory-restock" className="vendor-card border border-brand/20 bg-white px-5 py-4 shadow-card">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-surface-foreground">Need to order more</p>
-            <p className="text-xs text-muted-foreground">
-              Micro Nutrients getting low. Submit a loan request within 48h to avoid problems.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="vendor-chip warn">Time to get • 3 days</span>
-            <button
-              className="rounded-full bg-brand px-5 py-2 text-xs font-semibold text-brand-foreground"
-              onClick={() => openPanel('raise-request')}
-            >
-              Raise request
-            </button>
+      {/* Show restock advisory only if there are low stock items */}
+      {lowStockItems.length > 0 && (
+        <div id="inventory-restock" className="vendor-card border border-brand/20 bg-white px-5 py-4 shadow-card">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-surface-foreground">Need to order more</p>
+              <p className="text-xs text-muted-foreground">
+                {lowStockItems.length} product{lowStockItems.length > 1 ? 's' : ''} running low. Submit a loan request to avoid stockout.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="vendor-chip warn">Low stock • Action needed</span>
+              <button
+                className="rounded-full bg-brand px-5 py-2 text-xs font-semibold text-brand-foreground"
+                onClick={() => openPanel('raise-request')}
+              >
+                Raise request
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
-function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationModal }) {
+function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationModal, onShowAllOrders, onViewOrderDetails }) {
   const { dashboard } = useVendorState()
   const dispatch = useVendorDispatch()
   const { getOrders, getOrderDetails } = useVendorApi()
@@ -2352,12 +2546,9 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
   const [ordersData, setOrdersData] = useState(null)
 
   useEffect(() => {
-    // Build params object, only include status if it's not 'all'
-    const params = {};
-    if (selectedFilter !== 'all') {
-      params.status = selectedFilter;
-    }
-    getOrders(params).then((result) => {
+    // Always fetch all orders (no status filter) to get accurate totals
+    // We'll filter client-side based on selectedFilter
+    getOrders({}).then((result) => {
       console.log('📦 OrdersView: getOrders result:', result)
       if (result.data) {
         console.log('📦 OrdersView: Orders data:', result.data)
@@ -2370,31 +2561,31 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
     }).catch((error) => {
       console.error('❌ OrdersView: Exception fetching orders:', error)
     })
-  }, [getOrders, selectedFilter, dispatch])
+  }, [getOrders, dispatch])
 
-  const STATUS_FLOW = ['awaiting', 'dispatched', 'delivered']
-  const STAGES = ['Awaiting', 'Dispatched', 'Delivered']
+  const STATUS_FLOW = ['awaiting', 'accepted', 'dispatched', 'delivered', 'fully_paid']
+  const STAGES = ['Awaiting', 'Accepted', 'Dispatched', 'Delivered']
 
   const normalizeStatus = (status) => {
     if (!status) return 'pending'
     const normalized = status.toLowerCase()
-    // Backend statuses: pending, awaiting, processing, ready_for_delivery, out_for_delivery, delivered
+    if (normalized === 'fully_paid') return 'fully_paid'
     if (normalized === 'delivered') return 'delivered'
-    if (normalized === 'out_for_delivery') return 'dispatched'
-    if (normalized === 'ready_for_delivery') return 'dispatched'
-    if (normalized === 'processing') return 'awaiting'
-    if (normalized === 'awaiting') return 'awaiting'
-    if (normalized === 'pending') return 'pending'
+    if (normalized === 'out_for_delivery' || normalized === 'ready_for_delivery') return 'dispatched'
+    if (normalized === 'accepted' || normalized === 'processing') return 'accepted'
+    if (normalized === 'awaiting' || normalized === 'pending') return 'awaiting'
     // Fallback
     if (normalized.includes('deliver')) return 'delivered'
     if (normalized.includes('dispatch')) return 'dispatched'
-    return 'pending'
+    return 'awaiting'
   }
 
   const stageIndex = (status) => {
     const key = normalizeStatus(status)
-    if (key === 'delivered') return 2
-    if (key === 'dispatched') return 1
+    if (key === 'fully_paid') return 3
+    if (key === 'delivered') return 3
+    if (key === 'dispatched') return 2
+    if (key === 'accepted') return 1
     return 0
   }
 
@@ -2404,39 +2595,96 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
   console.log('📦 OrdersView: ordersData:', ordersData)
   console.log('📦 OrdersView: dashboard.orders:', dashboard.orders)
   
-  const orders = backendOrders.map((order) => ({
-    id: order._id || order.id,
-    orderNumber: order.orderNumber,
-    farmer: order.userId?.name || 'Unknown Customer',
-    value: `₹${(order.totalAmount || 0).toLocaleString('en-IN')}`,
-    payment: order.paymentStatus === 'paid' ? 'Paid' : order.paymentStatus === 'partial' ? 'Partial' : 'Pending',
-    status: order.status || 'pending',
-    items: order.items || [],
-    customerPhone: order.userId?.phone || '',
-    deliveryAddress: order.deliveryAddress || {},
-    createdAt: order.createdAt,
-    next: order.status === 'pending' ? 'Confirm availability within 1 hour' : 
-          order.status === 'awaiting' ? 'Process and dispatch order' :
-          order.status === 'processing' ? 'Prepare for delivery' :
-          order.status === 'ready_for_delivery' ? 'Mark as out for delivery' :
-          order.status === 'out_for_delivery' ? 'Mark as delivered' : null,
-  }))
-  
-  const totals = orders.reduce(
+  const totals = backendOrders.reduce(
     (acc, order) => {
       const normalizedStatus = normalizeStatus(order.status)
-      if (normalizedStatus === 'delivered') acc.delivered += 1
-      else if (normalizedStatus === 'dispatched') acc.dispatched += 1
-      else acc.awaiting += 1
+      if (normalizedStatus === 'fully_paid') {
+        acc.delivered += 1
+      } else if (normalizedStatus === 'delivered') {
+        acc.delivered += 1
+      } else if (normalizedStatus === 'dispatched') {
+        acc.dispatched += 1
+      } else if (normalizedStatus === 'accepted') {
+        acc.accepted += 1
+      } else {
+        acc.awaiting += 1
+      }
       return acc
     },
-    { awaiting: 0, dispatched: 0, delivered: 0 },
+    { awaiting: 0, accepted: 0, dispatched: 0, delivered: 0 },
   )
-  const totalOrders = orders.length
+  
+  // Filter out orders that already completed their workflow
+  const activeOrders = backendOrders.filter((order) => {
+    const normalizedStatus = normalizeStatus(order.status)
+    const isPartialPayment = order.paymentPreference !== 'full'
+    if (isPartialPayment) {
+      return normalizedStatus !== 'fully_paid'
+    }
+    return normalizedStatus !== 'delivered'
+  })
+  const totalOrders = activeOrders.length
+  
+  // Apply client-side status filter based on selectedFilter
+  let filteredOrders = activeOrders
+  if (selectedFilter !== 'all') {
+    filteredOrders = activeOrders.filter((order) => {
+      const normalized = normalizeStatus(order.status)
+      if (selectedFilter === 'delivered') {
+        return normalized === 'delivered' || normalized === 'fully_paid'
+      }
+      return normalized === selectedFilter
+    })
+  }
+  
+  // Map filtered orders for display
+  const orders = filteredOrders.map((order) => {
+    const isFullyPaid = order.paymentStatus === 'fully_paid'
+    const isDelivered = order.status === 'delivered'
+    
+    // Determine next message based on status and payment
+    let nextMessage = null
+    if (order.status === 'pending') {
+      nextMessage = 'Confirm availability within 1 hour'
+    } else if (order.status === 'awaiting') {
+      nextMessage = 'Process and dispatch order'
+    } else if (order.status === 'processing') {
+      nextMessage = 'Prepare for delivery'
+    } else if (order.status === 'ready_for_delivery') {
+      nextMessage = 'Mark as out for delivery'
+    } else if (order.status === 'out_for_delivery') {
+      nextMessage = 'Mark as delivered'
+    } else if (isDelivered) {
+      // For delivered orders, check payment status
+      if (isFullyPaid) {
+        nextMessage = 'Payment completed'
+      } else {
+        nextMessage = 'Mark payment as done'
+      }
+    }
+    
+    return {
+      id: order._id || order.id,
+      orderNumber: order.orderNumber,
+      farmer: order.userId?.name || 'Unknown Customer',
+      value: `₹${(order.totalAmount || 0).toLocaleString('en-IN')}`,
+      payment: isFullyPaid ? 'Paid' : order.paymentStatus === 'partial_paid' ? 'Partial' : 'Pending',
+      paymentStatus: order.paymentStatus || 'pending',
+      paymentPreference: order.paymentPreference || 'partial',
+      status: order.status || 'pending',
+      items: order.items || [],
+      customerPhone: order.userId?.phone || '',
+      deliveryAddress: order.deliveryAddress || {},
+      createdAt: order.createdAt,
+      statusUpdateGracePeriod: order.statusUpdateGracePeriod || null,
+      next: nextMessage,
+    }
+  })
 
   const filterChips = [
     { id: 'all', label: 'All orders', value: totalOrders },
     { id: 'awaiting', label: 'Awaiting', value: totals.awaiting },
+    { id: 'accepted', label: 'Accepted', value: totals.accepted },
     { id: 'dispatched', label: 'Dispatched', value: totals.dispatched },
     { id: 'delivered', label: 'Delivered', value: totals.delivered },
   ]
@@ -2483,6 +2731,27 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
             value: Math.max(0, totals.awaiting - 2),
             meta: 'Taking too long',
             tone: 'warn',
+          },
+        ]
+      case 'accepted':
+        return [
+          {
+            label: 'Ready to dispatch',
+            value: totals.accepted,
+            meta: 'Accepted & pending dispatch',
+            tone: 'teal',
+          },
+          {
+            label: 'Dispatch SLA',
+            value: '24h',
+            meta: 'Target to dispatch',
+            tone: 'teal',
+          },
+          {
+            label: 'Next actions',
+            value: totals.accepted > 0 ? 'Pack & assign' : 'All clear',
+            meta: 'Keep SLA green',
+            tone: totals.accepted > 0 ? 'warn' : 'success',
           },
         ]
       case 'dispatched':
@@ -2582,22 +2851,67 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
                 <div>
             <h3 className="overview-section__title">Orders</h3>
                 </div>
-          <button type="button" className="orders-section__cta" onClick={() => openPanel('view-sla-policy')}>
-            View delivery policy
-          </button>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {onShowAllOrders && (
+              <button 
+                type="button" 
+                className="orders-section__cta" 
+                onClick={onShowAllOrders}
+                style={{ 
+                  fontSize: '14px', 
+                  fontWeight: '500',
+                  color: '#3B82F6',
+                  textDecoration: 'underline',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '0'
+                }}
+              >
+                SEE ALL
+              </button>
+            )}
+            <button type="button" className="orders-section__cta" onClick={() => openPanel('view-sla-policy')}>
+              View delivery policy
+            </button>
+          </div>
               </div>
         <div className="orders-list">
           {orders.length > 0 ? orders.map((order) => {
             const normalizedStatus = normalizeStatus(order.status)
-            // Show accept/reject actions for pending orders
-            const showAvailabilityActions = order.status === 'pending' || normalizedStatus === 'pending'
+            // Check if order is in acceptance grace period
+            const isInGracePeriod = order.acceptanceGracePeriod?.isActive
+            const gracePeriodExpiresAt = order.acceptanceGracePeriod?.expiresAt
+            const timeRemaining = gracePeriodExpiresAt ? Math.max(0, Math.floor((new Date(gracePeriodExpiresAt) - new Date()) / 1000 / 60)) : 0
+            // Check if order is in status update grace period
+            const isInStatusUpdateGracePeriod = order.statusUpdateGracePeriod?.isActive
+            const statusUpdateGracePeriodExpiresAt = order.statusUpdateGracePeriod?.expiresAt
+            const statusUpdateTimeRemaining = statusUpdateGracePeriodExpiresAt ? Math.max(0, Math.floor((new Date(statusUpdateGracePeriodExpiresAt) - new Date()) / 1000 / 60)) : 0
+            const previousStatus = order.statusUpdateGracePeriod?.previousStatus
+            const isPartialPayment = order.paymentPreference !== 'full'
+            const paymentStatus = order.paymentStatus || 'pending'
+            const paymentCompleted = paymentStatus === 'fully_paid'
+            // Show accept/reject actions only while awaiting confirmation
+            const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod
+            const workflowCompleted = isPartialPayment ? normalizedStatus === 'fully_paid' : normalizedStatus === 'delivered'
+            const canShowStatusUpdate = !showAvailabilityActions && !isInStatusUpdateGracePeriod && !isInGracePeriod && !workflowCompleted && normalizedStatus !== 'awaiting'
             const nextMessage =
               order.next ||
-              (normalizedStatus === 'awaiting'
-                ? 'Confirm availability within 1 hour'
-                : normalizedStatus === 'dispatched'
-                  ? 'Deliver before the 24h SLA'
-                  : 'Mark payment as collected')
+              (isInGracePeriod
+                ? `Confirm or escalate within ${timeRemaining} minutes`
+                : isInStatusUpdateGracePeriod
+                  ? `You can revert status within ${statusUpdateTimeRemaining} minutes`
+                  : normalizedStatus === 'awaiting'
+                    ? 'Accept or escalate this order'
+                    : normalizedStatus === 'accepted'
+                      ? 'Dispatch items before SLA ends'
+                      : normalizedStatus === 'dispatched'
+                        ? 'Deliver before the 24h SLA'
+                        : normalizedStatus === 'delivered'
+                          ? (isPartialPayment ? 'Collect remaining payment' : 'Delivery completed')
+                          : normalizedStatus === 'fully_paid'
+                            ? 'Payment completed'
+                            : 'Update order status')
 
             return (
             <article key={order.id} className="orders-card">
@@ -2612,9 +2926,24 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
               </div>
             </div>
                 <div className="orders-card__status">
-                  <span className="orders-card__payment">{order.payment}</span>
+                  <span className={cn(
+                    'orders-card__payment',
+                    order.paymentStatus === 'fully_paid' && 'is-paid'
+                  )}>
+                    {order.payment}
+                  </span>
                   <span className="orders-card__stage-label">
-                    {normalizedStatus === 'awaiting' ? 'Awaiting' : normalizedStatus === 'dispatched' ? 'Dispatched' : normalizedStatus === 'delivered' ? 'Delivered' : order.status}
+                    {normalizedStatus === 'awaiting'
+                      ? 'Awaiting'
+                      : normalizedStatus === 'accepted'
+                        ? 'Accepted'
+                        : normalizedStatus === 'dispatched'
+                          ? 'Dispatched'
+                          : normalizedStatus === 'delivered'
+                            ? (isPartialPayment && !paymentCompleted ? 'Delivered • Awaiting Payment' : 'Delivered')
+                            : normalizedStatus === 'fully_paid'
+                              ? 'Delivered • Paid'
+                              : order.status}
                   </span>
             </div>
               </header>
@@ -2634,65 +2963,186 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
               ))}
             </div>
               <div className="orders-card__actions">
-                <button
-                  type="button"
-                  className="orders-card__action is-primary"
-                  onClick={() =>
-                    openPanel('update-order-status', {
-                      orderId: order.id,
-                      status: normalizedStatus,
-                    })
-                  }
-                >
-                  Update status
-                </button>
-                {showAvailabilityActions && (
+                {isInGracePeriod ? (
                   <>
+                    <div className="orders-card__grace-period-notice" style={{ 
+                      padding: '8px 12px', 
+                      marginBottom: '8px', 
+                      backgroundColor: '#FEF3C7', 
+                      border: '1px solid #FCD34D', 
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      color: '#92400E'
+                    }}>
+                      ⏰ Grace Period: {timeRemaining} minutes remaining. Confirm or escalate now.
+                    </div>
                     <button
                       type="button"
                       className="orders-card__action is-primary"
-                      onClick={() => openPanel('order-available', { orderId: order.id })}
+                      onClick={() => openPanel('confirm-acceptance', { orderId: order.id })}
                     >
-                      Accept Order
+                      Confirm Acceptance
                     </button>
                     <button
                       type="button"
                       className="orders-card__action is-secondary"
-                      onClick={async () => {
-                        const details = await getOrderDetails(order.id)
-                        if (details.data?.order) {
-                          onOpenEscalationModal?.(details.data.order)
-                        }
-                      }}
+                      onClick={() => openPanel('cancel-acceptance', { orderId: order.id })}
                     >
-                      Escalate All
-                    </button>
-                    <button
-                      type="button"
-                      className="orders-card__action is-secondary"
-                      onClick={async () => {
-                        const details = await getOrderDetails(order.id)
-                        if (details.data?.order) {
-                          onOpenPartialEscalationModal?.(details.data.order, 'items')
-                        }
-                      }}
-                    >
-                      Partial Items
-                    </button>
-                    <button
-                      type="button"
-                      className="orders-card__action is-secondary"
-                      onClick={async () => {
-                        const details = await getOrderDetails(order.id)
-                        if (details.data?.order) {
-                          onOpenPartialEscalationModal?.(details.data.order, 'quantities')
-                        }
-                      }}
-                    >
-                      Partial Qty
+                      Cancel & Escalate
                     </button>
                   </>
+                ) : (
+                  <>
+                    {/* Show status update grace period notice if active */}
+                    {isInStatusUpdateGracePeriod && (
+                      <div className="orders-card__grace-period-notice" style={{ 
+                        padding: '8px 12px', 
+                        marginBottom: '8px', 
+                        backgroundColor: '#DBEAFE', 
+                        border: '1px solid #93C5FD', 
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        color: '#1E40AF'
+                      }}>
+                        ⏰ Status Update Grace Period: {statusUpdateTimeRemaining} minutes remaining. You can revert to "{previousStatus}" status or confirm now.
+                      </div>
+                    )}
+                    {/* Show update status button for accepted orders (not pending, not paid, not in grace period) */}
+                    {canShowStatusUpdate && (
+                      <button
+                        type="button"
+                        className="orders-card__action is-primary"
+                        onClick={() =>
+                          openPanel('update-order-status', {
+                            orderId: order.id,
+                            status: normalizedStatus,
+                          })
+                        }
+                      >
+                        Update status
+                      </button>
+                    )}
+                    {/* Show confirm and revert buttons during grace period */}
+                    {!workflowCompleted && isInStatusUpdateGracePeriod && (
+                      <>
+                        <button
+                          type="button"
+                          className="orders-card__action is-primary"
+                          onClick={async () => {
+                            const result = await updateOrderStatus(order.id, { finalizeGracePeriod: true })
+                            if (result.data) {
+                              success(result.data.message || 'Status update confirmed successfully!')
+                              getOrders().then((result) => {
+                                if (result.data) {
+                                  dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                                }
+                              })
+                              fetchDashboardData()
+                            } else if (result.error) {
+                              error(result.error.message || 'Failed to confirm status update')
+                            }
+                          }}
+                        >
+                          Confirm Status Update
+                        </button>
+                        {previousStatus && (
+                          <button
+                            type="button"
+                            className="orders-card__action is-secondary"
+                            onClick={() =>
+                              openPanel('update-order-status', {
+                                orderId: order.id,
+                                status: previousStatus,
+                                revert: true,
+                              })
+                            }
+                          >
+                            Revert to {previousStatus}
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {/* Show paid badge if order is fully paid */}
+                    {(normalizedStatus === 'fully_paid' || (!isPartialPayment && paymentCompleted && normalizedStatus === 'delivered')) && (
+                      <div className="orders-card__action is-success" style={{ 
+                        padding: '8px 16px', 
+                        borderRadius: '8px',
+                        backgroundColor: '#D1FAE5',
+                        color: '#065F46',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        ✓ Paid
+                      </div>
+                    )}
+                    {showAvailabilityActions && (
+                      <>
+                        <button
+                          type="button"
+                          className="orders-card__action is-primary"
+                          onClick={() => openPanel('order-available', { orderId: order.id })}
+                        >
+                          Accept Order
+                        </button>
+                        <button
+                          type="button"
+                          className="orders-card__action is-secondary"
+                          onClick={async () => {
+                            const details = await getOrderDetails(order.id)
+                            if (details.data?.order) {
+                              onOpenEscalationModal?.(details.data.order)
+                            }
+                          }}
+                        >
+                          Escalate All
+                        </button>
+                        <button
+                          type="button"
+                          className="orders-card__action is-secondary"
+                          onClick={async () => {
+                            const details = await getOrderDetails(order.id)
+                            if (details.data?.order) {
+                              onOpenPartialEscalationModal?.(details.data.order, 'items')
+                            }
+                          }}
+                        >
+                          Partial Items
+                        </button>
+                        <button
+                          type="button"
+                          className="orders-card__action is-secondary"
+                          onClick={async () => {
+                            const details = await getOrderDetails(order.id)
+                            if (details.data?.order) {
+                              onOpenPartialEscalationModal?.(details.data.order, 'quantities')
+                            }
+                          }}
+                        >
+                          Partial Qty
+                        </button>
+                      </>
+                    )}
+                  </>
                 )}
+              </div>
+              {/* View Details Button */}
+              <div style={{ padding: '0 16px 12px', borderTop: '1px solid #E5E7EB', marginTop: '12px', paddingTop: '12px' }}>
+                <button
+                  type="button"
+                  className="orders-card__action is-secondary"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                  onClick={async () => {
+                    const details = await getOrderDetails(order.id)
+                    if (details.data?.order) {
+                      onViewOrderDetails?.(details.data.order)
+                    }
+                  }}
+                >
+                  View Details
+                </button>
               </div>
             </article>
             )
@@ -2729,6 +3179,800 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
   )
 }
 
+function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationModal, onBack, onViewOrderDetails }) {
+  const { dashboard } = useVendorState()
+  const dispatch = useVendorDispatch()
+  const { getOrders, getOrderDetails } = useVendorApi()
+  const [ordersData, setOrdersData] = useState(null)
+  const [selectedFilter, setSelectedFilter] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  const filterTabs = [
+    { id: 'all', label: 'All Orders' },
+    { id: 'awaiting', label: 'Awaiting' },
+    { id: 'accepted', label: 'Accepted' },
+    { id: 'dispatched', label: 'Dispatched' },
+    { id: 'delivered', label: 'Delivered' },
+    { id: 'fully_paid', label: 'Fully Paid' },
+  ]
+
+  const fetchOrders = useCallback(async () => {
+    setIsLoading(true)
+    const params = {}
+    
+    // Add status filter
+    if (selectedFilter !== 'all') {
+      if (selectedFilter === 'fully_paid') {
+        params.paymentStatus = 'fully_paid'
+      } else {
+        params.status = selectedFilter
+      }
+    }
+    
+    // Add search query (only if not empty)
+    const trimmedSearch = searchQuery.trim()
+    if (trimmedSearch) {
+      params.search = trimmedSearch
+    }
+
+    try {
+      const result = await getOrders(params)
+      if (result.data) {
+        setOrdersData(result.data)
+        dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+      }
+    } catch (error) {
+      console.error('Error fetching orders:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [getOrders, selectedFilter, searchQuery, dispatch])
+
+  // Debounce search - fetch when user stops typing or filter changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchOrders()
+    }, 500) // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, selectedFilter])
+
+  // Initial fetch on mount
+  useEffect(() => {
+    fetchOrders()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const STATUS_FLOW = ['awaiting', 'accepted', 'dispatched', 'delivered', 'fully_paid']
+  const STAGES = ['Awaiting', 'Accepted', 'Dispatched', 'Delivered']
+
+  const normalizeStatus = (status) => {
+    if (!status) return 'awaiting'
+    const normalized = status.toLowerCase()
+    if (normalized === 'fully_paid') return 'fully_paid'
+    if (normalized === 'delivered') return 'delivered'
+    if (normalized === 'out_for_delivery' || normalized === 'ready_for_delivery') return 'dispatched'
+    if (normalized === 'accepted' || normalized === 'processing') return 'accepted'
+    if (normalized === 'awaiting' || normalized === 'pending') return 'awaiting'
+    if (normalized.includes('deliver')) return 'delivered'
+    if (normalized.includes('dispatch')) return 'dispatched'
+    return 'awaiting'
+  }
+
+  const stageIndex = (status) => {
+    const key = normalizeStatus(status)
+    if (key === 'fully_paid' || key === 'delivered') return 3
+    if (key === 'dispatched') return 2
+    if (key === 'accepted') return 1
+    return 0
+  }
+
+  const backendOrders = ordersData?.orders || dashboard.orders?.orders || []
+  
+  const orders = backendOrders.map((order) => {
+    const normalizedStatus = normalizeStatus(order.status)
+    const isPartialPayment = order.paymentPreference !== 'full'
+    const paymentStatus = order.paymentStatus || 'pending'
+    const next =
+      normalizedStatus === 'awaiting'
+        ? 'Accept or escalate this order'
+        : normalizedStatus === 'accepted'
+          ? 'Dispatch items before SLA ends'
+          : normalizedStatus === 'dispatched'
+            ? 'Deliver before the 24h SLA'
+            : normalizedStatus === 'delivered'
+              ? (isPartialPayment ? 'Collect remaining payment' : 'Delivery completed')
+              : normalizedStatus === 'fully_paid'
+                ? 'Payment completed'
+                : null
+
+    return {
+      id: order._id || order.id,
+      orderNumber: order.orderNumber,
+      farmer: order.userId?.name || 'Unknown Customer',
+      value: `₹${(order.totalAmount || 0).toLocaleString('en-IN')}`,
+      payment: paymentStatus === 'fully_paid' ? 'Paid' : paymentStatus === 'partial_paid' ? 'Partial' : 'Pending',
+      paymentStatus,
+      paymentPreference: order.paymentPreference || 'partial',
+      status: order.status || 'awaiting',
+      items: order.items || [],
+      customerPhone: order.userId?.phone || '',
+      deliveryAddress: order.deliveryAddress || {},
+      createdAt: order.createdAt,
+      statusUpdateGracePeriod: order.statusUpdateGracePeriod || null,
+      acceptanceGracePeriod: order.acceptanceGracePeriod || null,
+      next,
+    }
+  })
+
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value)
+  }
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault()
+    // Search is handled by debounced effect, but we can trigger immediate search on submit
+    fetchOrders()
+  }
+
+  return (
+    <div className="orders-view space-y-6">
+      {/* Header with back button */}
+      <div className="overview-section__header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            type="button"
+            onClick={onBack}
+            className="orders-section__cta"
+            style={{ 
+              fontSize: '14px',
+              fontWeight: '500',
+              textDecoration: 'none'
+            }}
+          >
+            ← Back
+          </button>
+          <h3 className="overview-section__title">All Orders</h3>
+        </div>
+      </div>
+
+      {/* Search bar */}
+      <div className="orders-section" style={{ marginBottom: '20px' }}>
+        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search by order number..."
+            className="vendor-action-panel__input"
+            style={{ flex: 1 }}
+          />
+          <button
+            type="submit"
+            className="orders-section__cta"
+          >
+            Search
+          </button>
+        </form>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="orders-hero__filters" role="group" aria-label="Filter orders" style={{ 
+        marginBottom: '24px',
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'thin'
+      }}>
+        {filterTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setSelectedFilter(tab.id)}
+            className={cn('orders-hero__filter', selectedFilter === tab.id && 'is-active')}
+            aria-pressed={selectedFilter === tab.id}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Orders list */}
+      <div className="orders-list">
+        {isLoading ? (
+          <div className="orders-card">
+            <div className="orders-card__details">
+              <p className="text-sm text-gray-500 text-center py-4">Loading orders...</p>
+            </div>
+          </div>
+        ) : orders.length > 0 ? orders.map((order) => {
+          const normalizedStatus = normalizeStatus(order.status)
+          const isInGracePeriod = order.acceptanceGracePeriod?.isActive
+          const gracePeriodExpiresAt = order.acceptanceGracePeriod?.expiresAt
+          const timeRemaining = gracePeriodExpiresAt ? Math.max(0, Math.floor((new Date(gracePeriodExpiresAt) - new Date()) / 1000 / 60)) : 0
+          const isInStatusUpdateGracePeriod = order.statusUpdateGracePeriod?.isActive
+          const statusUpdateGracePeriodExpiresAt = order.statusUpdateGracePeriod?.expiresAt
+          const statusUpdateTimeRemaining = statusUpdateGracePeriodExpiresAt ? Math.max(0, Math.floor((new Date(statusUpdateGracePeriodExpiresAt) - new Date()) / 1000 / 60)) : 0
+          const previousStatus = order.statusUpdateGracePeriod?.previousStatus
+          const isPartialPayment = order.paymentPreference !== 'full'
+          const paymentStatus = order.paymentStatus || 'pending'
+          const paymentCompleted = paymentStatus === 'fully_paid'
+          const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod
+          const workflowCompleted = isPartialPayment ? normalizedStatus === 'fully_paid' : normalizedStatus === 'delivered'
+          const canShowStatusUpdate = !showAvailabilityActions && !isInStatusUpdateGracePeriod && !isInGracePeriod && !workflowCompleted && normalizedStatus !== 'awaiting'
+          const nextMessage =
+            order.next ||
+            (isInGracePeriod
+              ? `Confirm or escalate within ${timeRemaining} minutes`
+              : isInStatusUpdateGracePeriod
+                ? `You can revert status within ${statusUpdateTimeRemaining} minutes`
+                : normalizedStatus === 'awaiting'
+                  ? 'Accept or escalate this order'
+                  : normalizedStatus === 'accepted'
+                    ? 'Dispatch items before SLA ends'
+                    : normalizedStatus === 'dispatched'
+                      ? 'Deliver before the 24h SLA'
+                      : normalizedStatus === 'delivered'
+                        ? (isPartialPayment ? 'Collect remaining payment' : 'Delivery completed')
+                        : normalizedStatus === 'fully_paid'
+                          ? 'Payment completed'
+                          : 'Mark payment as collected')
+
+          return (
+            <article key={order.id} className="orders-card">
+              <header className="orders-card__header">
+                <div className="orders-card__identity">
+                  <span className="orders-card__icon">
+                    <TruckIcon className="h-5 w-5" />
+                  </span>
+                  <div className="orders-card__details">
+                    <p className="orders-card__name">{order.farmer}</p>
+                    <p className="orders-card__value">{order.value}</p>
+                  </div>
+                </div>
+                <div className="orders-card__status">
+                  <span className={cn(
+                    'orders-card__payment',
+                    order.paymentStatus === 'fully_paid' && 'is-paid'
+                  )}>
+                    {order.payment}
+                  </span>
+                  <span className="orders-card__stage-label">
+                    {normalizedStatus === 'awaiting'
+                      ? 'Awaiting'
+                      : normalizedStatus === 'accepted'
+                        ? 'Accepted'
+                        : normalizedStatus === 'dispatched'
+                          ? 'Dispatched'
+                          : normalizedStatus === 'delivered'
+                            ? (isPartialPayment && !paymentCompleted ? 'Delivered • Awaiting Payment' : 'Delivered')
+                            : normalizedStatus === 'fully_paid'
+                              ? 'Delivered • Paid'
+                              : order.status}
+                  </span>
+                </div>
+              </header>
+              <div className="orders-card__next">
+                <span className="orders-card__next-label">Next</span>
+                <span className="orders-card__next-value">{nextMessage}</span>
+              </div>
+              <div className="orders-card__stages">
+                {STAGES.map((stage, index) => (
+                  <div
+                    key={stage}
+                    className={cn('orders-card__stage', index <= stageIndex(order.status) && 'is-active')}
+                  >
+                    <span className="orders-card__stage-index">{index + 1}</span>
+                    <span className="orders-card__stage-text">{stage}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="orders-card__actions">
+                {isInGracePeriod ? (
+                  <>
+                    <div className="orders-card__grace-period-notice" style={{ 
+                      padding: '8px 12px', 
+                      marginBottom: '8px', 
+                      backgroundColor: '#FEF3C7', 
+                      border: '1px solid #FCD34D', 
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      color: '#92400E'
+                    }}>
+                      ⏰ Grace Period: {timeRemaining} minutes remaining. Confirm or escalate now.
+                    </div>
+                    <button
+                      type="button"
+                      className="orders-card__action is-primary"
+                      onClick={() => openPanel('confirm-acceptance', { orderId: order.id })}
+                    >
+                      Confirm Acceptance
+                    </button>
+                    <button
+                      type="button"
+                      className="orders-card__action is-secondary"
+                      onClick={() => openPanel('cancel-acceptance', { orderId: order.id })}
+                    >
+                      Cancel & Escalate
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {isInStatusUpdateGracePeriod && (
+                      <div className="orders-card__grace-period-notice" style={{ 
+                        padding: '8px 12px', 
+                        marginBottom: '8px', 
+                        backgroundColor: '#DBEAFE', 
+                        border: '1px solid #93C5FD', 
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        color: '#1E40AF'
+                      }}>
+                        ⏰ Status Update Grace Period: {statusUpdateTimeRemaining} minutes remaining. You can revert to "{previousStatus}" status.
+                      </div>
+                    )}
+                    {/* Show update status button once acceptance is finalized */}
+                    {canShowStatusUpdate && (
+                      <button
+                        type="button"
+                        className="orders-card__action is-primary"
+                        onClick={() =>
+                          openPanel('update-order-status', {
+                            orderId: order.id,
+                            status: normalizedStatus,
+                          })
+                        }
+                      >
+                        Update status
+                      </button>
+                    )}
+                    {/* Show revert button during grace period */}
+                    {!workflowCompleted && isInStatusUpdateGracePeriod && previousStatus && (
+                      <button
+                        type="button"
+                        className="orders-card__action is-secondary"
+                        onClick={() =>
+                          openPanel('update-order-status', {
+                            orderId: order.id,
+                            status: previousStatus,
+                            revert: true,
+                          })
+                        }
+                      >
+                        Revert to {previousStatus}
+                      </button>
+                    )}
+                    {(normalizedStatus === 'fully_paid' || (!isPartialPayment && paymentCompleted && normalizedStatus === 'delivered')) && (
+                      <div className="orders-card__action is-success" style={{ 
+                        padding: '8px 16px', 
+                        borderRadius: '8px',
+                        backgroundColor: '#D1FAE5',
+                        color: '#065F46',
+                        fontWeight: '600',
+                        fontSize: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        ✓ Paid
+                      </div>
+                    )}
+                    {showAvailabilityActions && (
+                      <>
+                        <button
+                          type="button"
+                          className="orders-card__action is-primary"
+                          onClick={() => openPanel('order-available', { orderId: order.id })}
+                        >
+                          Accept Order
+                        </button>
+                        <button
+                          type="button"
+                          className="orders-card__action is-secondary"
+                          onClick={async () => {
+                            const details = await getOrderDetails(order.id)
+                            if (details.data?.order) {
+                              onOpenEscalationModal?.(details.data.order)
+                            }
+                          }}
+                        >
+                          Escalate All
+                        </button>
+                        <button
+                          type="button"
+                          className="orders-card__action is-secondary"
+                          onClick={async () => {
+                            const details = await getOrderDetails(order.id)
+                            if (details.data?.order) {
+                              onOpenPartialEscalationModal?.(details.data.order, 'items')
+                            }
+                          }}
+                        >
+                          Partial Items
+                        </button>
+                        <button
+                          type="button"
+                          className="orders-card__action is-secondary"
+                          onClick={async () => {
+                            const details = await getOrderDetails(order.id)
+                            if (details.data?.order) {
+                              onOpenPartialEscalationModal?.(details.data.order, 'quantities')
+                            }
+                          }}
+                        >
+                          Partial Qty
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* View Details Button */}
+              <div style={{ padding: '0 16px 12px', borderTop: '1px solid #E5E7EB', marginTop: '12px', paddingTop: '12px' }}>
+                <button
+                  type="button"
+                  className="orders-card__action is-secondary"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                  onClick={async () => {
+                    const details = await getOrderDetails(order.id)
+                    if (details.data?.order) {
+                      onViewOrderDetails?.(details.data.order)
+                    }
+                  }}
+                >
+                  View Details
+                </button>
+              </div>
+            </article>
+          )
+        }) : (
+          <div className="orders-card">
+            <div className="orders-card__details">
+              <p className="text-sm text-gray-500 text-center py-4">No orders found</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function OrderDetailsView({ order: initialOrder, openPanel, onBack, onOpenEscalationModal, onOpenPartialEscalationModal, onOrderUpdated }) {
+  const { getOrderDetails } = useVendorApi()
+  const [order, setOrder] = useState(initialOrder)
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Refresh order details
+  const refreshOrder = useCallback(async () => {
+    const orderId = initialOrder?.id || initialOrder?._id || order?.id || order?._id
+    if (!orderId) return
+    setIsLoading(true)
+    try {
+      const result = await getOrderDetails(orderId)
+      if (result.data?.order) {
+        setOrder(result.data.order)
+        onOrderUpdated?.()
+      }
+    } catch (error) {
+      console.error('Error refreshing order:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [initialOrder?.id, initialOrder?._id, order?.id, order?._id, getOrderDetails, onOrderUpdated])
+
+  useEffect(() => {
+    if (initialOrder) {
+      setOrder(initialOrder)
+      refreshOrder()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOrder?.id, initialOrder?._id]) // Refresh when order changes
+
+  const normalizeStatus = (status) => {
+    if (!status) return 'awaiting'
+    const normalized = status.toLowerCase()
+    if (normalized === 'fully_paid') return 'fully_paid'
+    if (normalized === 'delivered') return 'delivered'
+    if (normalized === 'out_for_delivery' || normalized === 'ready_for_delivery') return 'dispatched'
+    if (normalized === 'accepted' || normalized === 'processing') return 'accepted'
+    if (normalized === 'awaiting' || normalized === 'pending') return 'awaiting'
+    if (normalized.includes('deliver')) return 'delivered'
+    if (normalized.includes('dispatch')) return 'dispatched'
+    return 'awaiting'
+  }
+
+  const stageIndex = (status) => {
+    const key = normalizeStatus(status)
+    if (key === 'fully_paid' || key === 'delivered') return 3
+    if (key === 'dispatched') return 2
+    if (key === 'accepted') return 1
+    return 0
+  }
+
+  const STATUS_FLOW = ['awaiting', 'accepted', 'dispatched', 'delivered', 'fully_paid']
+  const STAGES = ['Awaiting', 'Accepted', 'Dispatched', 'Delivered']
+
+  const normalizedStatus = normalizeStatus(order?.status)
+  const isInGracePeriod = order?.acceptanceGracePeriod?.isActive
+  const gracePeriodExpiresAt = order?.acceptanceGracePeriod?.expiresAt
+  const timeRemaining = gracePeriodExpiresAt ? Math.max(0, Math.floor((new Date(gracePeriodExpiresAt) - new Date()) / 1000 / 60)) : 0
+  const isInStatusUpdateGracePeriod = order?.statusUpdateGracePeriod?.isActive
+  const statusUpdateGracePeriodExpiresAt = order?.statusUpdateGracePeriod?.expiresAt
+  const statusUpdateTimeRemaining = statusUpdateGracePeriodExpiresAt ? Math.max(0, Math.floor((new Date(statusUpdateGracePeriodExpiresAt) - new Date()) / 1000 / 60)) : 0
+  const previousStatus = order?.statusUpdateGracePeriod?.previousStatus
+  const isPartialPayment = order?.paymentPreference !== 'full'
+  const paymentStatus = order?.paymentStatus || 'pending'
+  const paymentCompleted = paymentStatus === 'fully_paid'
+  const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod
+  const workflowCompleted = isPartialPayment ? normalizedStatus === 'fully_paid' : normalizedStatus === 'delivered'
+  const isApproved = normalizedStatus !== 'awaiting'
+  const canShowStatusUpdate = isApproved && !workflowCompleted && !isInStatusUpdateGracePeriod && !isInGracePeriod
+
+  if (isLoading) {
+    return (
+      <div className="orders-view">
+        <div className="overview-section__header">
+          <button type="button" className="orders-section__cta" onClick={onBack}>
+            ← Back
+          </button>
+          <h3 className="overview-section__title">Order Details</h3>
+        </div>
+        <div className="orders-card">
+          <div className="orders-card__details">
+            <p className="text-sm text-gray-500 text-center py-4">Loading order details...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="orders-view space-y-6">
+      {/* Header */}
+      <div className="overview-section__header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button type="button" className="orders-section__cta" onClick={onBack}>
+            ← Back
+          </button>
+          <h3 className="overview-section__title">Order Details</h3>
+        </div>
+      </div>
+
+      {/* Order Information Card */}
+      <div className="orders-card">
+        <header className="orders-card__header">
+          <div className="orders-card__identity">
+            <span className="orders-card__icon">
+              <TruckIcon className="h-5 w-5" />
+            </span>
+            <div className="orders-card__details">
+              <p className="orders-card__name">Order #{order?.orderNumber || order?.id}</p>
+              <p className="orders-card__value">₹{(order?.totalAmount || 0).toLocaleString('en-IN')}</p>
+            </div>
+          </div>
+          <div className="orders-card__status">
+            <span className={cn(
+              'orders-card__payment',
+              order?.paymentStatus === 'fully_paid' && 'is-paid'
+            )}>
+              {order?.paymentStatus === 'fully_paid' ? 'Paid' : order?.paymentStatus === 'partial_paid' ? 'Partial' : 'Pending'}
+            </span>
+            <span className="orders-card__stage-label">
+              {normalizedStatus === 'awaiting'
+                ? 'Awaiting'
+                : normalizedStatus === 'accepted'
+                  ? 'Accepted'
+                  : normalizedStatus === 'dispatched'
+                    ? 'Dispatched'
+                    : normalizedStatus === 'delivered'
+                      ? (isPartialPayment && !paymentCompleted ? 'Delivered • Awaiting Payment' : 'Delivered')
+                      : normalizedStatus === 'fully_paid'
+                        ? 'Delivered • Paid'
+                        : order?.status}
+            </span>
+          </div>
+        </header>
+
+        {/* Customer Information */}
+        <div style={{ padding: '16px', borderTop: '1px solid #E5E7EB' }}>
+          <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: '#1F2937' }}>Customer Information</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px', color: '#4B5563' }}>
+            <p><strong>Name:</strong> {order?.userId?.name || order?.farmer || 'Unknown Customer'}</p>
+            <p><strong>Contact:</strong> {order?.userId?.phone || order?.customerPhone || 'N/A'}</p>
+            {order?.deliveryAddress && (
+              <>
+                <p><strong>Address:</strong> {order.deliveryAddress.address || 'N/A'}</p>
+                <p><strong>City:</strong> {order.deliveryAddress.city || 'N/A'}, {order.deliveryAddress.state || 'N/A'} - {order.deliveryAddress.pincode || 'N/A'}</p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Order Items */}
+        {order?.items && order.items.length > 0 && (
+          <div style={{ padding: '16px', borderTop: '1px solid #E5E7EB' }}>
+            <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: '#1F2937' }}>Order Items</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {order.items.map((item, index) => (
+                <div key={index} style={{ 
+                  padding: '12px', 
+                  backgroundColor: '#F9FAFB', 
+                  borderRadius: '8px',
+                  fontSize: '14px'
+                }}>
+                  <p style={{ fontWeight: '600', marginBottom: '4px' }}>{item.productName || 'Product'}</p>
+                  <p style={{ color: '#6B7280' }}>Quantity: {item.quantity} × ₹{item.unitPrice?.toLocaleString('en-IN')} = ₹{item.totalPrice?.toLocaleString('en-IN')}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Order Stages */}
+        <div className="orders-card__stages" style={{ padding: '16px', borderTop: '1px solid #E5E7EB' }}>
+          {STAGES.map((stage, index) => (
+            <div
+              key={stage}
+              className={cn('orders-card__stage', index <= stageIndex(order?.status) && 'is-active')}
+            >
+              <span className="orders-card__stage-index">{index + 1}</span>
+              <span className="orders-card__stage-text">{stage}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Actions Section */}
+        <div className="orders-card__actions" style={{ padding: '16px', borderTop: '1px solid #E5E7EB', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Grace Period Notices */}
+          {isInGracePeriod && (
+            <div className="orders-card__grace-period-notice" style={{ 
+              padding: '8px 12px', 
+              marginBottom: '8px', 
+              backgroundColor: '#FEF3C7', 
+              border: '1px solid #FCD34D', 
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: '#92400E'
+            }}>
+              ⏰ Grace Period: {timeRemaining} minutes remaining. Confirm or escalate now.
+            </div>
+          )}
+          {isInStatusUpdateGracePeriod && (
+            <div className="orders-card__grace-period-notice" style={{ 
+              padding: '8px 12px', 
+              marginBottom: '8px', 
+              backgroundColor: '#DBEAFE', 
+              border: '1px solid #93C5FD', 
+              borderRadius: '8px',
+              fontSize: '12px',
+              color: '#1E40AF'
+            }}>
+              ⏰ Status Update Grace Period: {statusUpdateTimeRemaining} minutes remaining. You can revert to "{previousStatus}" status.
+            </div>
+          )}
+
+          {/* Approve Button (for pending orders) */}
+          {showAvailabilityActions && !isInGracePeriod && (
+            <button
+              type="button"
+              className="orders-card__action is-primary"
+              onClick={() => openPanel('order-available', { orderId: order.id || order._id })}
+            >
+              Accept Order
+            </button>
+          )}
+
+          {/* Update Status Button (after approved) */}
+          {canShowStatusUpdate && (
+            <button
+              type="button"
+              className="orders-card__action is-primary"
+              onClick={() =>
+                openPanel('update-order-status', {
+                  orderId: order.id || order._id,
+                  status: normalizedStatus,
+                })
+              }
+            >
+              Update Status
+            </button>
+          )}
+
+          {/* Revert Button (during grace period) */}
+          {!workflowCompleted && isInStatusUpdateGracePeriod && previousStatus && (
+            <button
+              type="button"
+              className="orders-card__action is-secondary"
+              onClick={() =>
+                openPanel('update-order-status', {
+                  orderId: order.id || order._id,
+                  status: previousStatus,
+                  revert: true,
+                })
+              }
+            >
+              Revert to {previousStatus}
+            </button>
+          )}
+
+          {/* Escalation Buttons */}
+          {showAvailabilityActions && (
+            <>
+              <button
+                type="button"
+                className="orders-card__action is-secondary"
+                onClick={() => {
+                  onOpenEscalationModal?.(order)
+                }}
+              >
+                Escalate All
+              </button>
+              <button
+                type="button"
+                className="orders-card__action is-secondary"
+                onClick={() => {
+                  onOpenPartialEscalationModal?.(order, 'items')
+                }}
+              >
+                Partial Items
+              </button>
+              <button
+                type="button"
+                className="orders-card__action is-secondary"
+                onClick={() => {
+                  onOpenPartialEscalationModal?.(order, 'quantities')
+                }}
+              >
+                Partial Qty
+              </button>
+            </>
+          )}
+
+          {/* Grace Period Actions */}
+          {isInGracePeriod && (
+            <>
+              <button
+                type="button"
+                className="orders-card__action is-primary"
+                onClick={() => openPanel('confirm-acceptance', { orderId: order.id || order._id })}
+              >
+                Confirm Acceptance
+              </button>
+              <button
+                type="button"
+                className="orders-card__action is-secondary"
+                onClick={() => openPanel('cancel-acceptance', { orderId: order.id || order._id })}
+              >
+                Cancel & Escalate
+              </button>
+            </>
+          )}
+
+          {/* Paid Badge */}
+          {(normalizedStatus === 'fully_paid' || (!isPartialPayment && paymentCompleted && normalizedStatus === 'delivered')) && (
+            <div className="orders-card__action is-success" style={{ 
+              padding: '8px 16px', 
+              borderRadius: '8px',
+              backgroundColor: '#D1FAE5',
+              color: '#065F46',
+              fontWeight: '600',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}>
+              ✓ Paid
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CreditView({ openPanel }) {
   const { dashboard } = useVendorState()
   const dispatch = useVendorDispatch()
@@ -2743,11 +3987,17 @@ function CreditView({ openPanel }) {
   }, [getCreditInfo, dispatch])
 
   // Use real credit data from backend
+  // Backend getCreditInfo returns: { credit: { used, totalUnpaid, unpaidCount, dueDate, repaymentDays, penaltyRate }, status: { isOverdue, daysOverdue, daysUntilDue, penalty, status, hasUnpaidCredits } }
+  // Dashboard overview also includes credit info with limit
   const creditData = dashboard.credit || {}
-  const creditLimit = creditData.limit || 0
-  const creditUsed = creditData.used || 0
-  const creditRemaining = creditData.remaining || 0
-  const penalty = creditData.penalty || 0
+  const creditInfo = creditData.credit || {}
+  const creditStatus = creditData.status || {}
+  
+  // Get credit limit from dashboard overview (which includes limit) or fallback to calculating from used
+  const creditLimit = dashboard.overview?.credit?.limit || 0
+  const creditUsed = creditInfo.used || dashboard.overview?.credit?.used || 0
+  const creditRemaining = dashboard.overview?.credit?.remaining || (creditLimit - creditUsed)
+  const penalty = creditStatus.penalty || dashboard.overview?.credit?.penalty || 0
   
   const credit = {
     limit: creditLimit > 0 ? `₹${(creditLimit / 100000).toFixed(1)}L` : '₹0',
@@ -2937,11 +4187,8 @@ function ReportsView() {
       }
     })
   }, [getReports, dispatch])
-  const topVendors = [
-    { name: 'HarvestLink Pvt Ltd', revenue: '₹1.4 Cr', change: '+12%', tone: 'success' },
-    { name: 'GreenGrow Supplies', revenue: '₹1.1 Cr', change: '+9%', tone: 'success' },
-    { name: 'GrowSure Traders', revenue: '₹82 L', change: '+4%', tone: 'teal' },
-  ]
+  // Remove static topVendors - this is vendor-specific data, not needed here
+  // If needed in future, can be fetched from backend analytics
 
   const reportIcons = [ChartIcon, WalletIcon, CreditIcon, HomeIcon]
 
@@ -2962,11 +4209,14 @@ function ReportsView() {
     { id: 'all', label: 'All Time' },
   ]
 
+  // Get reports data from state
+  const reportsData = dashboard?.reports || null
+
   // Transform backend reports data to chart format
   const getRevenueData = (period) => {
     // Use real data from backend if available
-    if (analyticsData?.dailyTrends && Array.isArray(analyticsData.dailyTrends)) {
-      const trends = analyticsData.dailyTrends
+    if (reportsData?.dailyTrends && Array.isArray(reportsData.dailyTrends)) {
+      const trends = reportsData.dailyTrends
         return {
         labels: trends.map(t => {
           // Format date labels based on period
@@ -2992,7 +4242,7 @@ function ReportsView() {
   const chartData = getRevenueData(timePeriod)
   
   // Get sales data from backend
-  const salesData = analyticsData?.sales || reportsData?.sales || {}
+  const salesData = reportsData?.sales || {}
   const totalSales = salesData.totalSales || 0
   const orderCount = salesData.orderCount || 0
   const averageOrderValue = salesData.averageOrderValue || 0
@@ -3441,33 +4691,7 @@ function ReportsView() {
         </div>
       </section>
 
-      <section id="reports-top-vendors" className="reports-section">
-        <div className="overview-section__header">
-          <div>
-            <h3 className="overview-section__title">Top sellers</h3>
-          </div>
-        </div>
-        <div className="reports-vendors-list">
-            {topVendors.map((vendor) => (
-              <div
-                key={vendor.name}
-              className={cn(
-                'reports-vendor-card',
-                vendor.tone === 'teal' ? 'is-teal' : 'is-success',
-              )}
-            >
-              <div className="reports-vendor-card__info">
-                <h4 className="reports-vendor-card__name">{vendor.name}</h4>
-                <div className="reports-vendor-card__metrics">
-                  <span className="reports-vendor-card__revenue">{vendor.revenue}</span>
-                  <span className="reports-vendor-card__change">{vendor.change}</span>
-                </div>
-              </div>
-              <div className="reports-vendor-card__indicator" />
-              </div>
-            ))}
-        </div>
-      </section>
+      {/* Top sellers section removed - not relevant for vendor's own dashboard */}
     </div>
   )
 }

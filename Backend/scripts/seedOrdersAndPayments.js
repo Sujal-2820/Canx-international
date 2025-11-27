@@ -61,7 +61,7 @@ const seedOrders = async () => {
       userIndex: 0,
       vendorIndex: 0,
       sellerIndex: 0,
-      status: ORDER_STATUS.PENDING,
+      status: ORDER_STATUS.AWAITING,
       paymentPreference: 'partial',
       paymentStatus: PAYMENT_STATUS.PENDING,
       numItems: 3,
@@ -166,7 +166,7 @@ const seedOrders = async () => {
       userIndex: 2,
       vendorIndex: null,
       sellerIndex: 2,
-      status: ORDER_STATUS.PENDING,
+      status: ORDER_STATUS.AWAITING,
       paymentPreference: 'full',
       paymentStatus: PAYMENT_STATUS.FULLY_PAID,
       numItems: 3,
@@ -274,11 +274,11 @@ const seedOrders = async () => {
       status: scenario.status,
       statusTimeline: [
         {
-          status: ORDER_STATUS.PENDING,
+          status: ORDER_STATUS.AWAITING,
           timestamp: new Date(Date.now() - (scenario.numItems * 24 * 60 * 60 * 1000)),
           updatedBy: 'system',
         },
-        ...(scenario.status !== ORDER_STATUS.PENDING ? [{
+        ...(scenario.status !== ORDER_STATUS.AWAITING ? [{
           status: scenario.status,
           timestamp: new Date(Date.now() - (scenario.numItems - 1) * 24 * 60 * 60 * 1000),
           updatedBy: vendor ? 'vendor' : 'admin',

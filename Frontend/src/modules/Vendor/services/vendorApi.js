@@ -239,9 +239,40 @@ export async function getOrderDetails(orderId) {
  * @param {string} orderId - Order ID
  * @returns {Promise<Object>} - { message: 'Order accepted', order: Object }
  */
-export async function acceptOrder(orderId) {
+export async function acceptOrder(orderId, notes) {
   return apiRequest(`/vendors/orders/${orderId}/accept`, {
     method: 'POST',
+    body: JSON.stringify({ notes }),
+  })
+}
+
+/**
+ * Confirm Order Acceptance (finalize after grace period)
+ * POST /vendors/orders/:orderId/confirm-acceptance
+ * 
+ * @param {string} orderId - Order ID
+ * @param {Object} data - { notes?: string }
+ * @returns {Promise<Object>} - { message: 'Order acceptance confirmed', order: Object }
+ */
+export async function confirmOrderAcceptance(orderId, data = {}) {
+  return apiRequest(`/vendors/orders/${orderId}/confirm-acceptance`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Cancel Order Acceptance (during grace period)
+ * POST /vendors/orders/:orderId/cancel-acceptance
+ * 
+ * @param {string} orderId - Order ID
+ * @param {Object} data - { reason?: string }
+ * @returns {Promise<Object>} - { message: 'Order acceptance cancelled', order: Object }
+ */
+export async function cancelOrderAcceptance(orderId, data = {}) {
+  return apiRequest(`/vendors/orders/${orderId}/cancel-acceptance`, {
+    method: 'POST',
+    body: JSON.stringify(data),
   })
 }
 
