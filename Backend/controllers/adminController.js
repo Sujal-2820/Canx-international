@@ -22,9 +22,12 @@ const Commission = require('../models/Commission');
 const PaymentHistory = require('../models/PaymentHistory');
 const Settings = require('../models/Settings');
 const Notification = require('../models/Notification');
+const Offer = require('../models/Offer');
 const { VENDOR_COVERAGE_RADIUS_KM, MIN_VENDOR_PURCHASE, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 
-const { generateOTP, sendOTP } = require('../config/sms');
+const { sendOTP } = require('../utils/otp');
+const { getTestOTPInfo } = require('../services/smsIndiaHubService');
+const { findPhoneInModel } = require('../utils/phoneNormalize');
 const { OTP_EXPIRY_MINUTES } = require('../utils/constants');
 const { generateToken } = require('../middleware/auth');
 
@@ -63,28 +66,28 @@ async function processExpiredStatusUpdates() {
 }
 
 /**
- * @desc    Admin login (Step 1: Email/Password)
+ * @desc    Admin login (Step 1: Phone only)
  * @route   POST /api/admin/auth/login
  * @access  Public
  */
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { phone } = req.body;
 
-    if (!email || !password) {
+    if (!phone) {
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required',
+        message: 'Phone number is required',
       });
     }
 
-    // Find admin by email
-    const admin = await Admin.findOne({ email }).select('+password');
+    // Find admin by phone - handle both +91 and non-prefix formats
+    let admin = await findPhoneInModel(Admin, phone);
 
     if (!admin) {
-      return res.status(401).json({
+      return res.status(404).json({
         success: false,
-        message: 'Invalid credentials',
+        message: 'Admin not found',
       });
     }
 
@@ -96,16 +99,6 @@ exports.login = async (req, res, next) => {
       });
     }
 
-    // Verify password
-    const isPasswordValid = await admin.comparePassword(password);
-
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials',
-      });
-    }
-
     // Clear any existing OTP before generating new one
     admin.clearOTP();
     
@@ -113,29 +106,21 @@ exports.login = async (req, res, next) => {
     const otpCode = admin.generateOTP();
     await admin.save();
 
-    // Send OTP to email (for now using console log, should be email service)
-    // TODO: Implement email service for OTP
+    // Send OTP to phone via SMS
     try {
-      // Enhanced console logging for OTP
-      const timestamp = new Date().toISOString();
-      console.log('\n' + '='.repeat(60));
-      console.log('🔐 ADMIN OTP GENERATED');
-      console.log('='.repeat(60));
-      console.log(`📧 Email: ${email}`);
-      console.log(`🔢 OTP Code: ${otpCode}`);
-      console.log(`⏰ Generated At: ${timestamp}`);
-      console.log(`⏳ Expires In: 5 minutes`);
-      console.log('='.repeat(60) + '\n');
+      await sendOTP(admin.phone, otpCode, 'login');
+      console.log(`✅ OTP sent to admin phone: ${admin.phone}`);
     } catch (error) {
       console.error('Failed to send OTP:', error);
+      // Continue even if SMS fails - OTP is stored in database and can be retrieved for testing
     }
 
     res.status(200).json({
       success: true,
       data: {
         requiresOtp: true,
-        message: 'OTP sent to email',
-        email: admin.email,
+        message: 'OTP sent to phone',
+        phone: admin.phone,
         expiresIn: OTP_EXPIRY_MINUTES * 60, // seconds
       },
     });
@@ -151,16 +136,17 @@ exports.login = async (req, res, next) => {
  */
 exports.requestOTP = async (req, res, next) => {
   try {
-    const { email } = req.body;
+    const { phone } = req.body;
 
-    if (!email) {
+    if (!phone) {
       return res.status(400).json({
         success: false,
-        message: 'Email is required',
+        message: 'Phone number is required',
       });
     }
 
-    const admin = await Admin.findOne({ email });
+    // Find admin - handle both +91 and non-prefix formats
+    let admin = await findPhoneInModel(Admin, phone);
 
     if (!admin) {
       return res.status(404).json({
@@ -172,25 +158,29 @@ exports.requestOTP = async (req, res, next) => {
     // Clear any existing OTP before generating new one
     admin.clearOTP();
     
-    // Generate new unique OTP
-    const otpCode = admin.generateOTP();
+    // Check if this is a test phone number - use default OTP 123456
+    const testOTPInfo = getTestOTPInfo(admin.phone);
+    let otpCode;
+    if (testOTPInfo.isTest) {
+      // For test numbers, set OTP directly to 123456
+      otpCode = testOTPInfo.defaultOTP;
+      admin.otp = {
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      };
+    } else {
+      // Generate new unique OTP for regular numbers
+      otpCode = admin.generateOTP();
+    }
     await admin.save();
 
-    // Send OTP to email
-    // TODO: Implement email service
+    // Send OTP to phone via SMS
     try {
-      // Enhanced console logging for OTP
-      const timestamp = new Date().toISOString();
-      console.log('\n' + '='.repeat(60));
-      console.log('🔐 ADMIN OTP GENERATED (Request OTP)');
-      console.log('='.repeat(60));
-      console.log(`📧 Email: ${email}`);
-      console.log(`🔢 OTP Code: ${otpCode}`);
-      console.log(`⏰ Generated At: ${timestamp}`);
-      console.log(`⏳ Expires In: 5 minutes`);
-      console.log('='.repeat(60) + '\n');
+      await sendOTP(admin.phone, otpCode, 'login');
+      console.log(`✅ OTP sent to admin phone: ${admin.phone}`);
     } catch (error) {
       console.error('Failed to send OTP:', error);
+      // Continue even if SMS fails - OTP is stored in database and can be retrieved for testing
     }
 
     res.status(200).json({
@@ -212,16 +202,17 @@ exports.requestOTP = async (req, res, next) => {
  */
 exports.verifyOTP = async (req, res, next) => {
   try {
-    const { email, otp } = req.body;
+    const { phone, otp } = req.body;
 
-    if (!email || !otp) {
+    if (!phone || !otp) {
       return res.status(400).json({
         success: false,
-        message: 'Email and OTP are required',
+        message: 'Phone number and OTP are required',
       });
     }
 
-    const admin = await Admin.findOne({ email });
+    // Find admin - handle both +91 and non-prefix formats
+    let admin = await findPhoneInModel(Admin, phone);
 
     if (!admin) {
       return res.status(404).json({
@@ -246,12 +237,12 @@ exports.verifyOTP = async (req, res, next) => {
     await admin.save();
 
     // Log successful login
-    console.log(`\n✅ Admin logged in: ${admin.email} (Role: ${admin.role}) at ${new Date().toISOString()}\n`);
+    console.log(`\n✅ Admin logged in: ${admin.phone} (Role: ${admin.role}) at ${new Date().toISOString()}\n`);
 
     // Generate JWT token
     const token = generateToken({
       adminId: admin._id,
-      email: admin.email,
+      phone: admin.phone,
       role: admin.role,
       type: 'admin',
     });
@@ -262,7 +253,7 @@ exports.verifyOTP = async (req, res, next) => {
         token,
         admin: {
           id: admin._id,
-          email: admin.email,
+          phone: admin.phone,
           name: admin.name,
           role: admin.role,
         },
@@ -305,7 +296,7 @@ exports.getProfile = async (req, res, next) => {
       data: {
         admin: {
           id: admin._id,
-          email: admin.email,
+          phone: admin.phone,
           name: admin.name,
           role: admin.role,
           lastLogin: admin.lastLogin,
@@ -1343,10 +1334,10 @@ exports.getVendors = async (req, res, next) => {
     if (adminIdsToPopulate.size > 0) {
       const adminIdsArray = Array.from(adminIdsToPopulate).map(id => new mongoose.Types.ObjectId(id));
       const admins = await Admin.find({ _id: { $in: adminIdsArray } })
-        .select('name email')
+        .select('name phone')
         .lean();
       admins.forEach(admin => {
-        adminsMap.set(admin._id.toString(), { name: admin.name, email: admin.email });
+        adminsMap.set(admin._id.toString(), { name: admin.name, phone: admin.phone });
       });
     }
     
@@ -6409,6 +6400,293 @@ exports.deleteNotification = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Notification deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// OFFERS MANAGEMENT
+// ============================================================================
+
+/**
+ * @desc    Get all offers (for admin)
+ * @route   GET /api/admin/offers
+ * @access  Private (Admin)
+ */
+exports.getOffers = async (req, res, next) => {
+  try {
+    const { type, isActive } = req.query;
+    
+    const query = {};
+    if (type) {
+      query.type = type;
+    }
+    if (isActive !== undefined) {
+      query.isActive = isActive === 'true';
+    }
+    
+    const offers = await Offer.find(query)
+      .populate('productIds', 'name priceToUser images primaryImage')
+      .populate('linkedProductIds', 'name priceToUser images primaryImage')
+      .sort({ order: 1, createdAt: -1 });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        offers,
+        carouselCount: await Offer.countDocuments({ type: 'carousel', isActive: true }),
+        maxCarousels: 6,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get single offer
+ * @route   GET /api/admin/offers/:id
+ * @access  Private (Admin)
+ */
+exports.getOffer = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const offer = await Offer.findById(id)
+      .populate('productIds', 'name priceToUser images primaryImage')
+      .populate('linkedProductIds', 'name priceToUser images primaryImage');
+    
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Offer not found',
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      data: { offer },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Create offer
+ * @route   POST /api/admin/offers
+ * @access  Private (Admin)
+ */
+exports.createOffer = async (req, res, next) => {
+  try {
+    const adminId = req.admin.id;
+    const { type, title, description, image, productIds, specialTag, specialValue, linkedProductIds, order } = req.body;
+    
+    // Validate required fields based on type
+    if (!type || !['carousel', 'special_offer'].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid offer type. Must be "carousel" or "special_offer"',
+      });
+    }
+    
+    if (type === 'carousel') {
+      if (!image) {
+        return res.status(400).json({
+          success: false,
+          message: 'Image is required for carousel offers',
+        });
+      }
+      
+      // Check carousel limit (max 6)
+      const carouselCount = await Offer.countDocuments({ type: 'carousel', isActive: true });
+      if (carouselCount >= 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Maximum 6 active carousels allowed. Please delete or deactivate an existing carousel first.',
+        });
+      }
+      
+      if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'At least one product must be linked to carousel',
+        });
+      }
+    }
+    
+    if (type === 'special_offer') {
+      if (!specialTag || !specialValue) {
+        return res.status(400).json({
+          success: false,
+          message: 'Special tag and special value are required for special offers',
+        });
+      }
+    }
+    
+    // Validate product IDs if provided
+    if (productIds && productIds.length > 0) {
+      const validProducts = await Product.countDocuments({ _id: { $in: productIds } });
+      if (validProducts !== productIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more product IDs are invalid',
+        });
+      }
+    }
+    
+    if (linkedProductIds && linkedProductIds.length > 0) {
+      const validLinkedProducts = await Product.countDocuments({ _id: { $in: linkedProductIds } });
+      if (validLinkedProducts !== linkedProductIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more linked product IDs are invalid',
+        });
+      }
+    }
+    
+    // Determine order for carousel
+    let offerOrder = order;
+    if (type === 'carousel' && offerOrder === undefined) {
+      const maxOrder = await Offer.findOne({ type: 'carousel' })
+        .sort({ order: -1 })
+        .select('order');
+      offerOrder = maxOrder ? maxOrder.order + 1 : 0;
+    }
+    
+    const offer = new Offer({
+      type,
+      title,
+      description,
+      image: type === 'carousel' ? image : undefined,
+      productIds: type === 'carousel' ? productIds : undefined,
+      specialTag: type === 'special_offer' ? specialTag : undefined,
+      specialValue: type === 'special_offer' ? specialValue : undefined,
+      linkedProductIds: type === 'special_offer' ? (linkedProductIds || []) : undefined,
+      order: type === 'carousel' ? offerOrder : undefined,
+      createdBy: adminId,
+      updatedBy: adminId,
+    });
+    
+    await offer.save();
+    
+    const populatedOffer = await Offer.findById(offer._id)
+      .populate('productIds', 'name priceToUser images primaryImage')
+      .populate('linkedProductIds', 'name priceToUser images primaryImage');
+    
+    res.status(201).json({
+      success: true,
+      data: { offer: populatedOffer },
+      message: 'Offer created successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update offer
+ * @route   PUT /api/admin/offers/:id
+ * @access  Private (Admin)
+ */
+exports.updateOffer = async (req, res, next) => {
+  try {
+    const adminId = req.admin.id;
+    const { id } = req.params;
+    const { title, description, image, productIds, specialTag, specialValue, linkedProductIds, isActive, order } = req.body;
+    
+    const offer = await Offer.findById(id);
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Offer not found',
+      });
+    }
+    
+    // Validate product IDs if provided
+    if (productIds && Array.isArray(productIds) && productIds.length > 0) {
+      const validProducts = await Product.countDocuments({ _id: { $in: productIds } });
+      if (validProducts !== productIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more product IDs are invalid',
+        });
+      }
+    }
+    
+    if (linkedProductIds && Array.isArray(linkedProductIds) && linkedProductIds.length > 0) {
+      const validLinkedProducts = await Product.countDocuments({ _id: { $in: linkedProductIds } });
+      if (validLinkedProducts !== linkedProductIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more linked product IDs are invalid',
+        });
+      }
+    }
+    
+    // Check carousel limit if activating a carousel
+    if (offer.type === 'carousel' && isActive === true && !offer.isActive) {
+      const carouselCount = await Offer.countDocuments({ type: 'carousel', isActive: true });
+      if (carouselCount >= 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Maximum 6 active carousels allowed. Please delete or deactivate an existing carousel first.',
+        });
+      }
+    }
+    
+    // Update fields
+    if (title !== undefined) offer.title = title;
+    if (description !== undefined) offer.description = description;
+    if (offer.type === 'carousel' && image !== undefined) offer.image = image;
+    if (offer.type === 'carousel' && productIds !== undefined) offer.productIds = productIds;
+    if (offer.type === 'carousel' && order !== undefined) offer.order = order;
+    if (offer.type === 'special_offer' && specialTag !== undefined) offer.specialTag = specialTag;
+    if (offer.type === 'special_offer' && specialValue !== undefined) offer.specialValue = specialValue;
+    if (offer.type === 'special_offer' && linkedProductIds !== undefined) offer.linkedProductIds = linkedProductIds;
+    if (isActive !== undefined) offer.isActive = isActive;
+    offer.updatedBy = adminId;
+    
+    await offer.save();
+    
+    const populatedOffer = await Offer.findById(offer._id)
+      .populate('productIds', 'name priceToUser images primaryImage')
+      .populate('linkedProductIds', 'name priceToUser images primaryImage');
+    
+    res.status(200).json({
+      success: true,
+      data: { offer: populatedOffer },
+      message: 'Offer updated successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete offer
+ * @route   DELETE /api/admin/offers/:id
+ * @access  Private (Admin)
+ */
+exports.deleteOffer = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const offer = await Offer.findById(id);
+    if (!offer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Offer not found',
+      });
+    }
+    
+    await Offer.findByIdAndDelete(id);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Offer deleted successfully',
     });
   } catch (error) {
     next(error);

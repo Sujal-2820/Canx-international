@@ -90,7 +90,8 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
   const [formData, setFormData] = useState({
     name: '',
     category: 'npk', // Default to NPK
-    description: '',
+    shortDescription: '', // Short description for product cards
+    description: '', // Long description for product details page
     actualStock: '',
     displayStock: '',
     stockUnit: 'kg',
@@ -220,7 +221,8 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
       setFormData({
         name: product.name || '',
         category: product.category || 'npk',
-        description: product.description || '',
+        shortDescription: product.shortDescription || '',
+        description: product.description || product.longDescription || '',
         actualStock: actualStockValue,
         displayStock: displayStockValue,
         stockUnit: stockUnit,
@@ -321,8 +323,12 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
       newErrors.category = 'Category is required'
     }
 
+    if (!formData.shortDescription.trim()) {
+      newErrors.shortDescription = 'Short description is required (for product cards)'
+    }
+
     if (!formData.description.trim()) {
-      newErrors.description = 'Product description is required'
+      newErrors.description = 'Long description is required (for product details page)'
     }
 
     // Only validate main stock and price fields if no attributeStocks are configured
@@ -359,29 +365,31 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
       }
     }
 
-    if (!formData.vendorPrice || parseFloat(formData.vendorPrice) <= 0) {
-      newErrors.vendorPrice = 'Vendor price must be greater than 0'
-    }
-
-    if (!formData.userPrice || parseFloat(formData.userPrice) <= 0) {
-      newErrors.userPrice = 'User price must be greater than 0'
-    }
-
-    if (parseFloat(formData.userPrice) <= parseFloat(formData.vendorPrice)) {
-      newErrors.userPrice = 'User price must be greater than vendor price'
-    }
-
-    if (!formData.expiry) {
-      newErrors.expiry = 'Expiry date is required'
-    }
-
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    const isValid = Object.keys(newErrors).length === 0
+    
+    // Scroll to first error if validation fails
+    if (!isValid) {
+      setTimeout(() => {
+        const firstErrorField = Object.keys(newErrors)[0]
+        if (firstErrorField) {
+          const errorElement = document.getElementById(firstErrorField) || document.querySelector(`[name="${firstErrorField}"]`)
+          if (errorElement) {
+            errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            errorElement.focus()
+          }
+        }
+      }, 100)
+    }
+    
+    return isValid
   }
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate()) {
+      return
+    }
 
     // Ensure prices are valid numbers (only if not using attributeStocks)
     const vendorPrice = (!formData.attributeStocks || formData.attributeStocks.length === 0) 
@@ -447,7 +455,9 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
     const submitData = {
       name: formData.name.trim(),
       category: formData.category,
+      shortDescription: formData.shortDescription.trim(),
       description: formData.description.trim(),
+      longDescription: formData.description.trim(), // Also save as longDescription for clarity
       actualStock: actualStockValue,
       displayStock: displayStockValue,
       stockUnit: formData.stockUnit,
@@ -528,18 +538,44 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
         {errors.category && <p className="mt-1 text-xs text-red-600">{errors.category}</p>}
       </div>
 
-      {/* Product Description */}
+      {/* Short Description - For Product Cards */}
+      <div>
+        <label htmlFor="shortDescription" className="mb-2 block text-sm font-bold text-gray-900">
+          Short Description <span className="text-red-500">*</span>
+          <span className="text-xs font-normal text-gray-500 ml-2">(Shown on product cards in user dashboard)</span>
+        </label>
+        <textarea
+          id="shortDescription"
+          name="shortDescription"
+          value={formData.shortDescription}
+          onChange={handleChange}
+          placeholder="Brief description (1-2 lines) that will appear on product cards..."
+          rows={2}
+          maxLength={150}
+          className={cn(
+            'w-full rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2 resize-none',
+            errors.shortDescription
+              ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
+              : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',
+          )}
+        />
+        <p className="mt-1 text-xs text-gray-500">{formData.shortDescription.length}/150 characters</p>
+        {errors.shortDescription && <p className="mt-1 text-xs text-red-600">{errors.shortDescription}</p>}
+      </div>
+
+      {/* Long Description - For Product Details Page */}
       <div>
         <label htmlFor="description" className="mb-2 block text-sm font-bold text-gray-900">
-          Product Description <span className="text-red-500">*</span>
+          Long Description <span className="text-red-500">*</span>
+          <span className="text-xs font-normal text-gray-500 ml-2">(Shown on product details page)</span>
         </label>
         <textarea
           id="description"
           name="description"
           value={formData.description}
           onChange={handleChange}
-          placeholder="Describe the fertilizer, its composition, benefits, and usage instructions..."
-          rows={3}
+          placeholder="Detailed description with composition, benefits, usage instructions, etc. (Line breaks will be preserved)..."
+          rows={5}
           className={cn(
             'w-full rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2 resize-none',
             errors.description
@@ -579,7 +615,7 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
                 min="0"
                 step="0.01"
                 className={cn(
-                  'flex-1 rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2',
+                  'flex-1 rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                   errors.actualStock
                     ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
                     : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',
@@ -617,7 +653,7 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
                 min="0"
                 step="0.01"
                 className={cn(
-                  'flex-1 rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2',
+                  'flex-1 rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                   errors.displayStock
                     ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
                     : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',
@@ -705,7 +741,7 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
               min="0"
               step="0.01"
               className={cn(
-                'w-full rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2',
+                'w-full rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                 errors.vendorPrice
                   ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
                   : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',
@@ -729,7 +765,7 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
               min="0"
               step="0.01"
               className={cn(
-                'w-full rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2',
+                'w-full rounded-xl border px-4 py-3 text-sm transition-all focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                 errors.userPrice
                   ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
                   : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',
@@ -740,65 +776,60 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
         </div>
       )}
 
-      {/* Category-Specific Attributes - Stock Management */}
-      {CATEGORY_ATTRIBUTES[formData.category] && CATEGORY_ATTRIBUTES[formData.category].length > 0 && (
-        <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100/50 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-bold text-blue-700">Category-Specific Attributes</h3>
-              <p className="text-sm text-gray-600 mt-1">
-                Manage stock quantities for different attribute combinations
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowAttributeStockForm(!showAttributeStockForm)}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-2 text-sm font-bold text-white shadow-[0_4px_15px_rgba(168,85,247,0.3)] transition-all hover:shadow-[0_6px_20px_rgba(168,85,247,0.4)]"
-            >
-              <Layers className="h-4 w-4" />
-              {showAttributeStockForm ? 'Close Stock Manager' : 'Manage Stock by Attributes'}
-              {formData.attributeStocks && formData.attributeStocks.length > 0 && (
-                <span className="ml-1 rounded-full bg-white/20 px-2 py-0.5 text-xs">
-                  {formData.attributeStocks.length}
-                </span>
-              )}
-            </button>
+      {/* Custom Attributes - Stock Management */}
+      <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100/50 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-blue-700">Stock Management by Custom Attributes</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              Add custom attributes (e.g., Type, Percentage, NPK Ratio) and manage stock for each combination
+            </p>
           </div>
-          
-          {/* Display existing attribute stocks summary when form is closed */}
-          {!showAttributeStockForm && formData.attributeStocks && formData.attributeStocks.length > 0 && (
-            <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
-              <p className="text-sm font-semibold text-purple-700 mb-2">
-                Stock Entries Configured: {formData.attributeStocks.length}
-              </p>
-              <div className="space-y-2">
-                {formData.attributeStocks.slice(0, 3).map((stock, index) => {
-                  const attributeSummary = Object.entries(stock.attributes || {})
-                    .filter(([_, value]) => value && value !== '')
-                    .map(([key, value]) => {
-                      const attr = CATEGORY_ATTRIBUTES[formData.category]?.find(a => a.key === key)
-                      return attr ? `${attr.label}: ${value}` : `${key}: ${value}`
-                    })
-                    .join(', ')
-                  
-                  return (
-                    <div key={stock.id || index} className="text-xs text-gray-600 bg-white rounded-lg px-3 py-2">
-                      <span className="font-semibold">Entry #{index + 1}:</span> {attributeSummary || 'No attributes'} 
-                      {' - '}
-                      <span className="font-semibold">Stock:</span> {stock.displayStock || 0} {stock.stockUnit || formData.stockUnit}
-                    </div>
-                  )
-                })}
-                {formData.attributeStocks.length > 3 && (
-                  <p className="text-xs text-gray-500 italic">
-                    + {formData.attributeStocks.length - 3} more entries...
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => setShowAttributeStockForm(!showAttributeStockForm)}
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-2 text-sm font-bold text-white shadow-[0_4px_15px_rgba(168,85,247,0.3)] transition-all hover:shadow-[0_6px_20px_rgba(168,85,247,0.4)]"
+          >
+            <Layers className="h-4 w-4" />
+            {showAttributeStockForm ? 'Close Stock Manager' : 'Manage Stock by Attributes'}
+            {formData.attributeStocks && formData.attributeStocks.length > 0 && (
+              <span className="ml-1 rounded-full bg-white/20 px-2 py-0.5 text-xs">
+                {formData.attributeStocks.length}
+              </span>
+            )}
+          </button>
         </div>
-      )}
+        
+        {/* Display existing attribute stocks summary when form is closed */}
+        {!showAttributeStockForm && formData.attributeStocks && formData.attributeStocks.length > 0 && (
+          <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4">
+            <p className="text-sm font-semibold text-purple-700 mb-2">
+              Stock Entries Configured: {formData.attributeStocks.length}
+            </p>
+            <div className="space-y-2">
+              {formData.attributeStocks.slice(0, 3).map((stock, index) => {
+                const attributeSummary = Object.entries(stock.attributes || {})
+                  .filter(([_, value]) => value && value !== '')
+                  .map(([key, value]) => `${key}: ${value}`)
+                  .join(', ')
+                
+                return (
+                  <div key={stock.id || index} className="text-xs text-gray-600 bg-white rounded-lg px-3 py-2">
+                    <span className="font-semibold">Entry #{index + 1}:</span> {attributeSummary || 'No attributes'} 
+                    {' - '}
+                    <span className="font-semibold">Stock:</span> {stock.displayStock || 0} {stock.stockUnit || formData.stockUnit}
+                  </div>
+                )
+              })}
+              {formData.attributeStocks.length > 3 && (
+                <p className="text-xs text-gray-500 italic">
+                  + {formData.attributeStocks.length - 3} more entries...
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Attribute Stock Form - Inline Dropdown */}
       {showAttributeStockForm && (
@@ -806,7 +837,7 @@ export function ProductForm({ product, onSubmit, onCancel, loading = false }) {
           isOpen={showAttributeStockForm}
           onClose={() => setShowAttributeStockForm(false)}
           category={formData.category}
-          categoryAttributes={CATEGORY_ATTRIBUTES[formData.category] || []}
+          categoryAttributes={[]}
           attributeStocks={formData.attributeStocks || []}
           onSave={handleAttributeStockSave}
           stockUnit={formData.stockUnit}

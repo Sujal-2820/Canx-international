@@ -138,6 +138,60 @@ export async function updateUserProfile(profileData) {
 }
 
 /**
+ * Request OTP for current phone (for phone update)
+ * POST /users/profile/phone/request-otp-current
+ * 
+ * @returns {Promise<Object>} - { message, expiresIn, testOTP? }
+ */
+export async function requestOTPForCurrentPhone() {
+  return apiRequest('/users/profile/phone/request-otp-current', {
+    method: 'POST',
+  })
+}
+
+/**
+ * Verify OTP for current phone (for phone update)
+ * POST /users/profile/phone/verify-otp-current
+ * 
+ * @param {Object} data - { otp }
+ * @returns {Promise<Object>} - { message, verified }
+ */
+export async function verifyOTPForCurrentPhone(data) {
+  return apiRequest('/users/profile/phone/verify-otp-current', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Request OTP for new phone (for phone update)
+ * POST /users/profile/phone/request-otp-new
+ * 
+ * @param {Object} data - { newPhone }
+ * @returns {Promise<Object>} - { message, expiresIn, testOTP? }
+ */
+export async function requestOTPForNewPhone(data) {
+  return apiRequest('/users/profile/phone/request-otp-new', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Verify OTP for new phone and update phone number
+ * POST /users/profile/phone/verify-otp-new
+ * 
+ * @param {Object} data - { otp }
+ * @returns {Promise<Object>} - Updated user profile
+ */
+export async function verifyOTPForNewPhone(data) {
+  return apiRequest('/users/profile/phone/verify-otp-new', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
  * Logout
  * POST /users/auth/logout
  * 
@@ -202,7 +256,7 @@ export async function getPopularProducts(params = {}) {
  * Get Offers/Banners
  * GET /users/offers
  * 
- * @returns {Promise<Array>} - Array of offers and banners
+ * @returns {Promise<Object>} - { carousels: Array, specialOffers: Array }
  */
 export async function getOffers() {
   return apiRequest('/users/offers')

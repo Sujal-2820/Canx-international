@@ -115,12 +115,16 @@ export function useUserApi() {
 
   // Cart APIs
   const addToCart = useCallback(
-    async (productId, quantity) => {
+    async (productId, quantity, variantAttributes = null) => {
+      const payload = { productId, quantity }
+      if (variantAttributes && Object.keys(variantAttributes).length > 0) {
+        payload.variantAttributes = variantAttributes
+      }
       return handleApiCall(
-        () => userApi.addToCart({ productId, quantity }),
+        () => userApi.addToCart(payload),
         () => ({
           type: 'ADD_TO_CART',
-          payload: { productId, quantity },
+          payload: { productId, quantity, variantAttributes },
         }),
         'Failed to add to cart',
       )
@@ -237,9 +241,10 @@ export function useUserApi() {
 
   // Payment APIs
   const createPaymentIntent = useCallback(
-    async (orderId, amount, paymentMethod) => {
+    async (data) => {
+      // Accept object parameter: { orderId, amount?, paymentMethod? }
       return handleApiCall(
-        () => userApi.createPaymentIntent({ orderId, amount, paymentMethod }),
+        () => userApi.createPaymentIntent(data),
         null,
         'Failed to create payment intent',
       )

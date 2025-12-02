@@ -18,6 +18,14 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Product description is required'],
     trim: true,
+    // Long description for product details page
+  },
+  shortDescription: {
+    type: String,
+    required: [true, 'Short description is required'],
+    trim: true,
+    maxlength: [150, 'Short description cannot exceed 150 characters'],
+    // Short description for product cards
   },
   category: {
     type: String,

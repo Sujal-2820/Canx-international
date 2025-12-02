@@ -26,6 +26,7 @@ import { OrderPartialEscalationModal } from '../../components/OrderPartialEscala
 import { ConfirmationModal } from '../../components/ConfirmationModal'
 import { ProductAttributeSelector } from '../../components/ProductAttributeSelector'
 import { BankAccountForm } from '../../components/BankAccountForm'
+import { NotificationPanel } from '../../components/NotificationPanel'
 
 const NAV_ITEMS = [
   {
@@ -67,7 +68,7 @@ const NAV_ITEMS = [
 ]
 
 export function VendorDashboard({ onLogout }) {
-  const { profile, dashboard } = useVendorState()
+  const { profile, dashboard, notifications } = useVendorState()
   const dispatch = useVendorDispatch()
   const { acceptOrder, confirmOrderAcceptance, cancelOrderAcceptance, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getOrders, requestWithdrawal, getEarningsSummary, getBankAccounts } = useVendorApi()
   const [activeTab, setActiveTab] = useState('overview')
@@ -77,6 +78,9 @@ export function VendorDashboard({ onLogout }) {
   const welcomeName = (profile?.name || 'Partner').split(' ')[0]
   const { isOpen, isMounted, currentAction, openPanel, closePanel } = useButtonAction()
   const { toasts, dismissToast, success, error, info, warning } = useToast()
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
+  const [isNotificationAnimating, setIsNotificationAnimating] = useState(false)
+  const previousNotificationsCountRef = useRef(0)
   
   // Escalation modal states
   const [escalationModalOpen, setEscalationModalOpen] = useState(false)
@@ -279,6 +283,76 @@ export function VendorDashboard({ onLogout }) {
     setActiveTab(target)
   }
 
+  // Calculate unread notification count
+  const unreadNotificationCount = useMemo(() => {
+    return (notifications || []).filter((n) => !n.read).length
+  }, [notifications])
+
+  // Play notification sound
+  const playNotificationSound = useCallback(() => {
+    try {
+      // Create a simple notification sound using Web Audio API
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+
+      oscillator.frequency.value = 800
+      oscillator.type = 'sine'
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + 0.3)
+    } catch (err) {
+      // Fallback: try HTML5 audio if Web Audio API is not available
+      console.log('Notification sound played (fallback)')
+    }
+  }, [])
+
+  // Trigger bell animation and sound when new notification arrives
+  useEffect(() => {
+    const currentUnreadCount = unreadNotificationCount
+    const previousUnreadCount = previousNotificationsCountRef.current
+
+    if (currentUnreadCount > previousUnreadCount) {
+      // New notification arrived
+      playNotificationSound()
+      setIsNotificationAnimating(true)
+      
+      // Stop animation after 3 seconds
+      const animationTimer = setTimeout(() => {
+        setIsNotificationAnimating(false)
+      }, 3000)
+
+      return () => clearTimeout(animationTimer)
+    }
+
+    previousNotificationsCountRef.current = currentUnreadCount
+  }, [unreadNotificationCount, playNotificationSound])
+
+  // Handle notification panel open/close
+  const handleNotificationClick = () => {
+    setNotificationPanelOpen(true)
+  }
+
+  const handleNotificationPanelClose = () => {
+    setNotificationPanelOpen(false)
+  }
+
+  // Mark notification as read
+  const handleMarkNotificationAsRead = useCallback((notificationId) => {
+    dispatch({ type: 'MARK_NOTIFICATION_READ', payload: { id: notificationId } })
+  }, [dispatch])
+
+  // Mark all notifications as read
+  const handleMarkAllNotificationsAsRead = useCallback(() => {
+    dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' })
+  }, [dispatch])
+
   const buildMenuItems = (close) => [
     ...NAV_ITEMS.map((item) => ({
       id: item.id,
@@ -374,6 +448,9 @@ export function VendorDashboard({ onLogout }) {
         title={`Hello ${welcomeName}`}
         subtitle={profile?.location?.city ? `${profile.location.city}${profile.location.state ? `, ${profile.location.state}` : ''}` : 'Location not set'}
         onSearchClick={openSearch}
+        onNotificationClick={handleNotificationClick}
+        notificationCount={unreadNotificationCount}
+        isNotificationAnimating={isNotificationAnimating}
         navigation={NAV_ITEMS.map((item) => (
           <BottomNavItem
             key={item.id}
@@ -457,7 +534,7 @@ export function VendorDashboard({ onLogout }) {
             />
           )}
           {activeTab === 'credit' && <CreditView openPanel={openPanel} />}
-          {activeTab === 'earnings' && <EarningsView openPanel={openPanel} />}
+          {activeTab === 'earnings' && <EarningsView openPanel={openPanel} onNavigate={navigateTo} />}
           {activeTab === 'reports' && <ReportsView />}
         </section>
       </MobileShell>
@@ -612,6 +689,17 @@ export function VendorDashboard({ onLogout }) {
                 const result = await rejectOrder(data.orderId, { reason: data.reason, notes: data.notes })
                 if (result.data) {
                   success('Order rejected and forwarded to Admin')
+                  // Refresh orders and dashboard
+                  getOrders().then((result) => {
+                    if (result.data) {
+                      dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                    }
+                  })
+                  fetchDashboardData()
+                  // Navigate to orders tab if not already there
+                  if (activeTab !== 'orders') {
+                    setActiveTab('orders')
+                  }
                 } else if (result.error) {
                   error(result.error.message || 'Failed to reject order')
                 }
@@ -645,6 +733,28 @@ export function VendorDashboard({ onLogout }) {
                   success(
                     `Order partially accepted. ${acceptedCount} item(s) will be fulfilled by you, ${rejectedCount} item(s) escalated to Admin.`
                   )
+                  // Refresh orders and dashboard
+                  getOrders().then((result) => {
+                    if (result.data) {
+                      dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                      // If viewing order details, refresh the order
+                      if (showOrderDetails && selectedOrderForDetails) {
+                        const updatedOrder = result.data.orders?.find(o => 
+                          (o._id && selectedOrderForDetails.id && o._id.toString() === selectedOrderForDetails.id.toString()) ||
+                          (o.id && selectedOrderForDetails.id && o.id.toString() === selectedOrderForDetails.id.toString()) ||
+                          (o._id && selectedOrderForDetails._id && o._id.toString() === selectedOrderForDetails._id.toString())
+                        )
+                        if (updatedOrder) {
+                          setSelectedOrderForDetails(updatedOrder)
+                        }
+                      }
+                    }
+                  })
+                  fetchDashboardData()
+                  // Navigate to orders tab if not already there
+                  if (activeTab !== 'orders') {
+                    setActiveTab('orders')
+                  }
                 } else if (result.error) {
                   error(result.error.message || 'Failed to accept order partially')
                 }
@@ -685,9 +795,9 @@ export function VendorDashboard({ onLogout }) {
                   success('Stock updated successfully!')
                   // Refresh dashboard data to update inventory stats
                   fetchDashboardData()
-                  // Refresh inventory if on inventory tab
-                  if (activeTab === 'inventory') {
-                    // Inventory will refresh via useEffect when products data changes
+                  // Navigate to inventory tab if not already there
+                  if (activeTab !== 'inventory') {
+                    setActiveTab('inventory')
                   }
                 } else if (result.error) {
                   error(result.error.message || 'Failed to update stock')
@@ -705,6 +815,10 @@ export function VendorDashboard({ onLogout }) {
                   success('Purchase request submitted successfully. Waiting for Admin approval.')
                   // Refresh credit info and dashboard
                   fetchDashboardData()
+                  // Navigate to credit tab if not already there
+                  if (activeTab !== 'credit') {
+                    setActiveTab('credit')
+                  }
                 } else if (result.error) {
                   error(result.error.message || 'Failed to submit purchase request')
                 }
@@ -793,9 +907,12 @@ export function VendorDashboard({ onLogout }) {
                 success('Withdrawal request submitted successfully. Awaiting admin approval.')
                 setConfirmationModalOpen(false)
                 setConfirmationData(null)
-                // Refresh earnings summary
-                if (activeTab === 'earnings') {
-                  getEarningsSummary()
+                // Refresh earnings summary and dashboard
+                getEarningsSummary()
+                fetchDashboardData()
+                // Navigate to earnings tab if not already there
+                if (activeTab !== 'earnings') {
+                  setActiveTab('earnings')
                 }
               } else if (result.error) {
                 error(result.error.message || 'Failed to submit withdrawal request')
@@ -882,6 +999,15 @@ export function VendorDashboard({ onLogout }) {
       />
       
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Notification Panel */}
+      <NotificationPanel
+        isOpen={notificationPanelOpen}
+        onClose={handleNotificationPanelClose}
+        notifications={notifications}
+        onMarkAsRead={handleMarkNotificationAsRead}
+        onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+      />
     </>
   )
 }
@@ -889,8 +1015,6 @@ export function VendorDashboard({ onLogout }) {
 function OverviewView({ onNavigate, welcomeName, openPanel }) {
   const { profile, dashboard } = useVendorState()
   const { fetchDashboardData } = useVendorApi()
-  const [showActivitySheet, setShowActivitySheet] = useState(false)
-  const [renderActivitySheet, setRenderActivitySheet] = useState(false)
   const servicesRef = useRef(null)
   const [servicePage, setServicePage] = useState(0)
 
@@ -934,7 +1058,7 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
   })
   
   // If no recent orders, use empty array (don't show dummy data)
-  const displayTransactions = transactions.length > 0 ? transactions : []
+  const displayTransactions = transactions.length > 0 ? transactions.slice(0, 4) : []
 
   const walletBalance = overviewData.credit?.remaining
     ? `₹${(overviewData.credit.remaining / 100000).toFixed(1)}L`
@@ -1074,16 +1198,6 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
           <div>
             <h3 className="overview-section__title">Recent activity</h3>
           </div>
-          <button
-            type="button"
-            className="overview-section__cta"
-            onClick={() => {
-              setRenderActivitySheet(true)
-              requestAnimationFrame(() => setShowActivitySheet(true))
-            }}
-          >
-            See all
-          </button>
         </div>
         <div className="overview-activity__list">
           {displayTransactions.length > 0 ? displayTransactions.map((item, index) => (
@@ -1117,61 +1231,6 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
         </div>
       </section>
 
-      {renderActivitySheet ? (
-        <div className={cn('vendor-activity-sheet', showActivitySheet && 'is-open')}>
-          <div
-            className={cn('vendor-activity-sheet__overlay', showActivitySheet && 'is-open')}
-            onClick={() => {
-              setShowActivitySheet(false)
-              setTimeout(() => setRenderActivitySheet(false), 260)
-            }}
-          />
-          <div className={cn('vendor-activity-sheet__panel', showActivitySheet && 'is-open')}>
-            <div className="vendor-activity-sheet__header">
-              <h4>All activity</h4>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowActivitySheet(false)
-                  setTimeout(() => setRenderActivitySheet(false), 260)
-                }}
-              >
-                Close
-              </button>
-            </div>
-            <div className="vendor-activity-sheet__body">
-              {displayTransactions.length > 0 ? displayTransactions.map((item, index) => (
-                <div key={item.orderId || `${item.name}-${index}`} className="overview-activity__item">
-                  <div className="overview-activity__avatar">{item.avatar}</div>
-                  <div className="overview-activity__details">
-                    <div className="overview-activity__row">
-                      <span className="overview-activity__name">{item.name}</span>
-                      <span
-                        className={cn(
-                          'overview-activity__amount',
-                          item.amount.startsWith('-') ? 'is-negative' : 'is-positive',
-                        )}
-                      >
-                        {item.amount}
-                      </span>
-                    </div>
-                    <div className="overview-activity__meta">
-                      <span>{item.action}</span>
-                      <span>{item.status}</span>
-                    </div>
-                  </div>
-                </div>
-              )) : (
-                <div className="overview-activity__item">
-                  <div className="overview-activity__details">
-                    <p className="text-sm text-gray-500">No recent activity</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       <section id="overview-snapshot" className="overview-section">
         <div className="overview-section__header">
@@ -1181,9 +1240,30 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
         </div>
         <div className="overview-metric-grid">
           {[
-            { id: 'orders', label: 'Total Orders', value: String(overviewData.orders?.total || 0), trend: 'Today' },
-            { id: 'inventory', label: 'Products', value: String(overviewData.inventory?.totalProducts || 0), trend: 'Assigned' },
-            { id: 'credit', label: 'Credit Used', value: overviewData.credit?.used ? `₹${(overviewData.credit.used / 100000).toFixed(1)}L` : '₹0', trend: `${Math.round(overviewData.credit?.utilization || 0)}%` },
+            { 
+              id: 'orders', 
+              label: 'Total Orders', 
+              value: String(overviewData.orders?.total || 0), 
+              trend: 'Today',
+              // Calculate progress based on orders today vs average (if available) or use utilization
+              progress: overviewData.orders?.total ? Math.min(100, Math.max(10, (overviewData.orders.total / Math.max(overviewData.orders.averageDaily || 10, 1)) * 50)) : 0
+            },
+            { 
+              id: 'inventory', 
+              label: 'Products', 
+              value: String(overviewData.inventory?.totalProducts || 0), 
+              trend: 'Assigned',
+              // Calculate progress based on in-stock vs total products
+              progress: overviewData.inventory?.totalProducts ? Math.min(100, Math.max(10, ((overviewData.inventory.totalProducts - (overviewData.inventory.outOfStockCount || 0)) / overviewData.inventory.totalProducts) * 100)) : 0
+            },
+            { 
+              id: 'credit', 
+              label: 'Credit Used', 
+              value: overviewData.credit?.used ? `₹${(overviewData.credit.used / 100000).toFixed(1)}L` : '₹0', 
+              trend: `${Math.round(overviewData.credit?.utilization || 0)}%`,
+              // Use actual credit utilization percentage
+              progress: Math.min(100, Math.max(0, overviewData.credit?.utilization || 0))
+            },
           ].map((item) => (
             <div key={item.id} className="overview-metric-card">
               <div className="overview-metric-card__head">
@@ -1192,7 +1272,7 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
               </div>
               <h4>{item.value}</h4>
               <div className="overview-metric-card__bar">
-                <span style={{ width: item.id === 'orders' ? '78%' : item.id === 'inventory' ? '64%' : '92%' }} />
+                <span style={{ width: `${item.progress}%` }} />
               </div>
             </div>
           ))}
@@ -1239,7 +1319,7 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
   )
 }
 
-function InventoryView({ openPanel }) {
+function InventoryView({ openPanel, onNavigate }) {
   const { dashboard, profile } = useVendorState()
   const dispatch = useVendorDispatch()
   const { success, error: showError } = useToast()
@@ -1471,6 +1551,23 @@ function InventoryView({ openPanel }) {
         setSelectedProduct(null)
         // Refresh dashboard to update credit info
         fetchDashboardData()
+        // Add notification for stock request
+        dispatch({
+          type: 'ADD_NOTIFICATION',
+          payload: {
+            id: `stock-request-${Date.now()}`,
+            type: 'stock_request',
+            title: 'Stock Request Submitted',
+            message: `Stock request for ${selectedProduct.name || 'product'} submitted. Waiting for admin approval.`,
+            timestamp: new Date().toISOString(),
+            data: { productId: selectedProduct.id || selectedProduct._id, productName: selectedProduct.name },
+            read: false,
+          },
+        })
+        // Navigate to credit tab to see the request
+        if (onNavigate) {
+          onNavigate('credit')
+        }
       } else if (result.error) {
         const message = result.error.message || 'Failed to submit order request.'
         setOrderError(message)
@@ -1622,6 +1719,23 @@ function InventoryView({ openPanel }) {
         loadPurchaseRequests()
         // Refresh dashboard to update credit info
         fetchDashboardData()
+        // Add notification for stock request
+        dispatch({
+          type: 'ADD_NOTIFICATION',
+          payload: {
+            id: `stock-request-${Date.now()}`,
+            type: 'stock_request',
+            title: 'Stock Request Submitted',
+            message: `Stock request of ₹${totalAmount.toLocaleString('en-IN')} submitted. Waiting for admin approval.`,
+            timestamp: new Date().toISOString(),
+            data: { requestId: result.data.requestId || result.data.purchase?._id, amount: totalAmount },
+            read: false,
+          },
+        })
+        // Navigate to credit tab to see the request
+        if (onNavigate) {
+          onNavigate('credit')
+        }
       } else if (result.error) {
         const message = result.error.message || 'Failed to submit stock request.'
         setOrderRequestError(message)
@@ -1663,7 +1777,6 @@ function InventoryView({ openPanel }) {
   ]
 
   const inventoryStats = [
-    { label: 'Total products', value: `${totalProducts}`, meta: `${inStockCount} in stock`, tone: 'success' },
     { label: 'Out of stock', value: `${outOfStockCount}`, meta: 'Not available', tone: 'warn' },
   ]
 
@@ -1752,7 +1865,7 @@ function InventoryView({ openPanel }) {
           {selectedProduct.stockStatus === 'in_stock' && (
             <button
               type="button"
-              onClick={handleOrderStock}
+              onClick={openOrderRequestScreen}
               className="rounded-full bg-purple-600 px-6 py-2 text-sm font-semibold text-white transition-all hover:bg-purple-700"
             >
               Order Stock
@@ -1832,132 +1945,6 @@ function InventoryView({ openPanel }) {
                 <p className="text-xs text-gray-600">Category</p>
                 <p className="text-sm font-semibold text-gray-900 capitalize">{selectedProduct.category || '—'}</p>
               </div>
-            </div>
-
-            <div
-              ref={orderFormRef}
-              className="space-y-4 rounded-2xl border border-purple-200 bg-purple-50/40 p-4 shadow-sm"
-            >
-              <div>
-                <h4 className="text-sm font-semibold text-purple-800">Order stock using credits</h4>
-                <p className="text-xs text-purple-600 mt-1">
-                  Minimum order amount ₹{MIN_PURCHASE_VALUE.toLocaleString('en-IN')}. Admin will review and approve the request before stock is dispatched.
-                </p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-white bg-white/70 p-3">
-                  <p className="text-xs text-gray-600">Credit available</p>
-                  <p className="text-sm font-bold text-gray-900">
-                    ₹{creditRemaining.toLocaleString('en-IN')}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-white bg-white/70 p-3">
-                  <p className="text-xs text-gray-600">Order amount</p>
-                  <p className={cn('text-sm font-bold', orderTotal >= MIN_PURCHASE_VALUE ? 'text-gray-900' : 'text-red-600')}>
-                    ₹{orderTotal.toLocaleString('en-IN')}
-                  </p>
-                  <p className="text-[11px] text-gray-500 mt-1">Price ₹{pricePerUnit.toLocaleString('en-IN')} per {selectedProductAttributeStock?.stockUnit || selectedProduct.unit || 'kg'}</p>
-                </div>
-                <div className="rounded-lg border border-white bg-white/70 p-3">
-                  <p className="text-xs text-gray-600">Credits after request</p>
-                  <p className={cn('text-sm font-bold', projectedCredit >= 0 ? 'text-gray-900' : 'text-red-600')}>
-                    ₹{projectedCredit.toLocaleString('en-IN')}
-                  </p>
-                  <p className="text-[11px] text-gray-500 mt-1">Must stay within credit limit ₹{creditLimit.toLocaleString('en-IN')}</p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-              {/* Attribute Selection - Only show if product has attributes */}
-              {selectedProduct.attributeStocks && 
-               Array.isArray(selectedProduct.attributeStocks) && 
-               selectedProduct.attributeStocks.length > 0 && (
-                <ProductAttributeSelector
-                  product={selectedProduct}
-                  selectedAttributes={selectedProductAttributes}
-                  onAttributesChange={(attributes, attributeStock) => {
-                    setSelectedProductAttributes(attributes)
-                    setSelectedProductAttributeStock(attributeStock)
-                    // Reset quantity when variant changes
-                    setOrderQuantity('')
-                  }}
-                />
-              )}
-
-              <div>
-                <label className="text-xs font-semibold text-gray-700">
-                  Quantity to order ({selectedProductAttributeStock?.stockUnit || selectedProduct.unit || 'kg'})
-                </label>
-                <input
-                  type="number"
-                  value={orderQuantity}
-                  onChange={(e) => setOrderQuantity(e.target.value)}
-                  min="1"
-                  max={adminStock}
-                  placeholder="Enter quantity"
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                />
-                <p className="mt-1 text-[11px] text-gray-500">
-                  Admin has {adminStock} {selectedProductAttributeStock?.stockUnit || selectedProduct.unit || 'kg'} available.
-                </p>
-              </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700">
-                    Type product name to confirm
-                  </label>
-                  <input
-                    type="text"
-                    value={confirmProductName}
-                    onChange={(e) => setConfirmProductName(e.target.value)}
-                    placeholder={selectedProduct.name}
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-700">
-                  Notes for admin (optional)
-                </label>
-                <textarea
-                  value={orderNotes}
-                  onChange={(e) => setOrderNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Mention urgency, delivery expectations, etc."
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                />
-              </div>
-
-              {orderError && (
-                <p className="text-sm text-red-600">{orderError}</p>
-              )}
-
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                <button
-                  type="button"
-                  onClick={handleOrderStock}
-                  className="rounded-full border border-purple-200 bg-white px-4 py-2 text-xs font-semibold text-purple-700 transition-all hover:border-purple-400 hover:text-purple-900"
-                >
-                  Check requirements
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOrderSubmit}
-                  disabled={!canSubmitOrder}
-                  className={cn(
-                    'rounded-full px-6 py-2 text-sm font-semibold text-white transition-all',
-                    canSubmitOrder
-                      ? 'bg-purple-600 hover:bg-purple-700'
-                      : 'bg-purple-300 cursor-not-allowed'
-                  )}
-                >
-                  {isSubmittingOrder ? 'Submitting...' : 'Submit for Admin Approval'}
-                </button>
-              </div>
-              <p className="text-[11px] text-purple-600">
-                Requests are visible to Admin for approval. You will be notified once stock is allotted.
-              </p>
             </div>
           </div>
         </div>
@@ -2259,12 +2246,22 @@ function InventoryView({ openPanel }) {
                     <div key={idx} className="flex items-center justify-between border-b border-gray-100 pb-2">
                       <div>
                         <p className="text-sm font-semibold text-gray-900">{item.product.name}</p>
+                        {/* Display variant attributes if present */}
+                        {item.variantAttributes && Object.keys(item.variantAttributes).length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {Object.entries(item.variantAttributes).map(([key, value]) => (
+                              <p key={key} className="text-xs text-gray-600">
+                                <span className="font-medium">{key}:</span> {value}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                         <p className="text-xs text-gray-500">
-                          {item.quantity} {item.product.unit || 'kg'} × ₹{item.pricePerUnit.toLocaleString('en-IN')}
+                          {item.quantity} {item.product.unit || 'kg'} × ₹{(item.unitPrice || item.pricePerUnit || 0).toLocaleString('en-IN')}
                         </p>
                       </div>
                       <p className="text-sm font-bold text-gray-900">
-                        ₹{item.itemTotal.toLocaleString('en-IN')}
+                        ₹{((item.unitPrice || item.pricePerUnit || 0) * item.quantity).toLocaleString('en-IN')}
                       </p>
                     </div>
                   ))}
@@ -4242,7 +4239,6 @@ function CreditView({ openPanel }) {
   const creditMetrics = [
     { label: 'Loan limit', value: credit.limit, icon: CreditIcon, tone: 'success' },
     { label: 'Remaining', value: credit.remaining, icon: WalletIcon, tone: 'success' },
-    { label: 'Used', value: credit.used, icon: ChartIcon, tone: 'warn' },
     { label: 'Due date', value: credit.due, icon: ReportIcon, tone: 'teal' },
   ]
 
@@ -4336,18 +4332,6 @@ function CreditView({ openPanel }) {
               </div>
             )
           })}
-        </div>
-        <div className="credit-usage-card">
-          <div className="credit-usage-card__header">
-            <span className="credit-usage-card__label">Loan usage</span>
-            <span className="credit-usage-card__percent">{usedPercent}%</span>
-          </div>
-          <div className="credit-usage-card__progress">
-            <span style={{ width: `${usedPercent}%` }} />
-          </div>
-          <div className="credit-usage-card__footer">
-            <span className="credit-usage-card__badge">{credit.penalty === 'No penalty' ? 'No fine' : credit.penalty}</span>
-          </div>
         </div>
       </section>
 
@@ -4548,7 +4532,6 @@ function ReportsView() {
           </div>
         <div className="reports-metric-grid">
           {[
-            { label: 'Total Sales', value: totalSales > 0 ? `₹${(totalSales / 100000).toFixed(1)}L` : '₹0', meta: `${orderCount} orders`, icon: ChartIcon },
             { label: 'Avg Order Value', value: averageOrderValue > 0 ? `₹${averageOrderValue.toLocaleString('en-IN')}` : '₹0', meta: 'Per order', icon: WalletIcon },
             { label: 'Orders Completed', value: String(orderCount), meta: 'Delivered orders', icon: CreditIcon },
             { label: 'Performance', value: orderCount > 0 ? 'Active' : 'No activity', meta: 'This period', icon: HomeIcon },
@@ -4936,7 +4919,7 @@ function ReportsView() {
   )
 }
 
-function EarningsView({ openPanel }) {
+function EarningsView({ openPanel, onNavigate }) {
   const dispatch = useVendorDispatch()
   const { getEarningsSummary, getEarningsHistory, getEarningsByOrders, getWithdrawals, getBankAccounts } = useVendorApi()
   const { toasts, dismissToast, success, error } = useToast()
@@ -5025,7 +5008,6 @@ function EarningsView({ openPanel }) {
   }
 
   const earningsMetrics = [
-    { label: 'Total Earnings', value: formatCurrency(summary.totalEarnings), icon: WalletIcon, tone: 'success' },
     { label: 'Available Balance', value: formatCurrency(summary.availableBalance), icon: SparkIcon, tone: 'success' },
     { label: 'Pending Withdrawal', value: formatCurrency(summary.pendingWithdrawal), icon: CreditIcon, tone: 'warn' },
     { label: 'This Month', value: formatCurrency(summary.thisMonthEarnings), icon: ChartIcon, tone: 'teal' },
@@ -5338,6 +5320,14 @@ function EarningsView({ openPanel }) {
               // Reload bank accounts
               await loadBankAccounts()
               setShowBankAccountForm(false)
+              // Refresh earnings summary
+              const summaryResult = await getEarningsSummary()
+              if (summaryResult.data) {
+                setEarningsData((prev) => ({
+                  ...prev,
+                  summary: summaryResult.data,
+                }))
+              }
             }}
           />
         </div>

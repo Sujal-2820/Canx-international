@@ -34,8 +34,11 @@ export function ProductCard({ product, onAddToCart, onWishlist, onNavigate, clas
         <div className="flex-1 flex flex-col gap-1.5 min-h-0">
           <div className="min-w-0">
             <h3 className="text-[0.85rem] font-semibold text-[#172022] line-clamp-2 mb-0.5">{product.name}</h3>
+            {product.shortDescription && (
+              <p className="text-[0.7rem] text-[rgba(26,42,34,0.65)] line-clamp-2 mt-0.5">{product.shortDescription}</p>
+            )}
             {product.vendor && (
-              <p className="text-[0.7rem] text-[rgba(26,42,34,0.6)] truncate">{product.vendor.name}</p>
+              <p className="text-[0.7rem] text-[rgba(26,42,34,0.6)] truncate mt-0.5">{product.vendor.name}</p>
             )}
           </div>
           <div className="flex items-center gap-2">

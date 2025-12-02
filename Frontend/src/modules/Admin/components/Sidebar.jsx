@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BarChart3, Building2, Factory, Home, Layers3, ShieldCheck, Users2, Wallet, Settings, ArrowRightLeft, IndianRupee, History, ChevronDown, ChevronRight } from 'lucide-react'
+import { BarChart3, Building2, Factory, Home, Layers3, ShieldCheck, Users2, Wallet, Settings, ArrowRightLeft, IndianRupee, History, ChevronDown, ChevronRight, ImageIcon } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 
 const links = [
@@ -21,6 +21,27 @@ const links = [
       { id: 'products/add', label: 'Add Products' },
       { id: 'products/active', label: 'Active Products' },
       { id: 'products/inactive', label: 'Inactive Products' },
+    ]
+  },
+  { 
+    id: 'offers', 
+    label: 'Offers', 
+    icon: ImageIcon, 
+    description: 'Manage carousels and special offers', 
+    color: 'purple',
+    suboptions: []
+  },
+  { 
+    id: 'orders', 
+    label: 'Orders', 
+    icon: Building2, 
+    description: 'Approvals & delivery', 
+    color: 'red',
+    suboptions: [
+      { id: 'orders/all', label: 'ALL' },
+      { id: 'orders/escalated', label: 'Escalated Orders' },
+      { id: 'orders/processing', label: 'Processing Orders' },
+      { id: 'orders/completed', label: 'Completed' },
     ]
   },
   { 
@@ -55,19 +76,6 @@ const links = [
       { id: 'users/all', label: 'ALL' },
       { id: 'users/active', label: 'Active' },
       { id: 'users/inactive', label: 'Inactive' },
-    ]
-  },
-  { 
-    id: 'orders', 
-    label: 'Orders', 
-    icon: Building2, 
-    description: 'Approvals & delivery', 
-    color: 'red',
-    suboptions: [
-      { id: 'orders/all', label: 'ALL' },
-      { id: 'orders/escalated', label: 'Escalated Orders' },
-      { id: 'orders/processing', label: 'Processing Orders' },
-      { id: 'orders/completed', label: 'Completed' },
     ]
   },
   { 
@@ -198,7 +206,7 @@ const colorStyles = {
   },
 }
 
-export function Sidebar({ active, onNavigate, condensed = false }) {
+export function Sidebar({ active, onNavigate, condensed = false, onSignOut }) {
   const [expandedItems, setExpandedItems] = useState(new Set())
 
   const toggleExpand = (id) => {
@@ -226,15 +234,14 @@ export function Sidebar({ active, onNavigate, condensed = false }) {
   }
 
   return (
-    <nav className="space-y-2">
+    <nav className="mt-2">
       {links.map(({ id, label, icon: Icon, description, color, suboptions = [] }) => {
         const hasSuboptions = suboptions && suboptions.length > 0
         const isExpanded = expandedItems.has(id)
         const isActive = isParentActive(id, suboptions)
-        const styles = colorStyles[color] || colorStyles.blue
 
         return (
-          <div key={id} className="space-y-1">
+          <div key={id}>
             <button
               type="button"
               onClick={() => {
@@ -244,37 +251,29 @@ export function Sidebar({ active, onNavigate, condensed = false }) {
                 onNavigate(id)
               }}
               className={cn(
-                'w-full rounded-2xl border px-3 py-1.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+                'w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-150 focus-visible:outline-none',
                 isActive
-                  ? `${styles.border} bg-white/10 shadow-[0_2px_6px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.4)]`
-                  : `border-white/30 bg-white/5 ${styles.hover} shadow-[0_1px_4px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,0.4)] hover:bg-white/10 hover:shadow-[0_2px_6px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.4)] active:shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]`,
+                  ? 'bg-[#2271b1] text-white border-l-4 border-[#2271b1]'
+                  : 'text-[#b4b9be] hover:bg-[#32373c] hover:text-white',
+                condensed && 'justify-center'
               )}
             >
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-200',
-                    isActive
-                      ? 'bg-white text-blue-600 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]'
-                      : 'bg-white/20 text-white shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]',
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div className={cn('flex-1 overflow-hidden transition-all', condensed && 'hidden')}>
-                  <p className={cn('text-sm font-bold', isActive ? 'text-white' : 'text-white/90')}>
+              <Icon className={cn('h-5 w-5 flex-shrink-0', isActive ? 'text-white' : 'text-[#b4b9be]')} />
+              {!condensed && (
+                <>
+                  <span className={cn('text-sm', isActive ? 'text-white font-medium' : 'text-[#b4b9be]')}>
                     {label}
-                  </p>
-                </div>
-                {hasSuboptions && !condensed && (
-                  <span className={cn('transition-transform duration-200', isExpanded && 'rotate-90')}>
-                    <ChevronRight className="h-4 w-4 text-white/80" />
                   </span>
-                )}
-              </div>
+                  {hasSuboptions && (
+                    <span className={cn('ml-auto transition-transform duration-200', isExpanded && 'rotate-90')}>
+                      <ChevronRight className="h-4 w-4" />
+                    </span>
+                  )}
+                </>
+              )}
             </button>
             {hasSuboptions && isExpanded && !condensed && (
-              <div className="ml-4 space-y-1 border-l-2 border-white/30 pl-2">
+              <div className="bg-[#1d2327]">
                 {suboptions.map((sub) => {
                   const isSubActive = isSuboptionActive(sub.id)
                   return (
@@ -286,15 +285,15 @@ export function Sidebar({ active, onNavigate, condensed = false }) {
                         onNavigate(sub.id)
                       }}
                       className={cn(
-                        'w-full rounded-xl border px-3 py-1.5 text-left text-xs transition-all duration-200',
+                        'w-full flex items-center gap-3 pl-11 pr-3 py-2 text-left text-sm transition-colors duration-150',
                         isSubActive
-                          ? `${styles.border} ${styles.bg} shadow-[0_2px_6px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.4)]`
-                          : 'border-white/30 bg-white/10 text-white/80 hover:bg-white/20 hover:shadow-[0_1px_4px_rgba(0,0,0,0.04)]',
+                          ? 'bg-[#2271b1] text-white border-l-4 border-[#2271b1]'
+                          : 'text-[#b4b9be] hover:bg-[#32373c] hover:text-white',
                       )}
                     >
-                      <p className={cn('font-semibold', isSubActive ? styles.text : 'text-white/90')}>
+                      <span className={isSubActive ? 'text-white' : 'text-[#b4b9be]'}>
                         {sub.label}
-                      </p>
+                      </span>
                     </button>
                   )
                 })}

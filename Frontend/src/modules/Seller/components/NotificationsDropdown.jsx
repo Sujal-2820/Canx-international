@@ -3,11 +3,17 @@ import { cn } from '../../../lib/cn'
 import { BellIcon } from './icons'
 import { CloseIcon } from './icons'
 
-export function NotificationsDropdown({ isOpen, onClose, notifications = [] }) {
+export function NotificationsDropdown({ isOpen, onClose, notifications = [], onMarkAsRead, onMarkAllAsRead }) {
   const dropdownRef = useRef(null)
   const [mounted, setMounted] = useState(false)
 
-  const unreadCount = notifications.filter((n) => !n.read).length
+  // Show max 3 recent unread notifications
+  const recentNotifications = (notifications || [])
+    .filter((n) => !n.read)
+    .slice(0, 3)
+    .sort((a, b) => new Date(b.timestamp || b.createdAt || b.date || 0) - new Date(a.timestamp || a.createdAt || a.date || 0))
+
+  const unreadCount = (notifications || []).filter((n) => !n.read).length
 
   useEffect(() => {
     if (isOpen) {
@@ -32,6 +38,7 @@ export function NotificationsDropdown({ isOpen, onClose, notifications = [] }) {
   }, [isOpen, onClose])
 
   const formatTime = (dateString) => {
+    if (!dateString) return 'Just now'
     const date = new Date(dateString)
     const now = new Date()
     const diff = now - date
@@ -44,6 +51,34 @@ export function NotificationsDropdown({ isOpen, onClose, notifications = [] }) {
     if (hours < 24) return `${hours}h ago`
     if (days < 7) return `${days}d ago`
     return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  }
+
+  const getNotificationIcon = (type) => {
+    switch (type) {
+      case 'commission':
+      case 'cashback':
+        return '💰'
+      case 'target':
+      case 'target_achieved':
+        return '🎯'
+      case 'announcement':
+        return '📢'
+      case 'withdrawal':
+      case 'withdrawal_approved':
+      case 'withdrawal_rejected':
+        return '💸'
+      case 'commission_rate_change':
+      case 'policy_update':
+        return '📋'
+      default:
+        return '🔔'
+    }
+  }
+
+  const handleNotificationClick = (notification) => {
+    if (!notification.read && onMarkAsRead) {
+      onMarkAsRead(notification.id)
+    }
   }
 
   if (!mounted) return null
@@ -70,32 +105,57 @@ export function NotificationsDropdown({ isOpen, onClose, notifications = [] }) {
         </div>
       </div>
       <div className="seller-notifications-dropdown__body">
-        {notifications.length === 0 ? (
+        {recentNotifications.length === 0 ? (
           <div className="seller-notifications-dropdown__empty">
             <BellIcon className="seller-notifications-dropdown__empty-icon" />
-            <p className="seller-notifications-dropdown__empty-text">No notifications yet</p>
-            <p className="seller-notifications-dropdown__empty-subtext">We'll notify you when something happens</p>
+            <p className="seller-notifications-dropdown__empty-text">No new notifications</p>
+            <p className="seller-notifications-dropdown__empty-subtext">You're all caught up!</p>
           </div>
         ) : (
-          <div className="seller-notifications-dropdown__list">
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={cn('seller-notification-item', !notification.read && 'seller-notification-item--unread')}
-              >
-                <div className="seller-notification-item__indicator" />
-                <div className="seller-notification-item__content">
-                  <h4 className="seller-notification-item__title">{notification.title || 'Notification'}</h4>
-                  {notification.message && (
-                    <p className="seller-notification-item__message">{notification.message}</p>
-                  )}
-                  <span className="seller-notification-item__time">
-                    {notification.date ? formatTime(notification.date) : 'Recently'}
-                  </span>
-                </div>
+          <>
+            {recentNotifications.length > 0 && onMarkAllAsRead && (
+              <div className="seller-notifications-dropdown__actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onMarkAllAsRead) {
+                      onMarkAllAsRead()
+                    }
+                  }}
+                  className="seller-notifications-dropdown__mark-all"
+                >
+                  Mark all as read
+                </button>
               </div>
-            ))}
-          </div>
+            )}
+            <div className="seller-notifications-dropdown__list">
+              {recentNotifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className={cn('seller-notification-item', !notification.read && 'seller-notification-item--unread')}
+                  onClick={() => handleNotificationClick(notification)}
+                >
+                  <div className="seller-notification-item__icon">
+                    {getNotificationIcon(notification.type)}
+                  </div>
+                  <div className="seller-notification-item__content">
+                    <div className="seller-notification-item__header">
+                      <h4 className="seller-notification-item__title">{notification.title || 'Notification'}</h4>
+                      {!notification.read && (
+                        <span className="seller-notification-item__badge" />
+                      )}
+                    </div>
+                    {notification.message && (
+                      <p className="seller-notification-item__message">{notification.message}</p>
+                    )}
+                    <span className="seller-notification-item__time">
+                      {formatTime(notification.timestamp || notification.createdAt || notification.date)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -21,6 +21,8 @@
     "test-vendor-e2e": "node scripts/testVendorDashboardE2E.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test-endpoints": "node scripts/testAllEndpoints.js",
+    "test-e2e": "node scripts/comprehensiveE2ETest.js",
+    "test-e2e-full": "node scripts/runE2ETestsWithServer.js",
     "clear-all-data": "node scripts/clearAllData.js"
   },
   "keywords": [

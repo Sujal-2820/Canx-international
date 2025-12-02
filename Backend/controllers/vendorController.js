@@ -15,7 +15,8 @@ const WithdrawalRequest = require('../models/WithdrawalRequest');
 const BankAccount = require('../models/BankAccount');
 const PaymentHistory = require('../models/PaymentHistory');
 
-const { generateOTP, sendOTP } = require('../config/sms');
+const { sendOTP } = require('../utils/otp');
+const { getTestOTPInfo } = require('../services/smsIndiaHubService');
 const { generateToken } = require('../middleware/auth');
 const { OTP_EXPIRY_MINUTES, MIN_VENDOR_PURCHASE, MAX_VENDOR_PURCHASE, VENDOR_COVERAGE_RADIUS_KM, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 const { checkPhoneExists, checkPhoneInRole } = require('../utils/phoneValidation');
@@ -306,25 +307,25 @@ exports.register = async (req, res, next) => {
     // Clear any existing OTP before generating new one
     vendor.clearOTP();
     
-    // Generate new unique OTP
-    const otpCode = vendor.generateOTP();
+    // Check if this is a test phone number - use default OTP 123456
+    const testOTPInfo = getTestOTPInfo(phone);
+    let otpCode;
+    if (testOTPInfo.isTest) {
+      // For test numbers, set OTP directly to 123456
+      otpCode = testOTPInfo.defaultOTP;
+      vendor.otp = {
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      };
+    } else {
+      // Generate new unique OTP for regular numbers
+      otpCode = vendor.generateOTP();
+    }
     await vendor.save();
 
     // Send OTP via SMS
     try {
-      // Enhanced console logging for OTP
-      const timestamp = new Date().toISOString();
-      console.log('\n' + '='.repeat(60));
-      console.log('🔐 VENDOR OTP GENERATED (Registration)');
-      console.log('='.repeat(60));
-      console.log(`📱 Phone: ${phone}`);
-      console.log(`🔢 OTP Code: ${otpCode}`);
-      console.log(`⏰ Generated At: ${timestamp}`);
-      console.log(`⏳ Expires In: 5 minutes`);
-      console.log('='.repeat(60) + '\n');
-      
-      // Try to send OTP (will use dummy in development)
-      await sendOTP(phone, otpCode);
+      await sendOTP(phone, otpCode, 'registration');
     } catch (error) {
       console.error('Failed to send OTP:', error);
     }
@@ -392,25 +393,25 @@ exports.requestOTP = async (req, res, next) => {
     // Clear any existing OTP before generating new one
     vendor.clearOTP();
     
-    // Generate new unique OTP
-    const otpCode = vendor.generateOTP();
+    // Check if this is a test phone number - use default OTP 123456
+    const testOTPInfo = getTestOTPInfo(phone);
+    let otpCode;
+    if (testOTPInfo.isTest) {
+      // For test numbers, set OTP directly to 123456
+      otpCode = testOTPInfo.defaultOTP;
+      vendor.otp = {
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      };
+    } else {
+      // Generate new unique OTP for regular numbers
+      otpCode = vendor.generateOTP();
+    }
     await vendor.save();
 
     // Send OTP via SMS
     try {
-      // Enhanced console logging for OTP
-      const timestamp = new Date().toISOString();
-      console.log('\n' + '='.repeat(60));
-      console.log('🔐 VENDOR OTP GENERATED');
-      console.log('='.repeat(60));
-      console.log(`📱 Phone: ${phone}`);
-      console.log(`🔢 OTP Code: ${otpCode}`);
-      console.log(`⏰ Generated At: ${timestamp}`);
-      console.log(`⏳ Expires In: 5 minutes`);
-      console.log('='.repeat(60) + '\n');
-      
-      // Try to send OTP (will use dummy in development)
-      await sendOTP(phone, otpCode);
+      await sendOTP(phone, otpCode, 'login');
     } catch (error) {
       console.error('Failed to send OTP:', error);
     }
@@ -1053,10 +1054,16 @@ exports.getOrderDetails = async (req, res, next) => {
       const assignment = productId ? assignmentMap[productId] : null;
       const vendorStock = assignment?.stock ?? assignment?.vendorStock ?? 0;
 
+      // Convert variantAttributes Map to object for JSON response
+      const variantAttrs = item.variantAttributes instanceof Map
+        ? Object.fromEntries(item.variantAttributes)
+        : item.variantAttributes || {}
+
       return {
         ...item,
         vendorStock,
         vendorStockUpdatedAt: assignment?.updatedAt || assignment?.lastRestockedAt || null,
+        variantAttributes: Object.keys(variantAttrs).length > 0 ? variantAttrs : undefined,
       };
     });
 
@@ -1439,17 +1446,24 @@ exports.rejectOrder = async (req, res, next) => {
       escalatedBy: 'vendor',
       escalationReason: reason,
       escalationType: 'full',
-      escalatedItems: order.items.map(item => ({
-        itemId: item._id,
-        productId: item.productId,
-        productName: item.productName,
-        requestedQuantity: item.quantity,
-        availableQuantity: 0, // Will be calculated if needed
-        escalatedQuantity: item.quantity,
-        reason: reason,
-        // Preserve attribute combination if present
-        attributeCombination: item.attributeCombination || item.attributes || undefined,
-      })),
+      escalatedItems: order.items.map(item => {
+        // Convert variantAttributes Map to object
+        const variantAttrs = item.variantAttributes instanceof Map
+          ? Object.fromEntries(item.variantAttributes)
+          : item.variantAttributes || {}
+        
+        return {
+          itemId: item._id,
+          productId: item.productId,
+          productName: item.productName,
+          requestedQuantity: item.quantity,
+          availableQuantity: 0, // Will be calculated if needed
+          escalatedQuantity: item.quantity,
+          reason: reason,
+          // Preserve variant attributes
+          variantAttributes: Object.keys(variantAttrs).length > 0 ? variantAttrs : undefined,
+        }
+      }),
       originalVendorId: order.vendorId, // Keep reference to original vendor
     };
     
@@ -1562,8 +1576,11 @@ exports.acceptOrderPartially = async (req, res, next) => {
           unitPrice: item.unitPrice,
           totalPrice: item.unitPrice * (acceptedItem.quantity || item.quantity),
         };
-        // Preserve attribute combination if present
-        if (item.attributeCombination || item.attributes) {
+        // Preserve variant attributes if present
+        if (item.variantAttributes) {
+          itemPayload.variantAttributes = item.variantAttributes
+        } else if (item.attributeCombination || item.attributes) {
+          // Fallback for legacy data
           itemPayload.attributeCombination = item.attributeCombination || item.attributes;
         }
         return itemPayload;
@@ -1603,8 +1620,11 @@ exports.acceptOrderPartially = async (req, res, next) => {
           unitPrice: item.unitPrice,
           totalPrice: item.unitPrice * (rejectedItem.quantity || item.quantity),
         };
-        // Preserve attribute combination if present
-        if (item.attributeCombination || item.attributes) {
+        // Preserve variant attributes if present
+        if (item.variantAttributes) {
+          itemPayload.variantAttributes = item.variantAttributes
+        } else if (item.attributeCombination || item.attributes) {
+          // Fallback for legacy data
           itemPayload.attributeCombination = item.attributeCombination || item.attributes;
         }
         return itemPayload;
@@ -1624,8 +1644,20 @@ exports.acceptOrderPartially = async (req, res, next) => {
           escalatedQuantity: rejectedItem.quantity || item.quantity,
           reason: rejectedItem.reason || notes || 'Item not available',
         };
-        // Preserve attribute combination if present
-        if (item.attributeCombination || item.attributes) {
+        // Preserve variant attributes if present
+        if (item.variantAttributes) {
+          const variantAttrs = item.variantAttributes instanceof Map
+            ? Object.fromEntries(item.variantAttributes)
+            : item.variantAttributes
+          if (Object.keys(variantAttrs).length > 0) {
+            const variantAttributesMap = new Map()
+            Object.keys(variantAttrs).forEach(key => {
+              variantAttributesMap.set(key, String(variantAttrs[key]))
+            })
+            escalationItem.variantAttributes = variantAttributesMap
+          }
+        } else if (item.attributeCombination || item.attributes) {
+          // Fallback for legacy data
           escalationItem.attributeCombination = item.attributeCombination || item.attributes;
         }
         return escalationItem;
@@ -1780,8 +1812,20 @@ exports.escalateOrderPartial = async (req, res, next) => {
             escalatedQuantity: escalatedQty,
             reason: escalatedItem.reason || reason,
           };
-          // Preserve attribute combination if present
-          if (orderItem.attributeCombination || orderItem.attributes) {
+          // Preserve variant attributes if present
+          if (orderItem.variantAttributes) {
+            const variantAttrs = orderItem.variantAttributes instanceof Map
+              ? Object.fromEntries(orderItem.variantAttributes)
+              : orderItem.variantAttributes
+            if (Object.keys(variantAttrs).length > 0) {
+              const variantAttributesMap = new Map()
+              Object.keys(variantAttrs).forEach(key => {
+                variantAttributesMap.set(key, String(variantAttrs[key]))
+              })
+              escalationItem.variantAttributes = variantAttributesMap
+            }
+          } else if (orderItem.attributeCombination || orderItem.attributes) {
+            // Fallback for legacy data
             escalationItem.attributeCombination = orderItem.attributeCombination || orderItem.attributes;
           }
           escalatedItemsDetails.push(escalationItem);
@@ -1794,8 +1838,11 @@ exports.escalateOrderPartial = async (req, res, next) => {
             quantity: acceptedQty,
             totalPrice: orderItem.unitPrice * acceptedQty,
           };
-          // Preserve attribute combination if present
-          if (orderItem.attributeCombination || orderItem.attributes) {
+          // Preserve variant attributes if present
+          if (orderItem.variantAttributes) {
+            acceptedItem.variantAttributes = orderItem.variantAttributes
+          } else if (orderItem.attributeCombination || orderItem.attributes) {
+            // Fallback for legacy data
             acceptedItem.attributeCombination = orderItem.attributeCombination || orderItem.attributes;
           }
           acceptedItems.push(acceptedItem);
@@ -1804,8 +1851,11 @@ exports.escalateOrderPartial = async (req, res, next) => {
       } else {
         // Item is fully accepted
         const fullAcceptedItem = orderItem.toObject();
-        // Preserve attribute combination if present
-        if (orderItem.attributeCombination || orderItem.attributes) {
+        // Preserve variant attributes if present
+        if (orderItem.variantAttributes) {
+          fullAcceptedItem.variantAttributes = orderItem.variantAttributes
+        } else if (orderItem.attributeCombination || orderItem.attributes) {
+          // Fallback for legacy data
           fullAcceptedItem.attributeCombination = orderItem.attributeCombination || orderItem.attributes;
         }
         acceptedItems.push(fullAcceptedItem);
@@ -1831,8 +1881,22 @@ exports.escalateOrderPartial = async (req, res, next) => {
         totalPrice: (originalItem?.unitPrice || 0) * ei.escalatedQuantity,
         status: 'pending',
       };
-      // Preserve attribute combination if present
-      if (ei.attributeCombination || (originalItem && (originalItem.attributeCombination || originalItem.attributes))) {
+      // Preserve variant attributes if present
+      if (ei.variantAttributes) {
+        const variantAttrs = ei.variantAttributes instanceof Map
+          ? Object.fromEntries(ei.variantAttributes)
+          : ei.variantAttributes
+        if (Object.keys(variantAttrs).length > 0) {
+          const variantAttributesMap = new Map()
+          Object.keys(variantAttrs).forEach(key => {
+            variantAttributesMap.set(key, String(variantAttrs[key]))
+          })
+          itemPayload.variantAttributes = variantAttributesMap
+        }
+      } else if (originalItem && originalItem.variantAttributes) {
+        itemPayload.variantAttributes = originalItem.variantAttributes
+      } else if (ei.attributeCombination || (originalItem && (originalItem.attributeCombination || originalItem.attributes))) {
+        // Fallback for legacy data
         itemPayload.attributeCombination = ei.attributeCombination || originalItem.attributeCombination || originalItem.attributes;
       }
       return itemPayload;

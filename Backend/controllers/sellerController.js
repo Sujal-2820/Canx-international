@@ -12,7 +12,8 @@ const WithdrawalRequest = require('../models/WithdrawalRequest');
 const BankAccount = require('../models/BankAccount');
 const PaymentHistory = require('../models/PaymentHistory');
 
-const { generateOTP, sendOTP } = require('../config/sms');
+const { sendOTP } = require('../utils/otp');
+const { getTestOTPInfo } = require('../services/smsIndiaHubService');
 const { generateToken } = require('../middleware/auth');
 const { OTP_EXPIRY_MINUTES, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 const { checkPhoneExists, checkPhoneInRole } = require('../utils/phoneValidation');
@@ -128,28 +129,25 @@ exports.register = async (req, res, next) => {
     // Clear any existing OTP before generating new one
     seller.clearOTP();
     
-    // Generate new unique OTP
-    const otpCode = seller.generateOTP();
+    // Check if this is a test phone number - use default OTP 123456
+    const testOTPInfo = getTestOTPInfo(phone);
+    let otpCode;
+    if (testOTPInfo.isTest) {
+      // For test numbers, set OTP directly to 123456
+      otpCode = testOTPInfo.defaultOTP;
+      seller.otp = {
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      };
+    } else {
+      // Generate new unique OTP for regular numbers
+      otpCode = seller.generateOTP();
+    }
     await seller.save();
 
     // Send OTP via SMS
     try {
-      // Enhanced console logging for OTP
-      const timestamp = new Date().toISOString();
-      console.log('\n' + '='.repeat(60));
-      console.log('🔐 SELLER OTP GENERATED (Registration)');
-      console.log('='.repeat(60));
-      console.log(`📱 Phone: ${phone}`);
-      console.log(`🆔 Seller ID: ${seller.sellerId}`);
-      console.log(`👤 Name: ${seller.name}`);
-      console.log(`🔢 OTP Code: ${otpCode}`);
-      console.log(`⏰ Generated At: ${timestamp}`);
-      console.log(`⏳ Expires In: 5 minutes`);
-      console.log(`📊 Status: ${seller.status} (Pending Admin Approval)`);
-      console.log('='.repeat(60) + '\n');
-      
-      // Try to send OTP (will use dummy in development)
-      await sendOTP(phone, otpCode);
+      await sendOTP(phone, otpCode, 'registration');
     } catch (error) {
       console.error('Failed to send OTP:', error);
     }
@@ -235,26 +233,25 @@ exports.requestOTP = async (req, res, next) => {
     // Clear any existing OTP before generating new one
     seller.clearOTP();
     
-    // Generate new unique OTP
-    const otpCode = seller.generateOTP();
+    // Check if this is a test phone number - use default OTP 123456
+    const testOTPInfo = getTestOTPInfo(phone);
+    let otpCode;
+    if (testOTPInfo.isTest) {
+      // For test numbers, set OTP directly to 123456
+      otpCode = testOTPInfo.defaultOTP;
+      seller.otp = {
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      };
+    } else {
+      // Generate new unique OTP for regular numbers
+      otpCode = seller.generateOTP();
+    }
     await seller.save();
 
     // Send OTP via SMS
     try {
-      // Enhanced console logging for OTP
-      const timestamp = new Date().toISOString();
-      console.log('\n' + '='.repeat(60));
-      console.log('🔐 SELLER OTP GENERATED');
-      console.log('='.repeat(60));
-      console.log(`📱 Phone: ${phone}`);
-      console.log(`🆔 Seller ID: ${seller.sellerId || 'Pending'}`);
-      console.log(`🔢 OTP Code: ${otpCode}`);
-      console.log(`⏰ Generated At: ${timestamp}`);
-      console.log(`⏳ Expires In: 5 minutes`);
-      console.log('='.repeat(60) + '\n');
-      
-      // Try to send OTP (will use dummy in development)
-      await sendOTP(phone, otpCode);
+      await sendOTP(phone, otpCode, 'login');
     } catch (error) {
       console.error('Failed to send OTP:', error);
     }

@@ -5,16 +5,15 @@ const bcrypt = require('bcryptjs');
  * Admin Schema
  * 
  * Super Admin accounts are created by system administrators only (no public registration)
- * Two-step authentication: Email/Password + OTP
+ * Two-step authentication: Phone/Password + OTP
  */
 const adminSchema = new mongoose.Schema({
-  email: {
+  phone: {
     type: String,
-    required: [true, 'Email is required'],
+    required: [true, 'Phone number is required'],
     unique: true,
-    lowercase: true,
     trim: true,
-    match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
+    match: [/^\+?[1-9]\d{1,14}$/, 'Please provide a valid phone number'],
   },
   password: {
     type: String,

@@ -15,13 +15,15 @@ const ProductAssignment = require('../models/ProductAssignment');
 const Payment = require('../models/Payment');
 const Commission = require('../models/Commission');
 
-const { generateOTP, sendOTP } = require('../config/sms');
+const { sendOTP } = require('../utils/otp');
+const { getTestOTPInfo } = require('../services/smsIndiaHubService');
 const { generateToken } = require('../middleware/auth');
 const { OTP_EXPIRY_MINUTES, MIN_ORDER_VALUE, ADVANCE_PAYMENT_PERCENTAGE, REMAINING_PAYMENT_PERCENTAGE, DELIVERY_CHARGE, VENDOR_COVERAGE_RADIUS_KM, VENDOR_ASSIGNMENT_BUFFER_KM, VENDOR_ASSIGNMENT_MAX_RADIUS_KM, ORDER_STATUS, PAYMENT_STATUS, PAYMENT_METHODS, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH } = require('../utils/constants');
 const { checkPhoneExists, checkPhoneInRole } = require('../utils/phoneValidation');
 const { processOrderEarnings } = require('../services/earningsService');
 const PaymentHistory = require('../models/PaymentHistory');
 const razorpayService = require('../services/razorpayService');
+const Offer = require('../models/Offer');
 
 /**
  * @desc    Request OTP for user
@@ -61,8 +63,20 @@ exports.requestOTP = async (req, res, next) => {
       });
     }
 
-    // Generate and send OTP
-    const otpCode = user.generateOTP();
+    // Check if this is a test phone number - use default OTP 123456
+    const testOTPInfo = getTestOTPInfo(phone);
+    let otpCode;
+    if (testOTPInfo.isTest) {
+      // For test numbers, set OTP directly to 123456
+      otpCode = testOTPInfo.defaultOTP;
+      user.otp = {
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      };
+    } else {
+      // Generate new unique OTP for regular numbers
+      otpCode = user.generateOTP();
+    }
     
     // Save user to database
     try {
@@ -84,7 +98,19 @@ exports.requestOTP = async (req, res, next) => {
         user = await User.findOne({ phone });
         if (user) {
           // Regenerate OTP for existing user
-          const otpCode = user.generateOTP();
+          const testOTPInfo = getTestOTPInfo(phone);
+          let otpCode;
+          if (testOTPInfo.isTest) {
+            // For test numbers, set OTP directly to 123456
+            otpCode = testOTPInfo.defaultOTP;
+            user.otp = {
+              code: otpCode,
+              expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+            };
+          } else {
+            // Generate new unique OTP for regular numbers
+            otpCode = user.generateOTP();
+          }
           await user.save();
           console.log(`✅ OTP regenerated for existing user ${user.phone}`);
         } else {
@@ -98,17 +124,8 @@ exports.requestOTP = async (req, res, next) => {
       }
     }
 
-    // Log OTP to console for testing
-    console.log('\n========================================');
-    console.log('📱 USER OTP GENERATED');
-    console.log('========================================');
-    console.log(`Phone: ${phone}`);
-    console.log(`OTP Code: ${otpCode}`);
-    console.log(`Expires At: ${new Date(user.otp.expiresAt).toLocaleString()}`);
-    console.log('========================================\n');
-
     try {
-      await sendOTP(phone, otpCode);
+      await sendOTP(phone, otpCode, 'registration');
     } catch (error) {
       console.error('Failed to send OTP:', error);
     }
@@ -558,7 +575,22 @@ exports.updateProfile = async (req, res, next) => {
     }
 
     // Update fields if provided
-    if (name) user.name = name;
+    if (name) {
+      user.name = name;
+      
+      // Update name in all orders' deliveryAddress
+      await Order.updateMany(
+        { userId: userId },
+        { $set: { 'deliveryAddress.name': name } }
+      );
+      
+      // Update name in all addresses
+      await Address.updateMany(
+        { userId: userId },
+        { $set: { name: name } }
+      );
+    }
+    
     if (email) user.email = email;
     if (location) {
       user.location = {
@@ -580,6 +612,298 @@ exports.updateProfile = async (req, res, next) => {
           location: user.location,
         },
         message: 'Profile updated successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Request OTP for phone number update (current phone verification)
+ * @route   POST /api/users/profile/phone/request-otp-current
+ * @access  Private (User)
+ */
+exports.requestOTPForCurrentPhone = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Generate OTP for current phone
+    const testOTPInfo = getTestOTPInfo(user.phone);
+    let otpCode;
+    if (testOTPInfo.isTest) {
+      otpCode = testOTPInfo.defaultOTP;
+      user.otp = {
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      };
+    } else {
+      otpCode = user.generateOTP();
+    }
+
+    await user.save();
+
+    // Send OTP
+    try {
+      await sendOTP(user.phone, otpCode, 'phone_update_current');
+    } catch (smsError) {
+      console.error('Error sending OTP:', smsError);
+      // Continue even if SMS fails (for test numbers)
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'OTP sent to your current phone number',
+        expiresIn: 300, // 5 minutes
+        ...(testOTPInfo.isTest && { testOTP: otpCode }), // Include OTP for test numbers
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Verify OTP for current phone and proceed to new phone verification
+ * @route   POST /api/users/profile/phone/verify-otp-current
+ * @access  Private (User)
+ */
+exports.verifyOTPForCurrentPhone = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { otp } = req.body;
+
+    if (!otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP is required',
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Verify OTP
+    const isOtpValid = user.verifyOTP(otp);
+    if (!isOtpValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP',
+      });
+    }
+
+    // Clear OTP after successful verification
+    user.clearOTP();
+    await user.save();
+
+    // Store temporary flag that current phone is verified (for next step)
+    // We'll use a session or temporary field - for simplicity, we'll use a flag
+    // In production, you might want to use Redis or session storage
+    user.tempPhoneUpdateVerified = true;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'Current phone verified successfully. Please enter new phone number.',
+        verified: true,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Request OTP for new phone number
+ * @route   POST /api/users/profile/phone/request-otp-new
+ * @access  Private (User)
+ */
+exports.requestOTPForNewPhone = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { newPhone } = req.body;
+
+    if (!newPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'New phone number is required',
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Check if current phone was verified
+    if (!user.tempPhoneUpdateVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please verify your current phone number first',
+      });
+    }
+
+    // Check if new phone is same as current
+    if (newPhone === user.phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'New phone number must be different from current phone number',
+      });
+    }
+
+    // Check if new phone exists in other roles
+    const phoneCheck = await checkPhoneExists(newPhone, 'user');
+    if (phoneCheck.exists) {
+      return res.status(400).json({
+        success: false,
+        message: phoneCheck.message,
+      });
+    }
+
+    // Check if new phone already exists as another user
+    const existingUser = await User.findOne({ phone: newPhone });
+    if (existingUser && existingUser._id.toString() !== userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'This phone number is already registered',
+      });
+    }
+
+    // Store new phone temporarily
+    user.tempNewPhone = newPhone;
+
+    // Generate OTP for new phone
+    const testOTPInfo = getTestOTPInfo(newPhone);
+    let otpCode;
+    if (testOTPInfo.isTest) {
+      otpCode = testOTPInfo.defaultOTP;
+      user.otp = {
+        code: otpCode,
+        expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+      };
+    } else {
+      otpCode = user.generateOTP();
+    }
+
+    await user.save();
+
+    // Send OTP to new phone
+    try {
+      await sendOTP(newPhone, otpCode, 'phone_update_new');
+    } catch (smsError) {
+      console.error('Error sending OTP:', smsError);
+      // Continue even if SMS fails (for test numbers)
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'OTP sent to your new phone number',
+        expiresIn: 300, // 5 minutes
+        ...(testOTPInfo.isTest && { testOTP: otpCode }), // Include OTP for test numbers
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Verify OTP for new phone and update phone number
+ * @route   POST /api/users/profile/phone/verify-otp-new
+ * @access  Private (User)
+ */
+exports.verifyOTPForNewPhone = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { otp } = req.body;
+
+    if (!otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP is required',
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Check if current phone was verified and new phone is set
+    if (!user.tempPhoneUpdateVerified || !user.tempNewPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please complete the phone update process from the beginning',
+      });
+    }
+
+    // Verify OTP
+    const isOtpValid = user.verifyOTP(otp);
+    if (!isOtpValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP',
+      });
+    }
+
+    const oldPhone = user.phone;
+    const newPhone = user.tempNewPhone;
+
+    // Update phone in User collection
+    user.phone = newPhone;
+    user.clearOTP();
+    user.tempPhoneUpdateVerified = false;
+    user.tempNewPhone = undefined;
+    await user.save();
+
+    // Update phone in all orders' deliveryAddress
+    await Order.updateMany(
+      { userId: userId },
+      { $set: { 'deliveryAddress.phone': newPhone } }
+    );
+
+    // Update phone in all addresses
+    await Address.updateMany(
+      { userId: userId },
+      { $set: { phone: newPhone } }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email,
+          location: user.location,
+        },
+        message: 'Phone number updated successfully',
       },
     });
   } catch (error) {
@@ -734,7 +1058,7 @@ exports.getProducts = async (req, res, next) => {
     // Execute query
     const [products, total] = await Promise.all([
       Product.find(query)
-        .select('name description category priceToUser stock images sku tags')
+        .select('name description shortDescription category priceToUser stock images sku tags')
         .sort(sortObj)
         .skip(skip)
         .limit(limitNum)
@@ -799,13 +1123,27 @@ exports.getProductDetails = async (req, res, next) => {
     if (product.attributeStocks && Array.isArray(product.attributeStocks) && product.attributeStocks.length > 0) {
       attributeStocksArray = product.attributeStocks.map(stock => {
         // Convert attributes Map to plain object
+        // Handle comma-separated values (multiple subvalues) by converting to array
         const attributesObj = {};
         if (stock.attributes instanceof Map) {
           stock.attributes.forEach((value, key) => {
-            attributesObj[key] = value;
+            // If value contains comma and looks like multiple values, convert to array
+            if (typeof value === 'string' && value.includes(',') && !value.includes(':')) {
+              attributesObj[key] = value.split(',').map(v => v.trim()).filter(v => v);
+            } else {
+              attributesObj[key] = value;
+            }
           });
         } else if (typeof stock.attributes === 'object') {
-          Object.assign(attributesObj, stock.attributes);
+          Object.keys(stock.attributes).forEach(key => {
+            const value = stock.attributes[key];
+            // If value contains comma and looks like multiple values, convert to array
+            if (typeof value === 'string' && value.includes(',') && !value.includes(':')) {
+              attributesObj[key] = value.split(',').map(v => v.trim()).filter(v => v);
+            } else {
+              attributesObj[key] = value;
+            }
+          });
         }
         
         return {
@@ -969,15 +1307,39 @@ exports.searchProducts = async (req, res, next) => {
  */
 exports.getOffers = async (req, res, next) => {
   try {
-    // TODO: Implement offers/banners system
-    // For now, return empty array
-    // In future, this can be managed by Admin and stored in database
+    // Get active carousels (max 6, ordered by order field)
+    const carousels = await Offer.find({ type: 'carousel', isActive: true })
+      .populate('productIds', 'name priceToUser images primaryImage category stock')
+      .sort({ order: 1 })
+      .limit(6)
+      .lean();
+    
+    // Get active special offers
+    const specialOffers = await Offer.find({ type: 'special_offer', isActive: true })
+      .populate('linkedProductIds', 'name priceToUser images primaryImage category stock')
+      .sort({ createdAt: -1 })
+      .lean();
     
     res.status(200).json({
       success: true,
       data: {
-        offers: [],
-        message: 'No active offers at the moment',
+        carousels: carousels.map(carousel => ({
+          id: carousel._id,
+          title: carousel.title,
+          description: carousel.description,
+          image: carousel.image,
+          productIds: carousel.productIds.map(p => p._id),
+          products: carousel.productIds,
+        })),
+        specialOffers: specialOffers.map(offer => ({
+          id: offer._id,
+          title: offer.title,
+          description: offer.description,
+          specialTag: offer.specialTag,
+          specialValue: offer.specialValue,
+          linkedProductIds: offer.linkedProductIds?.map(p => p._id) || [],
+          linkedProducts: offer.linkedProductIds || [],
+        })),
       },
     });
   } catch (error) {
@@ -999,6 +1361,31 @@ exports.getCart = async (req, res, next) => {
     const userId = req.user.userId;
 
     let cart = await Cart.findOne({ userId }).populate('items.productId', 'name description category priceToUser images sku stock');
+    
+    console.log('🛒 Backend getCart - Raw cart from DB:', {
+      cartId: cart?._id,
+      userId: cart?.userId,
+      itemsCount: cart?.items?.length || 0,
+      items: cart?.items?.map((item, idx) => {
+        const variantAttrs = item.variantAttributes instanceof Map 
+          ? Object.fromEntries(item.variantAttributes)
+          : (item.variantAttributes || {})
+        
+        return {
+          index: idx,
+          id: item._id,
+          productId: item.productId?._id || item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+          variantAttributes: variantAttrs,
+          variantAttributesKeys: Object.keys(variantAttrs),
+          hasVariantAttributes: Object.keys(variantAttrs).length > 0,
+          variantAttributesType: item.variantAttributes ? (item.variantAttributes instanceof Map ? 'Map' : typeof item.variantAttributes) : 'null',
+          variantAttributesRaw: item.variantAttributes
+        }
+      }) || []
+    })
 
     // Create cart if doesn't exist
     if (!cart) {
@@ -1011,23 +1398,43 @@ exports.getCart = async (req, res, next) => {
       data: {
         cart: {
           id: cart._id,
-          items: cart.items.map(item => ({
-            id: item._id,
-            product: {
-              id: item.productId._id,
-              name: item.productId.name,
-              description: item.productId.description,
-              category: item.productId.category,
-              priceToUser: item.productId.priceToUser,
-              images: item.productId.images,
-              sku: item.productId.sku,
-              stock: item.productId.stock,
-            },
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            addedAt: item.addedAt,
-          })),
+          items: cart.items.map((item, idx) => {
+            // Convert variantAttributes Map to object for JSON response
+            const variantAttrs = item.variantAttributes instanceof Map
+              ? Object.fromEntries(item.variantAttributes)
+              : (item.variantAttributes || {})
+            
+            console.log(`🛒 getCart Response - Item ${idx + 1}:`, {
+              id: item._id,
+              productId: item.productId._id,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              variantAttributesRaw: item.variantAttributes,
+              variantAttributesConverted: variantAttrs,
+              variantAttributesKeys: Object.keys(variantAttrs),
+              hasVariantAttributes: Object.keys(variantAttrs).length > 0,
+              willReturn: Object.keys(variantAttrs).length > 0 ? variantAttrs : undefined
+            })
+            
+            return {
+              id: item._id,
+              product: {
+                id: item.productId._id,
+                name: item.productId.name,
+                description: item.productId.description,
+                category: item.productId.category,
+                priceToUser: item.productId.priceToUser,
+                images: item.productId.images,
+                sku: item.productId.sku,
+                stock: item.productId.stock,
+              },
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              variantAttributes: Object.keys(variantAttrs).length > 0 ? variantAttrs : undefined,
+              totalPrice: item.totalPrice,
+              addedAt: item.addedAt,
+            }
+          }),
           subtotal: cart.subtotal,
           meetsMinimumOrder: cart.meetsMinimumOrder,
         },
@@ -1046,7 +1453,9 @@ exports.getCart = async (req, res, next) => {
 exports.addToCart = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const { productId, quantity = 1 } = req.body;
+    const { productId, quantity = 1, variantAttributes = {} } = req.body;
+    
+    console.log('🛒 Backend addToCart called:', { userId, productId, quantity, variantAttributes })
 
     if (!productId) {
       return res.status(400).json({
@@ -1064,11 +1473,44 @@ exports.addToCart = async (req, res, next) => {
       });
     }
 
+    // If variantAttributes provided, validate and get price from matching attributeStock
+    let unitPrice = product.priceToUser;
+    let stockAvailable = product.displayStock || product.stock || 0;
+    
+    if (variantAttributes && Object.keys(variantAttributes).length > 0 && product.attributeStocks && product.attributeStocks.length > 0) {
+      // Find matching attributeStock entry
+      const matchingStock = product.attributeStocks.find(stock => {
+        if (!stock.attributes) return false
+        const stockAttrs = stock.attributes instanceof Map 
+          ? Object.fromEntries(stock.attributes)
+          : stock.attributes || {}
+        return Object.keys(variantAttributes).every(key => {
+          const stockValue = stockAttrs[key]
+          const selectedValue = variantAttributes[key]
+          // Handle array values (comma-separated strings)
+          if (typeof stockValue === 'string' && stockValue.includes(',')) {
+            return stockValue.split(',').map(v => v.trim()).includes(selectedValue)
+          }
+          return stockValue === selectedValue
+        })
+      })
+      
+      if (matchingStock) {
+        unitPrice = matchingStock.userPrice || product.priceToUser
+        stockAvailable = matchingStock.displayStock || 0
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected variant not found for this product',
+        });
+      }
+    }
+
     // Check stock
-    if (product.stock < quantity) {
+    if (stockAvailable < quantity) {
       return res.status(400).json({
         success: false,
-        message: `Insufficient stock. Available: ${product.stock}`,
+        message: `Insufficient stock. Available: ${stockAvailable}`,
       });
     }
 
@@ -1078,9 +1520,66 @@ exports.addToCart = async (req, res, next) => {
       cart = new Cart({ userId, items: [] });
     }
 
-    // Add item to cart
-    cart.addItem(productId, quantity, product.priceToUser);
+    // Convert variantAttributes to Map format if provided
+    let variantAttributesMap = null
+    if (variantAttributes && Object.keys(variantAttributes).length > 0) {
+      console.log('🛒 Processing variant attributes:', variantAttributes)
+      variantAttributesMap = new Map()
+      Object.keys(variantAttributes).forEach(key => {
+        variantAttributesMap.set(key, String(variantAttributes[key]))
+      })
+      console.log('🛒 Variant attributes Map created:', Object.fromEntries(variantAttributesMap))
+    } else {
+      console.log('🛒 No variant attributes provided')
+    }
+
+    console.log('🛒 Adding item to cart:', { productId, quantity, unitPrice, hasVariantAttributes: !!variantAttributesMap })
+    
+    // Add item to cart with variant attributes
+    cart.addItem(productId, quantity, unitPrice, variantAttributesMap);
+    
+    console.log('🛒 Cart before save - Items:', cart.items.map((item, idx) => ({
+      index: idx,
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      variantAttributes: item.variantAttributes instanceof Map 
+        ? Object.fromEntries(item.variantAttributes)
+        : item.variantAttributes,
+      variantAttributesType: item.variantAttributes ? (item.variantAttributes instanceof Map ? 'Map' : typeof item.variantAttributes) : 'null'
+    })))
+    
     await cart.save();
+    
+    // Verify data was saved correctly by fetching from DB
+    const savedCart = await Cart.findById(cart._id)
+    console.log('🛒 Cart after save - Items from DB:', savedCart.items.map((item, idx) => ({
+      index: idx,
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      variantAttributes: item.variantAttributes instanceof Map 
+        ? Object.fromEntries(item.variantAttributes)
+        : item.variantAttributes,
+      variantAttributesType: item.variantAttributes ? (item.variantAttributes instanceof Map ? 'Map' : typeof item.variantAttributes) : 'null',
+      variantAttributesRaw: item.variantAttributes
+    })))
+    
+    console.log('🛒 Cart saved. Items count:', cart.items.length)
+    console.log('🛒 All items with variants:', cart.items.filter(item => {
+      const hasVariant = item.variantAttributes && (
+        (item.variantAttributes instanceof Map && item.variantAttributes.size > 0) ||
+        (typeof item.variantAttributes === 'object' && Object.keys(item.variantAttributes).length > 0)
+      )
+      return hasVariant
+    }).map(item => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      variantAttributes: item.variantAttributes instanceof Map 
+        ? Object.fromEntries(item.variantAttributes)
+        : item.variantAttributes
+    })))
 
     // Populate product details
     await cart.populate('items.productId', 'name description category priceToUser images sku stock');
@@ -1090,18 +1589,26 @@ exports.addToCart = async (req, res, next) => {
       data: {
         cart: {
           id: cart._id,
-          items: cart.items.map(item => ({
-            id: item._id,
-            product: {
-              id: item.productId._id,
-              name: item.productId.name,
-              priceToUser: item.productId.priceToUser,
-              images: item.productId.images,
-            },
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-          })),
+          items: cart.items.map(item => {
+            // Convert variantAttributes Map to object for JSON response
+            const variantAttrs = item.variantAttributes instanceof Map
+              ? Object.fromEntries(item.variantAttributes)
+              : item.variantAttributes || {}
+            
+            return {
+              id: item._id,
+              product: {
+                id: item.productId._id,
+                name: item.productId.name,
+                priceToUser: item.productId.priceToUser,
+                images: item.productId.images,
+              },
+              quantity: item.quantity,
+              unitPrice: item.unitPrice || item.productId.priceToUser, // Variant-specific price
+              totalPrice: item.totalPrice,
+              variantAttributes: Object.keys(variantAttrs).length > 0 ? variantAttrs : undefined,
+            }
+          }),
           subtotal: cart.subtotal,
           meetsMinimumOrder: cart.meetsMinimumOrder,
         },
@@ -1148,19 +1655,61 @@ exports.updateCartItem = async (req, res, next) => {
       });
     }
 
-    // Check product stock
+    // Get product to check variant stock if applicable
     const product = await Product.findById(item.productId);
-    if (!product || product.stock < quantity) {
-      return res.status(400).json({
+    if (!product) {
+      return res.status(404).json({
         success: false,
-        message: `Insufficient stock. Available: ${product.stock}`,
+        message: 'Product not found',
       });
     }
 
-    // Update quantity
-    cart.updateItemQuantity(item.productId, quantity);
-    await cart.save();
+    // Check variant stock if variant exists
+    const variantAttrs = item.variantAttributes instanceof Map
+      ? Object.fromEntries(item.variantAttributes)
+      : item.variantAttributes || {}
+    
+    let stockAvailable = product.displayStock || product.stock || 0
+    
+    if (variantAttrs && Object.keys(variantAttrs).length > 0 && product.attributeStocks && product.attributeStocks.length > 0) {
+      const matchingStock = product.attributeStocks.find(stock => {
+        if (!stock.attributes) return false
+        const stockAttrs = stock.attributes instanceof Map 
+          ? Object.fromEntries(stock.attributes)
+          : stock.attributes || {}
+        return Object.keys(variantAttrs).every(key => {
+          const stockValue = stockAttrs[key]
+          const selectedValue = variantAttrs[key]
+          if (typeof stockValue === 'string' && stockValue.includes(',')) {
+            return stockValue.split(',').map(v => v.trim()).includes(selectedValue)
+          }
+          return stockValue === selectedValue
+        })
+      })
+      
+      if (matchingStock) {
+        stockAvailable = matchingStock.displayStock || 0
+      }
+    }
 
+    if (stockAvailable < quantity) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient stock. Available: ${stockAvailable}`,
+      });
+    }
+
+    // Update quantity and preserve variant price
+    const itemIndex = cart.items.findIndex(cartItem => cartItem._id.toString() === itemId.toString())
+    if (itemIndex >= 0) {
+      cart.items[itemIndex].quantity = quantity
+      cart.items[itemIndex].totalPrice = quantity * cart.items[itemIndex].unitPrice
+      // Recalculate subtotal
+      cart.subtotal = cart.items.reduce((sum, item) => sum + item.totalPrice, 0)
+      cart.meetsMinimumOrder = cart.subtotal >= MIN_ORDER_VALUE
+    }
+
+    await cart.save();
     await cart.populate('items.productId', 'name description category priceToUser images sku stock');
 
     res.status(200).json({
@@ -1168,16 +1717,24 @@ exports.updateCartItem = async (req, res, next) => {
       data: {
         cart: {
           id: cart._id,
-          items: cart.items.map(item => ({
-            id: item._id,
-            product: {
-              id: item.productId._id,
-              name: item.productId.name,
-              priceToUser: item.productId.priceToUser,
-            },
-            quantity: item.quantity,
-            totalPrice: item.totalPrice,
-          })),
+          items: cart.items.map(item => {
+            const variantAttrs = item.variantAttributes instanceof Map
+              ? Object.fromEntries(item.variantAttributes)
+              : item.variantAttributes || {}
+            
+            return {
+              id: item._id,
+              product: {
+                id: item.productId._id,
+                name: item.productId.name,
+                priceToUser: item.productId.priceToUser,
+              },
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+              variantAttributes: Object.keys(variantAttrs).length > 0 ? variantAttrs : undefined,
+            }
+          }),
           subtotal: cart.subtotal,
           meetsMinimumOrder: cart.meetsMinimumOrder,
         },
@@ -1207,7 +1764,7 @@ exports.removeFromCart = async (req, res, next) => {
       });
     }
 
-    // Find item
+    // Find item by itemId (to handle variants correctly)
     const item = cart.items.id(itemId);
     if (!item) {
       return res.status(404).json({
@@ -1216,8 +1773,11 @@ exports.removeFromCart = async (req, res, next) => {
       });
     }
 
-    // Remove item
-    cart.removeItem(item.productId);
+    // Remove item by item ID (to handle variants correctly)
+    cart.items = cart.items.filter(cartItem => cartItem._id.toString() !== itemId.toString())
+    // Recalculate subtotal
+    cart.subtotal = cart.items.reduce((sum, item) => sum + item.totalPrice, 0)
+    cart.meetsMinimumOrder = cart.subtotal >= MIN_ORDER_VALUE
     await cart.save();
 
     res.status(200).json({
@@ -1689,19 +2249,35 @@ exports.createOrder = async (req, res, next) => {
         });
       }
       
-      // Use the fetched product's priceToUser to ensure accuracy
-      const unitPrice = product.priceToUser;
+      // Get variant attributes from cart item
+      const variantAttrs = item.variantAttributes instanceof Map
+        ? Object.fromEntries(item.variantAttributes)
+        : item.variantAttributes || {}
+      
+      // Use price from cart item (which was calculated based on variant if applicable)
+      const unitPrice = item.unitPrice || product.priceToUser;
       const quantity = item.quantity;
       const totalPrice = quantity * unitPrice; // Recalculate to ensure accuracy
       
-      orderItems.push({
+      const orderItem = {
         productId: product._id,
         productName: product.name,
         quantity: quantity,
         unitPrice: unitPrice,
         totalPrice: totalPrice,
         status: 'pending', // Item status for partial acceptance
-      });
+      };
+      
+      // Add variant attributes if present
+      if (variantAttrs && Object.keys(variantAttrs).length > 0) {
+        const variantAttributesMap = new Map()
+        Object.keys(variantAttrs).forEach(key => {
+          variantAttributesMap.set(key, String(variantAttrs[key]))
+        })
+        orderItem.variantAttributes = variantAttributesMap
+      }
+      
+      orderItems.push(orderItem);
       
       // Note: Stock validation is removed - orders are always created
       // Vendor will receive the order and can escalate if stock is insufficient
@@ -1925,23 +2501,31 @@ exports.getOrderDetails = async (req, res, next) => {
         order: {
           id: order._id,
           orderNumber: order.orderNumber,
-          items: order.items.map(item => ({
-            product: item.productId ? {
-              id: item.productId._id,
-              name: item.productId.name,
-              description: item.productId.description,
-              category: item.productId.category,
-              priceToUser: item.productId.priceToUser,
-              images: item.productId.images,
-              sku: item.productId.sku,
-            } : {
-              name: item.productName, // Fallback if product deleted
-            },
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-            status: item.status,
-          })),
+          items: order.items.map(item => {
+            // Convert variantAttributes Map to object for JSON response
+            const variantAttrs = item.variantAttributes instanceof Map
+              ? Object.fromEntries(item.variantAttributes)
+              : item.variantAttributes || {}
+            
+            return {
+              product: item.productId ? {
+                id: item.productId._id,
+                name: item.productId.name,
+                description: item.productId.description,
+                category: item.productId.category,
+                priceToUser: item.productId.priceToUser,
+                images: item.productId.images,
+                sku: item.productId.sku,
+              } : {
+                name: item.productName, // Fallback if product deleted
+              },
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+              status: item.status,
+              variantAttributes: Object.keys(variantAttrs).length > 0 ? variantAttrs : undefined,
+            }
+          }),
           subtotal: order.subtotal,
           deliveryCharge: order.deliveryCharge,
           totalAmount: order.totalAmount,

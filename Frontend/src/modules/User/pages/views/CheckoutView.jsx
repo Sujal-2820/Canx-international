@@ -20,6 +20,17 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
   const dispatch = useUserDispatch()
   const { createOrder, createPaymentIntent, confirmPayment, loading } = useUserApi()
   const { success, error: showError } = useToast()
+  
+  // Debug: Log state values
+  useEffect(() => {
+    console.log('🔍 CheckoutView - State Values:', {
+      cartLength: cart?.length || 0,
+      profile: profile,
+      assignedVendor: assignedVendor,
+      vendorAvailability: vendorAvailability,
+    })
+  }, [cart, profile, assignedVendor, vendorAvailability])
+  
   const [currentStep, setCurrentStep] = useState(1)
   const [summaryExpanded, setSummaryExpanded] = useState(true)
   const [shippingMethod, setShippingMethod] = useState('standard')
@@ -33,10 +44,14 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
 
   // Get delivery address from user profile
   const deliveryAddress = useMemo(() => {
+    console.log('📍 CheckoutView - Profile data:', profile)
+    console.log('📍 CheckoutView - Profile location:', profile?.location)
+    
     if (!profile.location || !profile.location.city || !profile.location.state || !profile.location.pincode) {
+      console.log('📍 CheckoutView - Delivery address is NULL (missing required fields)')
       return null
     }
-    return {
+    const address = {
       name: profile.name || 'Home',
       address: profile.location.address || '',
       city: profile.location.city,
@@ -44,6 +59,8 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
       pincode: profile.location.pincode,
       phone: profile.phone || '',
     }
+    console.log('📍 CheckoutView - Delivery address created:', address)
+    return address
   }, [profile])
 
   // Fetch product details for cart items
@@ -72,12 +89,13 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
   const cartItems = useMemo(() => {
     return cart.map((item) => {
       const product = cartProducts[item.productId]
-      // Ensure price is always a valid number - prioritize item.price, then product.priceToUser, then product.price
-      const price = item.price || (product ? (product.priceToUser || product.price || 0) : 0)
+      // Use variant-specific price (unitPrice) if available, otherwise fallback
+      const price = item.unitPrice || item.price || (product ? (product.priceToUser || product.price || 0) : 0)
       return {
         ...item,
         product,
         price: typeof price === 'number' && !isNaN(price) ? price : 0,
+        unitPrice: price, // Ensure unitPrice is set for variant pricing
         // Ensure image is available using utility function
         image: item.image || (product ? getPrimaryImageUrl(product) : 'https://via.placeholder.com/300'),
         // Ensure name is available
@@ -85,6 +103,54 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
       }
     })
   }, [cart, cartProducts])
+
+  // Group items by productId, and if variants exist, group variants together
+  const groupedCartItems = useMemo(() => {
+    const grouped = {}
+    
+    cartItems.forEach((item) => {
+      const product = cartProducts[item.productId]
+      
+      // Use variant-specific price (unitPrice) if available, otherwise fallback
+      const unitPrice = item.unitPrice || item.price || (product ? (product.priceToUser || product.price || 0) : 0)
+      
+      // Check if item has variant attributes
+      const variantAttrs = item.variantAttributes || {}
+      const hasVariants = variantAttrs && typeof variantAttrs === 'object' && Object.keys(variantAttrs).length > 0
+      const key = item.productId
+      
+      if (!grouped[key]) {
+        grouped[key] = {
+          productId: item.productId,
+          product,
+          name: item.name || product?.name || 'Product',
+          image: product ? getPrimaryImageUrl(product) : (item.image || 'https://via.placeholder.com/400'),
+          variants: [], // Array of variant items
+          hasVariants: false,
+        }
+      }
+      
+      // Add this item as a variant - ensure we have proper ID and variant attributes
+      const variantItem = {
+        ...item,
+        id: item.id || item._id || item.cartItemId, // Ensure ID is available
+        cartItemId: item.id || item._id || item.cartItemId, // For API calls
+        product,
+        unitPrice, // Variant-specific price from backend
+        variantAttributes: variantAttrs, // Ensure variant attributes are included
+        hasVariants,
+      }
+      
+      grouped[key].variants.push(variantItem)
+      
+      // Mark as having variants if any variant exists
+      if (hasVariants) {
+        grouped[key].hasVariants = true
+      }
+    })
+    
+    return Object.values(grouped)
+  }, [cartItems, cartProducts])
 
   const isFullPayment = paymentPreference === 'full'
 
@@ -112,11 +178,14 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
   const selectedShipping = shippingOptions.find((s) => s.id === shippingMethod) || shippingOptions[0]
 
   const totals = useMemo(() => {
-    // Calculate subtotal with proper price handling
-    const subtotal = cartItems.reduce((sum, item) => {
-      const itemPrice = typeof item.price === 'number' && !isNaN(item.price) ? item.price : 0
-      const itemQuantity = typeof item.quantity === 'number' && !isNaN(item.quantity) ? item.quantity : 0
-      return sum + (itemPrice * itemQuantity)
+    // Calculate subtotal with proper price handling - use variant-specific price (unitPrice)
+    // Use groupedCartItems to calculate from variants
+    const subtotal = groupedCartItems.reduce((sum, group) => {
+      return sum + group.variants.reduce((variantSum, variant) => {
+        const itemPrice = typeof variant.unitPrice === 'number' && !isNaN(variant.unitPrice) ? variant.unitPrice : 0
+        const itemQuantity = typeof variant.quantity === 'number' && !isNaN(variant.quantity) ? variant.quantity : 0
+        return variantSum + (itemPrice * itemQuantity)
+      }, 0)
     }, 0)
     
     const deliveryBeforeBenefit = subtotal >= (selectedShipping.minOrder || Infinity) ? 0 : selectedShipping.cost
@@ -138,7 +207,7 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
       advance: isNaN(advance) ? 0 : advance,
       remaining: isNaN(remaining) ? 0 : remaining,
     }
-  }, [cartItems, selectedShipping, paymentPreference])
+  }, [groupedCartItems, selectedShipping, paymentPreference])
 
   const amountDueNow = totals.advance
   const amountDueLater = totals.remaining
@@ -188,18 +257,15 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
     }
 
     // Create order via API
+    // Note: Backend reads from cart, so we only need to send payment preference and notes
+    // The backend will automatically use cart items with variant attributes
     const orderData = {
-      items: cartItems.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-      })),
-      shippingMethod: selectedShipping.id,
-      paymentMethod: paymentMethod,
-      paymentPreference,
-      payInFull: isFullPayment,
-      upfrontAmount: amountDueNow,
-      deliveryChargeWaived: isFullPayment && totals.deliveryBeforeBenefit > 0,
+      paymentPreference, // 'partial' or 'full'
+      notes: `Shipping method: ${selectedShipping.label}`,
+      // Backend will calculate amounts from cart items
     }
+    
+    console.log('📦 Order Data being sent:', orderData)
 
     try {
       const orderResult = await createOrder(orderData)
@@ -246,11 +312,33 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
       const { paymentIntent } = paymentIntentResult.data
       const { razorpayOrderId, keyId, amount } = paymentIntent
 
+      console.log('💳 Payment Intent Data:', {
+        razorpayOrderId,
+        keyId: keyId ? 'Present' : 'Missing',
+        amount,
+        orderId: pendingOrder.id,
+        orderNumber: pendingOrder.orderNumber,
+      })
+
+      // Validate payment intent data
+      if (!razorpayOrderId) {
+        showError('Invalid payment order. Please try again.')
+        return
+      }
+      if (!keyId) {
+        showError('Payment gateway configuration error. Please contact support.')
+        return
+      }
+      if (!amount || amount <= 0) {
+        showError('Invalid payment amount. Please try again.')
+        return
+      }
+
       // Open Razorpay Checkout
       try {
         const razorpayResponse = await openRazorpayCheckout({
           key: keyId,
-          amount: amount,
+          amount: amount, // Amount in rupees (will be converted to paise in openRazorpayCheckout)
           currency: 'INR',
           order_id: razorpayOrderId,
           name: 'IRA SATHI',
@@ -330,17 +418,43 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
 
       {summaryExpanded && (
         <div className="user-checkout-summary__content">
-          <div className="space-y-2 mb-3">
-            {cartItems.map((item) => (
-              <div key={item.productId} className="flex items-center gap-2">
-                <img src={item.image} alt={item.name} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-[#172022] line-clamp-1">{item.name}</p>
-                  <p className="text-xs text-[rgba(26,42,34,0.6)]">Qty: {item.quantity}</p>
+          <div className="space-y-3 mb-3">
+            {groupedCartItems.map((group) => (
+              <div key={group.productId} className="space-y-2">
+                {/* Product Header */}
+                <div className="flex items-center gap-2 pb-2 border-b border-[rgba(34,94,65,0.1)]">
+                  <img src={group.image} alt={group.name} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-[#172022] line-clamp-1">{group.name}</p>
+                    <p className="text-[0.65rem] text-[rgba(26,42,34,0.6)]">{group.variants.length} variant{group.variants.length > 1 ? 's' : ''}</p>
+                  </div>
                 </div>
-                <p className="text-xs font-bold text-[#1b8f5b] flex-shrink-0">
-                  ₹{(item.price * item.quantity).toLocaleString('en-IN')}
-                </p>
+                
+                {/* Variants */}
+                {group.variants.map((variant) => (
+                  <div key={variant.id || variant._id} className="flex items-start justify-between gap-2 pl-4">
+                    <div className="flex-1 min-w-0">
+                      {/* Variant Attributes */}
+                      {variant.variantAttributes && Object.keys(variant.variantAttributes).length > 0 ? (
+                        <div className="mb-1 space-y-0.5">
+                          {Object.entries(variant.variantAttributes).map(([key, value]) => (
+                            <p key={key} className="text-[0.65rem] text-[rgba(26,42,34,0.6)]">
+                              <span className="font-medium">{key}:</span> {value}
+                            </p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[0.65rem] text-[rgba(26,42,34,0.6)] mb-1">Standard variant</p>
+                      )}
+                      <p className="text-xs text-[rgba(26,42,34,0.6)]">
+                        Qty: {variant.quantity} × ₹{(variant.unitPrice || variant.price || 0).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                    <p className="text-xs font-bold text-[#1b8f5b] flex-shrink-0">
+                      ₹{((variant.unitPrice || variant.price || 0) * variant.quantity).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -737,19 +851,53 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
           </button>
         ) : (
           <>
-            <button
-              type="button"
-              className={cn(
-                'w-full py-3.5 px-6 rounded-xl text-base font-bold transition-all',
-                !deliveryAddress || (!vendorAvailability?.canPlaceOrder && !vendorAvailability?.isInBufferZone)
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white shadow-md hover:shadow-lg'
-              )}
-              onClick={handlePlaceOrder}
-              disabled={!deliveryAddress || (!vendorAvailability?.canPlaceOrder && !vendorAvailability?.isInBufferZone)}
-            >
-              Pay ₹{amountDueNow.toLocaleString('en-IN')} & Place Order
-            </button>
+            {(() => {
+              const hasDeliveryAddress = !!deliveryAddress
+              
+              // Only disable if vendorAvailability has been explicitly checked and found unavailable
+              // Logic: If assignedVendor exists, vendor was checked. If not, it's likely default state.
+              // Default state (all false, no assignedVendor) should allow order - backend will handle vendor assignment
+              const vendorWasChecked = assignedVendor !== null || 
+                (vendorAvailability && (vendorAvailability.canPlaceOrder === true || vendorAvailability.isInBufferZone === true))
+              
+              // Only block if vendor was explicitly checked AND found unavailable (not in buffer zone)
+              const vendorCheck = vendorWasChecked && 
+                vendorAvailability && 
+                !vendorAvailability?.canPlaceOrder && 
+                !vendorAvailability?.isInBufferZone
+              
+              const isDisabled = !hasDeliveryAddress || vendorCheck
+              
+              console.log('🔘 CheckoutView - Button State Check:', {
+                hasDeliveryAddress,
+                deliveryAddress,
+                assignedVendor,
+                vendorAvailability,
+                vendorWasChecked,
+                vendorCheck,
+                canPlaceOrder: vendorAvailability?.canPlaceOrder,
+                isInBufferZone: vendorAvailability?.isInBufferZone,
+                vendorAvailable: vendorAvailability?.vendorAvailable,
+                isDisabled,
+                finalDisabled: isDisabled
+              })
+              
+              return (
+                <button
+                  type="button"
+                  className={cn(
+                    'w-full py-3.5 px-6 rounded-xl text-base font-bold transition-all',
+                    isDisabled
+                      ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white shadow-md hover:shadow-lg'
+                  )}
+                  onClick={handlePlaceOrder}
+                  disabled={isDisabled}
+                >
+                  Pay ₹{amountDueNow.toLocaleString('en-IN')} & Place Order
+                </button>
+              )
+            })()}
             <p className="text-xs text-center text-[rgba(26,42,34,0.65)]">
               {amountDueLater > 0
                 ? `You will pay the remaining ₹${amountDueLater.toLocaleString('en-IN')} after delivery`

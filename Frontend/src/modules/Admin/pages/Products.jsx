@@ -184,13 +184,23 @@ export function ProductsPage({ subRoute = null, navigate }) {
           } else {
             showError(errorMessage, 5000)
           }
+        } else {
+          // Handle case where result has neither data nor error
+          showError('Unexpected response from server. Please try again.', 5000)
         }
       } else {
         // Create new product
         const result = await createProduct(formData)
         if (result.data) {
+          setSelectedProduct(null)
           fetchProducts()
           success('Product created successfully!', 3000)
+          // Navigate back to products list after successful creation
+          if (navigate) {
+            setTimeout(() => {
+              navigate('products')
+            }, 500) // Small delay to show success message
+          }
         } else if (result.error) {
           const errorMessage = result.error.message || 'Failed to create product'
           if (errorMessage.includes('validation') || errorMessage.includes('required') || errorMessage.includes('duplicate')) {
@@ -198,9 +208,13 @@ export function ProductsPage({ subRoute = null, navigate }) {
           } else {
             showError(errorMessage, 5000)
           }
+        } else {
+          // Handle case where result has neither data nor error
+          showError('Unexpected response from server. Please try again.', 5000)
         }
       }
     } catch (error) {
+      console.error('Error in handleFormSubmit:', error)
       showError(error.message || 'Failed to save product', 5000)
     }
   }

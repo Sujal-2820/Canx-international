@@ -141,45 +141,23 @@ async function testAdminAuth() {
     return;
   }
 
-  // Test 1: Admin Login (Step 1: Email/Password)
+  // Test 1: Admin Login (Step 1: Phone only)
   const loginResult = await makeRequest('POST', '/admin/auth/login', {
-    email: admin.email,
-    password: 'admin123', // Default password from createAdmin script
+    phone: admin.phone,
   }, null, 'any');
 
-  recordTest('Admin Auth', '/admin/auth/login', 'POST', 'Admin Login - Step 1 (Email/Password)', loginResult);
+  recordTest('Admin Auth', '/admin/auth/login', 'POST', 'Admin Login - Step 1 (Phone only)', loginResult);
 
   if (!loginResult.success || loginResult.status !== 200) {
     console.log('⚠️  Admin login failed. Response:', JSON.stringify(loginResult.data || loginResult.error, null, 2));
     console.log('⚠️  Status:', loginResult.status);
-    // Still try to continue with other tests
-    if (loginResult.status === 401) {
-      console.log('⚠️  Invalid credentials. Please verify admin password in database.');
-    }
-    // Try to create/update admin with correct password
-    admin.password = 'admin123';
-    await admin.save();
-    console.log('✅ Updated admin password. Retrying login...');
-    await sleep(1000);
-    
-    const retryLoginResult = await makeRequest('POST', '/admin/auth/login', {
-      email: admin.email,
-      password: 'admin123',
-    }, null, 'any');
-    
-    if (!retryLoginResult.success || retryLoginResult.status !== 200) {
-      console.log('⚠️  Admin login still failing after password update. Skipping admin tests.');
-      return;
-    }
-    // Use the retry result instead
-    loginResult.success = retryLoginResult.success;
-    loginResult.status = retryLoginResult.status;
-    loginResult.data = retryLoginResult.data;
+    console.log('⚠️  Skipping admin tests.');
+    return;
   }
 
   // Test 2: Request OTP
   const otpResult = await makeRequest('POST', '/admin/auth/request-otp', {
-    email: admin.email,
+    phone: admin.phone,
   }, null, 'any');
 
   recordTest('Admin Auth', '/admin/auth/request-otp', 'POST', 'Request OTP', otpResult);
@@ -187,15 +165,15 @@ async function testAdminAuth() {
   // Get OTP from database (for testing)
   // OTP is generated in the login endpoint, so we need to fetch admin after login
   await sleep(1500); // Wait for OTP generation and save
-  const adminWithOTP = await Admin.findOne({ email: admin.email }).select('+otp');
+  const adminWithOTP = await Admin.findOne({ phone: admin.phone }).select('+otp');
   
   let otpCode = null;
   if (!adminWithOTP || !adminWithOTP.otp || !adminWithOTP.otp.code) {
     console.log('⚠️  OTP not generated from login. Requesting OTP separately...');
     // Try requesting OTP separately
-    await makeRequest('POST', '/admin/auth/request-otp', { email: admin.email }, null, 'any');
+    await makeRequest('POST', '/admin/auth/request-otp', { phone: admin.phone }, null, 'any');
     await sleep(1500);
-    const adminAfterRequest = await Admin.findOne({ email: admin.email }).select('+otp');
+    const adminAfterRequest = await Admin.findOne({ phone: admin.phone }).select('+otp');
     if (!adminAfterRequest || !adminAfterRequest.otp || !adminAfterRequest.otp.code) {
       console.log('⚠️  OTP still not generated. Skipping OTP verification tests.');
       return;
@@ -209,7 +187,7 @@ async function testAdminAuth() {
 
   // Test 3: Verify OTP
   const verifyResult = await makeRequest('POST', '/admin/auth/verify-otp', {
-    email: admin.email,
+    phone: admin.phone,
     otp: otpCode,
   }, null, 'any');
 
@@ -239,7 +217,7 @@ async function testAdminAuth() {
 
   // Test 7: Invalid OTP
   const invalidOTPResult = await makeRequest('POST', '/admin/auth/verify-otp', {
-    email: admin.email,
+    phone: admin.phone,
     otp: '000000',
   }, null, 401);
   recordTest('Admin Auth', '/admin/auth/verify-otp', 'POST', 'Verify OTP - Invalid OTP', invalidOTPResult);

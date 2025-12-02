@@ -21,19 +21,53 @@ export function AttributeStockForm({
 }) {
   const [stocks, setStocks] = useState([])
   const [errors, setErrors] = useState({})
+  const [customAttributes, setCustomAttributes] = useState({}) // Store custom attribute fields per stock entry
 
   // Initialize stocks from prop or empty array
   useEffect(() => {
     if (isOpen) {
-      setStocks(attributeStocks.length > 0 ? [...attributeStocks] : [])
+      const initialStocks = attributeStocks.length > 0 ? attributeStocks.map((stock, idx) => ({
+        ...stock,
+        id: stock.id || Date.now() + idx // Ensure each has an ID
+      })) : []
+      setStocks(initialStocks)
       setErrors({})
+      
+      // Initialize custom attributes from existing stocks
+      const initialCustomAttrs = {}
+      initialStocks.forEach(stock => {
+        if (stock.attributes && Object.keys(stock.attributes).length > 0) {
+          // Convert attributes Map to object if needed
+          const attrsObj = stock.attributes instanceof Map 
+            ? Object.fromEntries(stock.attributes)
+            : stock.attributes
+          
+          initialCustomAttrs[stock.id] = Object.keys(attrsObj).map((key, idx) => ({
+            key: `attr_${stock.id}_${idx}`, // Internal key
+            label: key, // Use attribute key as label
+            value: attrsObj[key]
+          }))
+          
+          // Also set attributes in stock with label as key
+          setStocks(prev => prev.map(s => {
+            if (s.id === stock.id) {
+              return { ...s, attributes: attrsObj }
+            }
+            return s
+          }))
+        } else {
+          initialCustomAttrs[stock.id] = []
+        }
+      })
+      setCustomAttributes(initialCustomAttrs)
     }
   }, [isOpen, attributeStocks])
 
   // Add new stock entry
   const handleAddStock = () => {
+    const newStockId = Date.now()
     const newStock = {
-      id: Date.now(), // Temporary ID for React key
+      id: newStockId, // Temporary ID for React key
       attributes: {},
       actualStock: '',
       displayStock: '',
@@ -44,6 +78,11 @@ export function AttributeStockForm({
       expiry: '',
     }
     setStocks([...stocks, newStock])
+    // Initialize custom attributes for this stock entry
+    setCustomAttributes(prev => ({
+      ...prev,
+      [newStockId]: []
+    }))
   }
 
   // Remove stock entry
@@ -57,18 +96,27 @@ export function AttributeStockForm({
       }
     })
     setErrors(newErrors)
+    // Remove custom attributes for this stock
+    setCustomAttributes(prev => {
+      const updated = { ...prev }
+      delete updated[id]
+      return updated
+    })
   }
 
   // Update attribute value for a stock entry
   const handleAttributeChange = (stockId, attributeKey, value) => {
     setStocks(stocks.map(stock => {
       if (stock.id === stockId) {
+        const newAttributes = { ...stock.attributes }
+        if (value === '' || value === null) {
+          delete newAttributes[attributeKey]
+        } else {
+          newAttributes[attributeKey] = value
+        }
         return {
           ...stock,
-          attributes: {
-            ...stock.attributes,
-            [attributeKey]: value,
-          },
+          attributes: newAttributes,
         }
       }
       return stock
@@ -82,6 +130,56 @@ export function AttributeStockForm({
         return newErrors
       })
     }
+  }
+  
+  // Update custom attribute label
+  const handleCustomAttributeLabelChange = (stockId, attrKey, newLabel) => {
+    setCustomAttributes(prev => {
+      const stockAttrs = prev[stockId] || []
+      const updated = stockAttrs.map(attr => {
+        if (attr.key === attrKey) {
+          // If label changed, migrate the value to new label key
+          const currentStock = stocks.find(s => s.id === stockId)
+          if (currentStock) {
+            const oldLabel = attr.label
+            const oldValue = oldLabel ? currentStock.attributes[oldLabel] : currentStock.attributes[attrKey]
+            
+            if (oldValue && newLabel !== oldLabel) {
+              // Update stock attributes: remove old key, add new label as key
+              setStocks(stocks.map(stock => {
+                if (stock.id === stockId) {
+                  const newAttrs = { ...stock.attributes }
+                  // Remove old keys
+                  if (oldLabel) delete newAttrs[oldLabel]
+                  if (attrKey !== newLabel) delete newAttrs[attrKey]
+                  // Add with new label as key
+                  newAttrs[newLabel] = oldValue
+                  return { ...stock, attributes: newAttrs }
+                }
+                return stock
+              }))
+            } else if (newLabel && !oldLabel) {
+              // First time setting label - migrate from internal key to label
+              const value = currentStock.attributes[attrKey]
+              if (value) {
+                setStocks(stocks.map(stock => {
+                  if (stock.id === stockId) {
+                    const newAttrs = { ...stock.attributes }
+                    delete newAttrs[attrKey]
+                    newAttrs[newLabel] = value
+                    return { ...stock, attributes: newAttrs }
+                  }
+                  return stock
+                }))
+              }
+            }
+          }
+          return { ...attr, label: newLabel }
+        }
+        return attr
+      })
+      return { ...prev, [stockId]: updated }
+    })
   }
 
   // Update stock quantity fields
@@ -111,10 +209,11 @@ export function AttributeStockForm({
     const newErrors = {}
     
     stocks.forEach((stock, index) => {
-      // Validate that at least one attribute is filled
-      const hasAttributes = categoryAttributes && categoryAttributes.length > 0
-        ? categoryAttributes.some(attr => stock.attributes[attr.key] && stock.attributes[attr.key].trim() !== '')
-        : false
+      // Validate that at least one attribute is filled (either predefined or custom)
+      const hasAttributes = Object.keys(stock.attributes || {}).some(key => {
+        const value = stock.attributes[key]
+        return value && value.toString().trim() !== ''
+      })
 
       if (!hasAttributes) {
         newErrors[`${stock.id}_attributes`] = 'At least one attribute must be filled'
@@ -166,18 +265,42 @@ export function AttributeStockForm({
     // Prepare data for saving (remove temporary IDs)
     const stocksToSave = stocks.map(stock => {
       const { id, ...stockData } = stock
+      // Build attributes from custom attributes - use label as key, value as value
+      const finalAttributes = {}
+      const customAttrs = customAttributes[stock.id] || []
+      
+      customAttrs.forEach(customAttr => {
+        // Use label as the key (attribute name), get value from stock.attributes
+        if (customAttr.label && customAttr.label.trim() !== '') {
+          const attrKey = customAttr.label.trim()
+          // Try to get value using label first, then fallback to internal key
+          const attrValue = stock.attributes[attrKey] || stock.attributes[customAttr.key]
+          if (attrValue && attrValue.toString().trim() !== '') {
+            // Store as key-value pair: label (key) -> value
+            finalAttributes[attrKey] = attrValue.toString().trim()
+          }
+        }
+      })
+      
+      // Also include any attributes that might have been set directly (for backward compatibility)
+      Object.keys(stock.attributes || {}).forEach(key => {
+        // Skip internal keys (starting with 'attr_')
+        if (!key.startsWith('attr_') && stock.attributes[key] && stock.attributes[key].toString().trim() !== '') {
+          // Only add if not already in finalAttributes
+          if (!finalAttributes[key]) {
+            finalAttributes[key] = stock.attributes[key].toString().trim()
+          }
+        }
+      })
+      
       return {
         ...stockData,
         actualStock: parseFloat(stock.actualStock) || 0,
         displayStock: parseFloat(stock.displayStock) || 0,
         vendorPrice: parseFloat(stock.vendorPrice) || 0,
         userPrice: parseFloat(stock.userPrice) || 0,
-        // Only include non-empty attributes
-        attributes: Object.fromEntries(
-          Object.entries(stock.attributes).filter(([_, value]) => 
-            value !== null && value !== undefined && value !== ''
-          )
-        ),
+        // Use final attributes with proper key-value pairs (label -> value)
+        attributes: finalAttributes,
       }
     })
 
@@ -243,50 +366,273 @@ export function AttributeStockForm({
                     </button>
                   </div>
 
-                  {/* Attributes Section */}
-                  {categoryAttributes && categoryAttributes.length > 0 && (
-                    <div className="mb-4">
-                      <label className="mb-2 block text-sm font-bold text-gray-900">
-                        Attribute Combination
+                  {/* Custom Attributes Section - Redesigned with 2-column layout */}
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <label className="block text-sm font-bold text-gray-900">
+                        Custom Attributes
+                        <span className="text-xs font-normal text-gray-500 ml-2">(Add any attribute field you need)</span>
                       </label>
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {categoryAttributes.map((attr) => (
-                          <div key={attr.key}>
-                            <label htmlFor={`${stock.id}_${attr.key}`} className="mb-1 block text-xs font-semibold text-gray-700">
-                              {attr.label}
-                            </label>
-                            {attr.type === 'select' ? (
-                              <select
-                                id={`${stock.id}_${attr.key}`}
-                                value={stock.attributes[attr.key] || ''}
-                                onChange={(e) => handleAttributeChange(stock.id, attr.key, e.target.value)}
-                                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm transition-all focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                              >
-                                <option value="">Select {attr.label}</option>
-                                {attr.options.map((option) => (
-                                  <option key={option} value={option}>
-                                    {option}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input
-                                type={attr.type}
-                                id={`${stock.id}_${attr.key}`}
-                                value={stock.attributes[attr.key] || ''}
-                                onChange={(e) => handleAttributeChange(stock.id, attr.key, e.target.value)}
-                                placeholder={attr.placeholder}
-                                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm transition-all focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                              />
-                            )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newAttrKey = `attr_${Date.now()}`
+                          const currentAttrs = customAttributes[stock.id] || []
+                          setCustomAttributes(prev => ({
+                            ...prev,
+                            [stock.id]: [...currentAttrs, { key: newAttrKey, label: '', value: '' }]
+                          }))
+                          // Initialize empty attribute in stock
+                          handleAttributeChange(stock.id, newAttrKey, '')
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border-2 border-purple-400 bg-gradient-to-r from-purple-50 to-purple-100 px-3 py-1.5 text-xs font-bold text-purple-700 transition-all hover:border-purple-500 hover:from-purple-100 hover:to-purple-200 shadow-sm"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add Attribute
+                      </button>
+                    </div>
+                    
+                    {/* Custom Attributes List - 2 Column Grid Layout */}
+                    {(customAttributes[stock.id] || []).length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                        {(customAttributes[stock.id] || []).map((customAttr, attrIndex) => (
+                          <div 
+                            key={customAttr.key} 
+                            className="relative rounded-xl border-2 border-blue-200 bg-gradient-to-br from-blue-50/80 to-indigo-50/60 p-4 shadow-sm hover:shadow-md transition-all hover:border-blue-300"
+                          >
+                            {/* Attribute Index Badge */}
+                            <div className="absolute -top-2 -left-2 w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-lg">
+                              {attrIndex + 1}
+                            </div>
+                            
+                            {/* Remove Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (customAttributes[stock.id] || []).filter((_, idx) => idx !== attrIndex)
+                                setCustomAttributes(prev => ({
+                                  ...prev,
+                                  [stock.id]: updated
+                                }))
+                                // Remove from stock attributes
+                                const attrKeyToRemove = customAttr.label || customAttr.key
+                                handleAttributeChange(stock.id, attrKeyToRemove, '')
+                              }}
+                              className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-md z-10"
+                              title="Remove this attribute"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                            
+                            <div className="space-y-3 pt-1">
+                              {/* Attribute Name Field */}
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                                  Attribute Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g., NPK Ratio, Type, Percentage"
+                                  value={customAttr.label}
+                                  onChange={(e) => {
+                                    const newLabel = e.target.value
+                                    handleCustomAttributeLabelChange(stock.id, customAttr.key, newLabel)
+                                  }}
+                                  className="w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2.5 text-sm font-medium transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                                />
+                              </div>
+                              
+                              {/* Attribute Value Field - Support Multiple Subvalues */}
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                                  Attribute Value(s) <span className="text-red-500">*</span>
+                                  <span className="text-xs font-normal text-gray-500 ml-1">(Add multiple values separated by comma)</span>
+                                </label>
+                                
+                                {/* Input for adding new values */}
+                                <div className="flex gap-2 mb-2">
+                                  <input
+                                    type="text"
+                                    placeholder={
+                                      customAttr.label && (customAttr.label.toLowerCase().includes('percent') || customAttr.label.toLowerCase().includes('%')) 
+                                        ? 'e.g., Liquid, Powder, Granular (comma-separated)' 
+                                        : customAttr.label
+                                          ? `Enter ${customAttr.label.toLowerCase()} values (comma-separated)`
+                                          : 'Enter values (comma-separated)'
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && e.target.value.trim()) {
+                                        e.preventDefault()
+                                        const attrKey = customAttr.label || customAttr.key
+                                        const currentValue = stock.attributes[attrKey]
+                                        const newValue = e.target.value.trim()
+                                        
+                                        // Convert to array if not already
+                                        let values = []
+                                        if (Array.isArray(currentValue)) {
+                                          values = [...currentValue]
+                                        } else if (currentValue) {
+                                          values = [currentValue]
+                                        }
+                                        
+                                        // Add new value if not already present
+                                        if (!values.includes(newValue)) {
+                                          values.push(newValue)
+                                          handleAttributeChange(stock.id, attrKey, values)
+                                        }
+                                        
+                                        e.target.value = ''
+                                      }
+                                    }}
+                                    disabled={!customAttr.label}
+                                    className={cn(
+                                      "flex-1 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-all focus:outline-none focus:ring-2",
+                                      !customAttr.label 
+                                        ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+                                        : "border-gray-300 bg-white focus:border-blue-500 focus:ring-blue-500/30"
+                                    )}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      const input = e.target.previousElementSibling
+                                      if (input.value.trim()) {
+                                        const attrKey = customAttr.label || customAttr.key
+                                        const currentValue = stock.attributes[attrKey]
+                                        
+                                        // Convert to array if not already
+                                        let values = []
+                                        if (Array.isArray(currentValue)) {
+                                          values = [...currentValue]
+                                        } else if (currentValue) {
+                                          values = [currentValue]
+                                        }
+                                        
+                                        // Split by comma and add each value
+                                        const newValues = input.value.split(',').map(v => v.trim()).filter(v => v && !values.includes(v))
+                                        if (newValues.length > 0) {
+                                          handleAttributeChange(stock.id, attrKey, [...values, ...newValues])
+                                        }
+                                        
+                                        input.value = ''
+                                      }
+                                    }}
+                                    disabled={!customAttr.label}
+                                    className={cn(
+                                      "px-3 py-2.5 rounded-lg border-2 text-sm font-semibold transition-all",
+                                      !customAttr.label
+                                        ? "border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed"
+                                        : "border-blue-400 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-500"
+                                    )}
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </button>
+                                </div>
+                                
+                                {/* Display current values as chips */}
+                                {(() => {
+                                  const attrKey = customAttr.label || customAttr.key
+                                  const currentValue = stock.attributes[attrKey]
+                                  const values = Array.isArray(currentValue) ? currentValue : (currentValue ? [currentValue] : [])
+                                  
+                                  return values.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                      {values.map((value, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 px-3 py-1.5 rounded-lg text-xs font-semibold border border-blue-200"
+                                        >
+                                          <span>{value}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const newValues = values.filter((_, i) => i !== idx)
+                                              handleAttributeChange(stock.id, attrKey, newValues.length === 1 ? newValues[0] : newValues.length > 0 ? newValues : '')
+                                            }}
+                                            className="hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                                          >
+                                            <X className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null
+                                })()}
+                                
+                                {/* Hint for percentage fields */}
+                                {customAttr.label && (customAttr.label.toLowerCase().includes('percent') || customAttr.label.toLowerCase().includes('%')) && (
+                                  <p className="mt-1.5 text-xs text-blue-600 bg-blue-50 rounded px-2 py-1 flex items-center gap-1">
+                                    <span>💡</span>
+                                    <span>Hint: Add multiple percentage values separated by comma (e.g., 46%, 30%, 20%)</span>
+                                  </p>
+                                )}
+                                {!customAttr.label && (
+                                  <p className="mt-1.5 text-xs text-gray-400 italic">Please enter attribute name first</p>
+                                )}
+                              </div>
+                              
+                              {/* Preview of Key-Value Pair */}
+                              {(() => {
+                                const attrKey = customAttr.label || customAttr.key
+                                const currentValue = stock.attributes[attrKey]
+                                const values = Array.isArray(currentValue) ? currentValue : (currentValue ? [currentValue] : [])
+                                
+                                return customAttr.label && values.length > 0 ? (
+                                  <div className="mt-2 pt-2 border-t border-blue-200">
+                                    <p className="text-xs font-semibold text-gray-600 mb-1">Preview:</p>
+                                    <div className="bg-white rounded-lg px-3 py-2 border border-blue-200">
+                                      <span className="text-xs font-bold text-blue-700">{customAttr.label}:</span>
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        {values.map((value, idx) => (
+                                          <span key={idx} className="text-xs text-gray-800 font-medium bg-gray-50 px-2 py-0.5 rounded">
+                                            {value}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : null
+                              })()}
+                            </div>
                           </div>
                         ))}
                       </div>
-                      {errors[`${stock.id}_attributes`] && (
-                        <p className="mt-1 text-xs text-red-600">{errors[`${stock.id}_attributes`]}</p>
-                      )}
+                    ) : (
+                      /* Empty State */
+                      <div className="text-center py-8 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 mb-4">
+                        <Package className="h-10 w-10 mx-auto text-gray-400 mb-2" />
+                        <p className="text-sm text-gray-500 font-medium">No attributes added yet</p>
+                        <p className="text-xs text-gray-400 mt-1">Click "Add Attribute" to get started</p>
+                      </div>
+                    )}
+                    
+                    {/* Add Attribute Button at Bottom - Always Visible */}
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newAttrKey = `attr_${Date.now()}`
+                          const currentAttrs = customAttributes[stock.id] || []
+                          setCustomAttributes(prev => ({
+                            ...prev,
+                            [stock.id]: [...currentAttrs, { key: newAttrKey, label: '', value: '' }]
+                          }))
+                          // Initialize empty attribute in stock
+                          handleAttributeChange(stock.id, newAttrKey, '')
+                        }}
+                        className="inline-flex items-center gap-2 rounded-lg border-2 border-purple-400 bg-gradient-to-r from-purple-50 to-purple-100 px-4 py-2 text-sm font-bold text-purple-700 transition-all hover:border-purple-500 hover:from-purple-100 hover:to-purple-200 shadow-sm"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Another Attribute
+                      </button>
                     </div>
-                  )}
+                    
+                    {errors[`${stock.id}_attributes`] && (
+                      <div className="mt-3 p-2 rounded-lg bg-red-50 border border-red-200">
+                        <p className="text-xs text-red-600 font-medium">{errors[`${stock.id}_attributes`]}</p>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Stock Quantities */}
                   <div className="grid gap-4 sm:grid-cols-2 mb-4">
@@ -305,7 +651,7 @@ export function AttributeStockForm({
                           min="0"
                           step="0.01"
                           className={cn(
-                            'flex-1 rounded-xl border px-3 py-2 text-sm transition-all focus:outline-none focus:ring-2',
+                            'flex-1 rounded-xl border px-3 py-2 text-sm transition-all focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                             errors[`${stock.id}_actualStock`]
                               ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
                               : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',
@@ -343,7 +689,7 @@ export function AttributeStockForm({
                           min="0"
                           step="0.01"
                           className={cn(
-                            'flex-1 rounded-xl border px-3 py-2 text-sm transition-all focus:outline-none focus:ring-2',
+                            'flex-1 rounded-xl border px-3 py-2 text-sm transition-all focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                             errors[`${stock.id}_displayStock`]
                               ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
                               : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',
@@ -387,7 +733,7 @@ export function AttributeStockForm({
                         min="0"
                         step="0.01"
                         className={cn(
-                          'w-full rounded-xl border px-3 py-2 text-sm transition-all focus:outline-none focus:ring-2',
+                          'w-full rounded-xl border px-3 py-2 text-sm transition-all focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                           errors[`${stock.id}_vendorPrice`]
                             ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
                             : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',
@@ -412,7 +758,7 @@ export function AttributeStockForm({
                         min="0"
                         step="0.01"
                         className={cn(
-                          'w-full rounded-xl border px-3 py-2 text-sm transition-all focus:outline-none focus:ring-2',
+                          'w-full rounded-xl border px-3 py-2 text-sm transition-all focus:outline-none focus:ring-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
                           errors[`${stock.id}_userPrice`]
                             ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
                             : 'border-gray-300 bg-white focus:border-purple-500 focus:ring-purple-500/50',

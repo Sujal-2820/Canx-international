@@ -40,10 +40,12 @@ function initializeRazorpay() {
 initializeRazorpay();
 
 /**
- * Check if Razorpay is in test mode
+ * Check if Razorpay is in test mode (simulation mode - no keys)
  */
 function isTestMode() {
-  return process.env.RAZORPAY_TEST_MODE === 'true' || !razorpayInstance;
+  // Only simulate if Razorpay instance is not initialized (no keys)
+  // If keys are present, use actual Razorpay API (even with test keys)
+  return !razorpayInstance;
 }
 
 /**
@@ -60,8 +62,9 @@ async function createOrder(options) {
     throw new Error('Minimum payment amount is ₹1');
   }
 
-  // Test mode: Simulate order creation
-  if (isTestMode()) {
+  // If Razorpay instance is not initialized (no keys), simulate order creation
+  if (!razorpayInstance) {
+    console.log('⚠️ Razorpay keys not found. Simulating order creation.');
     const testOrderId = `order_test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     return {
       id: testOrderId,
@@ -78,8 +81,15 @@ async function createOrder(options) {
     };
   }
 
-  // Production mode: Create actual Razorpay order
+  // Create actual Razorpay order (works with both test and production keys)
   try {
+    console.log('💳 Creating Razorpay order:', {
+      amount: amountInPaise,
+      currency,
+      receipt,
+      hasNotes: !!notes,
+    });
+    
     const order = await razorpayInstance.orders.create({
       amount: amountInPaise,
       currency: currency,
@@ -87,10 +97,16 @@ async function createOrder(options) {
       notes: notes,
     });
 
+    console.log('✅ Razorpay order created:', {
+      id: order.id,
+      amount: order.amount,
+      status: order.status,
+    });
+
     return order;
   } catch (error) {
     console.error('❌ Error creating Razorpay order:', error);
-    throw new Error(`Failed to create payment order: ${error.message}`);
+    throw new Error(`Failed to create payment order: ${error.message || error.description || 'Unknown error'}`);
   }
 }
 
@@ -102,8 +118,9 @@ async function createOrder(options) {
  * @returns {boolean} True if signature is valid
  */
 function verifyPaymentSignature(orderId, paymentId, signature) {
-  // Test mode: Always return true (simulate successful verification)
-  if (isTestMode()) {
+  // If Razorpay instance is not initialized (no keys), simulate verification
+  if (!razorpayInstance) {
+    console.log('⚠️ Razorpay keys not found. Simulating signature verification.');
     return true;
   }
 
@@ -129,8 +146,9 @@ function verifyPaymentSignature(orderId, paymentId, signature) {
  * @returns {Promise<Object>} Payment details
  */
 async function fetchPayment(paymentId) {
-  // Test mode: Simulate payment fetch
-  if (isTestMode()) {
+  // If Razorpay instance is not initialized (no keys), simulate payment fetch
+  if (!razorpayInstance) {
+    console.log('⚠️ Razorpay keys not found. Simulating payment fetch.');
     // Simulate success or failure based on test mode configuration
     const simulateFailure = process.env.RAZORPAY_SIMULATE_FAILURE === 'true';
     

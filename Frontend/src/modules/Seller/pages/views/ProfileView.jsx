@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSellerState, useSellerDispatch } from '../../context/SellerContext'
+import { useSellerApi } from '../../hooks/useSellerApi'
 import { sellerSnapshot } from '../../services/sellerData'
 import {
   UserIcon,
@@ -17,10 +18,11 @@ import {
 import { cn } from '../../../../lib/cn'
 import { useToast } from '../../components/ToastNotification'
 
-export function ProfileView({ onLogout }) {
+export function ProfileView({ onLogout, onNavigate }) {
   const { profile } = useSellerState()
   const dispatch = useSellerDispatch()
-  const { success, warning } = useToast()
+  const { updateProfile, changePassword, reportIssue, fetchDashboardOverview } = useSellerApi()
+  const { success, warning, error: showError } = useToast()
   const [editingName, setEditingName] = useState(false)
   const [editedName, setEditedName] = useState(profile.name || sellerSnapshot.profile.name)
   const [showPasswordPanel, setShowPasswordPanel] = useState(false)
@@ -57,20 +59,27 @@ export function ProfileView({ onLogout }) {
     setEditedName(profile.name || sellerSnapshot.profile.name)
   }, [profile.name])
 
-  const handleSaveName = () => {
+  const handleSaveName = async () => {
     if (!editedName.trim()) {
       warning('Name cannot be empty')
       return
     }
-    dispatch({
-      type: 'AUTH_LOGIN',
-      payload: { ...profile, name: editedName.trim() },
-    })
-    setEditingName(false)
-    success('Name updated successfully!')
+    const result = await updateProfile({ name: editedName.trim() })
+    if (result.data) {
+      dispatch({
+        type: 'UPDATE_PROFILE',
+        payload: { ...profile, name: editedName.trim() },
+      })
+      setEditingName(false)
+      success('Name updated successfully!')
+      // Refresh dashboard to reflect updated profile
+      await fetchDashboardOverview()
+    } else if (result.error) {
+      showError(result.error.message || 'Failed to update name')
+    }
   }
 
-  const handleSavePassword = () => {
+  const handleSavePassword = async () => {
     if (!passwordForm.current || !passwordForm.new || !passwordForm.confirm) {
       warning('Please fill in all fields')
       return
@@ -83,9 +92,17 @@ export function ProfileView({ onLogout }) {
       warning('Password must be at least 6 characters long')
       return
     }
-    success('Password changed successfully!')
-    setPasswordForm({ current: '', new: '', confirm: '' })
-    setShowPasswordPanel(false)
+    const result = await changePassword({
+      currentPassword: passwordForm.current,
+      newPassword: passwordForm.new,
+    })
+    if (result.data) {
+      success('Password changed successfully!')
+      setPasswordForm({ current: '', new: '', confirm: '' })
+      setShowPasswordPanel(false)
+    } else if (result.error) {
+      showError(result.error.message || 'Failed to change password')
+    }
   }
 
   const handleToggleNotification = (key) => {
@@ -96,14 +113,23 @@ export function ProfileView({ onLogout }) {
     success(`${key === 'sms' ? 'SMS' : key === 'email' ? 'Email' : key === 'push' ? 'Push' : key === 'announcements' ? 'Announcements' : key === 'commission' ? 'Commission' : 'Target'} notifications ${!notificationPrefs[key] ? 'enabled' : 'disabled'}`)
   }
 
-  const handleSubmitReport = () => {
+  const handleSubmitReport = async () => {
     if (!reportForm.subject || !reportForm.description) {
       warning('Please fill in all fields')
       return
     }
-    success('Issue reported successfully! We will get back to you soon.')
-    setReportForm({ subject: '', description: '', category: 'general' })
-    setShowReportPanel(false)
+    const result = await reportIssue({
+      subject: reportForm.subject,
+      description: reportForm.description,
+      category: reportForm.category,
+    })
+    if (result.data) {
+      success('Issue reported successfully! We will get back to you soon.')
+      setReportForm({ subject: '', description: '', category: 'general' })
+      setShowReportPanel(false)
+    } else if (result.error) {
+      showError(result.error.message || 'Failed to submit report')
+    }
   }
 
   const sellerProfile = profile.name ? profile : sellerSnapshot.profile

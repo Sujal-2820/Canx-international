@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useSellerDispatch, useSellerState } from '../context/SellerContext'
 import { MobileShell } from '../components/MobileShell'
 import { BottomNavItem } from '../components/BottomNavItem'
@@ -15,6 +15,8 @@ import { PerformanceView } from './views/PerformanceView'
 import { ProfileView } from './views/ProfileView'
 import { WithdrawalRequestPanel } from '../components/WithdrawalRequestPanel'
 import { ShareSellerIdPanel } from '../components/ShareSellerIdPanel'
+import { BankAccountForm } from '../components/BankAccountForm'
+import { NotificationPanel } from '../components/NotificationPanel'
 import '../seller.css'
 
 const NAV_ITEMS = [
@@ -53,6 +55,7 @@ const NAV_ITEMS = [
 export function SellerDashboard({ onLogout }) {
   const { profile, notifications, dashboard } = useSellerState()
   const dispatch = useSellerDispatch()
+  const { fetchDashboardOverview, fetchWalletData } = useSellerApi()
   const [activeTab, setActiveTab] = useState('overview')
   const welcomeName = (profile?.name || sellerSnapshot.profile.name || 'Seller').split(' ')[0]
   const { success, error, info, warning } = useToast()
@@ -174,16 +177,103 @@ export function SellerDashboard({ onLogout }) {
     }, 260)
   }
 
-  const handleWithdrawalSuccess = (data) => {
+  const handleWithdrawalSuccess = async (data) => {
     success(`Withdrawal request of ₹${data.amount.toLocaleString('en-IN')} submitted successfully!`)
-    // In a real app, this would update the wallet state
+    // Refresh wallet data and dashboard
+    await fetchWalletData()
+    await fetchDashboardOverview()
+    // Navigate to wallet tab if not already there
+    if (activeTab !== 'wallet') {
+      setActiveTab('wallet')
+    }
   }
 
   const handleShareCopy = (text) => {
     success('Copied to clipboard!')
   }
 
-  const unreadNotificationsCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications])
+  const handleBankAccountSuccess = async (bankAccount) => {
+    success('Bank account added successfully!')
+    // Refresh wallet data and dashboard
+    await fetchWalletData()
+    await fetchDashboardOverview()
+    // Trigger refresh in WalletView
+    window.dispatchEvent(new CustomEvent('seller-refresh-bank-accounts'))
+    // Navigate to wallet tab if not already there
+    if (activeTab !== 'wallet') {
+      setActiveTab('wallet')
+    }
+  }
+
+  const unreadNotificationsCount = useMemo(() => (notifications || []).filter((n) => !n.read).length, [notifications])
+  const [isNotificationAnimating, setIsNotificationAnimating] = useState(false)
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
+  const previousNotificationsCountRef = useRef(0)
+
+  // Play notification sound
+  const playNotificationSound = useCallback(() => {
+    try {
+      // Create a simple notification sound using Web Audio API
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+
+      oscillator.frequency.value = 800
+      oscillator.type = 'sine'
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + 0.3)
+    } catch (err) {
+      // Fallback: try HTML5 audio if Web Audio API is not available
+      console.log('Notification sound played (fallback)')
+    }
+  }, [])
+
+  // Trigger bell animation and sound when new notification arrives
+  useEffect(() => {
+    const currentUnreadCount = unreadNotificationsCount
+    const previousUnreadCount = previousNotificationsCountRef.current
+
+    if (currentUnreadCount > previousUnreadCount) {
+      // New notification arrived
+      playNotificationSound()
+      setIsNotificationAnimating(true)
+      
+      // Stop animation after 3 seconds
+      const animationTimer = setTimeout(() => {
+        setIsNotificationAnimating(false)
+      }, 3000)
+
+      return () => clearTimeout(animationTimer)
+    }
+
+    previousNotificationsCountRef.current = currentUnreadCount
+  }, [unreadNotificationsCount, playNotificationSound])
+
+  // Handle notification panel open/close
+  const handleNotificationClick = () => {
+    setNotificationPanelOpen(true)
+  }
+
+  const handleNotificationPanelClose = () => {
+    setNotificationPanelOpen(false)
+  }
+
+  // Mark notification as read
+  const handleMarkNotificationAsRead = useCallback((notificationId) => {
+    dispatch({ type: 'MARK_NOTIFICATION_READ', payload: { id: notificationId } })
+  }, [dispatch])
+
+  // Mark all notifications as read
+  const handleMarkAllNotificationsAsRead = useCallback(() => {
+    dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' })
+  }, [dispatch])
   
   const tabLabels = useMemo(() => {
     return NAV_ITEMS.reduce((acc, item) => {
@@ -332,8 +422,10 @@ export function SellerDashboard({ onLogout }) {
         subtitle={profile.area || profile.location?.area || 'Location not set'}
         onSearchClick={openSearch}
         onProfileClick={() => setActiveTab('profile')}
+        onNotificationClick={handleNotificationClick}
         notificationsCount={unreadNotificationsCount}
         notifications={notifications}
+        isNotificationAnimating={isNotificationAnimating}
         navigation={NAV_ITEMS.map((item) => (
           <BottomNavItem
             key={item.id}
@@ -355,7 +447,7 @@ export function SellerDashboard({ onLogout }) {
           {activeTab === 'performance' && (
             <PerformanceView onBack={() => setActiveTab('overview')} />
           )}
-          {activeTab === 'profile' && <ProfileView onLogout={handleLogout} />}
+          {activeTab === 'profile' && <ProfileView onLogout={handleLogout} onNavigate={navigateTo} />}
         </section>
       </MobileShell>
 
@@ -426,8 +518,24 @@ export function SellerDashboard({ onLogout }) {
               onCopy={handleShareCopy}
             />
           )}
+          {activePanel === 'add-bank-account' && (
+            <BankAccountForm
+              isOpen={activePanel === 'add-bank-account'}
+              onClose={closePanel}
+              onSuccess={handleBankAccountSuccess}
+            />
+          )}
         </>
       )}
+
+      {/* Notification Panel */}
+      <NotificationPanel
+        isOpen={notificationPanelOpen}
+        onClose={handleNotificationPanelClose}
+        notifications={notifications}
+        onMarkAsRead={handleMarkNotificationAsRead}
+        onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+      />
     </>
   )
 }

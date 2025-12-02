@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Package } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 import { BUTTON_INTENT } from '../hooks/useButtonAction'
-import { vendorSnapshot } from '../services/vendorDashboard'
 import { useVendorApi } from '../hooks/useVendorApi'
+import { useVendorState } from '../context/VendorContext'
 
 export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNotification }) {
   const [uploadedFile, setUploadedFile] = useState(null)
@@ -564,11 +564,69 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
 
 // Information Display Content Component
 function InformationDisplayContent({ data, buttonId }) {
+  const { dashboard } = useVendorState()
+  const { getCreditInfo, getWithdrawals, getInventoryStats } = useVendorApi()
+  const [creditData, setCreditData] = useState(null)
+  const [withdrawalsData, setWithdrawalsData] = useState(null)
+  const [inventoryStatsData, setInventoryStatsData] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  // Fetch real data when modal opens
+  useEffect(() => {
+    if (data.type === 'credit_info' || data.type === 'credit_details') {
+      setLoading(true)
+      getCreditInfo().then((result) => {
+        if (result.data) {
+          setCreditData(result.data)
+        }
+        setLoading(false)
+      }).catch(() => setLoading(false))
+    } else if (data.type === 'payouts') {
+      setLoading(true)
+      getWithdrawals({ page: 1, limit: 10 }).then((result) => {
+        if (result.data?.withdrawals) {
+          setWithdrawalsData(result.data.withdrawals)
+        }
+        setLoading(false)
+      }).catch(() => setLoading(false))
+    } else if (data.type === 'reorder' || data.type === 'stock_report') {
+      setLoading(true)
+      getInventoryStats().then((result) => {
+        if (result.data) {
+          setInventoryStatsData(result.data)
+        }
+        setLoading(false)
+      }).catch(() => setLoading(false))
+    }
+  }, [data.type, getCreditInfo, getWithdrawals, getInventoryStats])
+
   const renderContentByType = () => {
     switch (data.type) {
       case 'credit_info':
       case 'credit_details':
-        const credit = vendorSnapshot.credit
+        // Use real credit data from backend or dashboard
+        const creditInfo = creditData?.credit || dashboard?.credit?.credit || {}
+        const creditStatus = creditData?.status || dashboard?.credit?.status || {}
+        const creditLimit = dashboard?.overview?.credit?.limit || creditData?.credit?.limit || 0
+        const creditUsed = creditInfo.used || dashboard?.overview?.credit?.used || 0
+        const creditRemaining = dashboard?.overview?.credit?.remaining || (creditLimit - creditUsed)
+        const penalty = creditStatus.penalty || dashboard?.overview?.credit?.penalty || 0
+        const dueDate = creditInfo.dueDate || dashboard?.overview?.credit?.dueDate
+        
+        const formatCredit = (value) => {
+          if (!value || value === 0) return '₹0'
+          return value >= 100000 ? `₹${(value / 100000).toFixed(1)}L` : `₹${Math.round(value).toLocaleString('en-IN')}`
+        }
+        
+        const formatDate = (date) => {
+          if (!date) return 'Not set'
+          return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        }
+
+        if (loading) {
+          return <div className="vendor-info-display"><p>Loading credit information...</p></div>
+        }
+
         return (
           <div className="vendor-info-display">
             <div className="vendor-info-display__section">
@@ -576,62 +634,89 @@ function InformationDisplayContent({ data, buttonId }) {
               <div className="vendor-info-display__metrics">
                 <div className="vendor-info-display__metric">
                   <span className="vendor-info-display__metric-label">Total Limit</span>
-                  <span className="vendor-info-display__metric-value">{credit.limit}</span>
+                  <span className="vendor-info-display__metric-value">{formatCredit(creditLimit)}</span>
                 </div>
                 <div className="vendor-info-display__metric">
                   <span className="vendor-info-display__metric-label">Used</span>
-                  <span className="vendor-info-display__metric-value">{credit.used}</span>
+                  <span className="vendor-info-display__metric-value">{formatCredit(creditUsed)}</span>
                 </div>
                 <div className="vendor-info-display__metric">
                   <span className="vendor-info-display__metric-label">Remaining</span>
-                  <span className="vendor-info-display__metric-value">{credit.remaining}</span>
+                  <span className="vendor-info-display__metric-value">{formatCredit(creditRemaining)}</span>
                 </div>
                 <div className="vendor-info-display__metric">
                   <span className="vendor-info-display__metric-label">Due Date</span>
-                  <span className="vendor-info-display__metric-value">{credit.due}</span>
+                  <span className="vendor-info-display__metric-value">{formatDate(dueDate)}</span>
                 </div>
               </div>
               <div className="vendor-info-display__status">
-                <span className="vendor-info-display__status-badge">{credit.penalty}</span>
+                <span className="vendor-info-display__status-badge">{penalty === 0 ? 'No penalty' : `₹${penalty.toLocaleString('en-IN')}`}</span>
               </div>
             </div>
           </div>
         )
 
       case 'payouts':
+        const formatCurrency = (amount) => {
+          if (!amount) return '₹0'
+          return `₹${Math.round(amount).toLocaleString('en-IN')}`
+        }
+        
+        const formatPayoutDate = (date) => {
+          if (!date) return 'N/A'
+          return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        }
+
+        if (loading) {
+          return <div className="vendor-info-display"><p>Loading payouts...</p></div>
+        }
+
+        const withdrawals = withdrawalsData || []
+
         return (
           <div className="vendor-info-display">
             <div className="vendor-info-display__section">
               <h5 className="vendor-info-display__section-title">Recent Payouts</h5>
               <div className="vendor-info-display__list">
-                {[
-                  { date: '2024-01-15', amount: '₹86,200', status: 'Completed' },
-                  { date: '2024-01-08', amount: '₹42,500', status: 'Completed' },
-                  { date: '2024-01-01', amount: '₹21,500', status: 'Pending' },
-                ].map((payout, index) => (
-                  <div key={index} className="vendor-info-display__item">
-                    <div>
-                      <p className="vendor-info-display__item-label">Date</p>
-                      <p className="vendor-info-display__item-value">{payout.date}</p>
+                {withdrawals.length > 0 ? withdrawals.map((withdrawal, index) => {
+                  const status = withdrawal.status === 'approved' ? 'Completed' : withdrawal.status === 'pending' ? 'Pending' : withdrawal.status === 'rejected' ? 'Rejected' : withdrawal.status
+                  return (
+                    <div key={withdrawal._id || withdrawal.id || index} className="vendor-info-display__item">
+                      <div>
+                        <p className="vendor-info-display__item-label">Date</p>
+                        <p className="vendor-info-display__item-value">{formatPayoutDate(withdrawal.requestedAt || withdrawal.createdAt)}</p>
+                      </div>
+                      <div>
+                        <p className="vendor-info-display__item-label">Amount</p>
+                        <p className="vendor-info-display__item-value">{formatCurrency(withdrawal.amount)}</p>
+                      </div>
+                      <div>
+                        <p className="vendor-info-display__item-label">Status</p>
+                        <span className={cn('vendor-info-display__item-badge', status === 'Completed' || status === 'approved' ? 'is-success' : status === 'Pending' || status === 'pending' ? 'is-pending' : 'is-error')}>
+                          {status}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <p className="vendor-info-display__item-label">Amount</p>
-                      <p className="vendor-info-display__item-value">{payout.amount}</p>
-                    </div>
-                    <div>
-                      <p className="vendor-info-display__item-label">Status</p>
-                      <span className={cn('vendor-info-display__item-badge', payout.status === 'Completed' ? 'is-success' : 'is-pending')}>
-                        {payout.status}
-                      </span>
-                    </div>
+                  )
+                }) : (
+                  <div className="vendor-info-display__item">
+                    <p className="text-sm text-gray-500">No withdrawals yet</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
         )
 
       case 'reorder':
+        if (loading) {
+          return <div className="vendor-info-display"><p>Loading reorder information...</p></div>
+        }
+
+        // Use real inventory stats from backend or dashboard
+        const lowStockCount = inventoryStatsData?.lowStockCount || dashboard?.overview?.inventory?.lowStockCount || 0
+        const criticalStockCount = inventoryStatsData?.criticalStockCount || dashboard?.overview?.inventory?.criticalStockCount || 0
+
         return (
           <div className="vendor-info-display">
             <div className="vendor-info-display__section">
@@ -641,11 +726,11 @@ function InformationDisplayContent({ data, buttonId }) {
                 <div className="vendor-info-display__metrics">
                   <div className="vendor-info-display__metric">
                     <span className="vendor-info-display__metric-label">Critical Items</span>
-                    <span className="vendor-info-display__metric-value">5</span>
+                    <span className="vendor-info-display__metric-value">{criticalStockCount}</span>
                   </div>
                   <div className="vendor-info-display__metric">
                     <span className="vendor-info-display__metric-label">Low Stock Items</span>
-                    <span className="vendor-info-display__metric-value">12</span>
+                    <span className="vendor-info-display__metric-value">{lowStockCount}</span>
                   </div>
                 </div>
               </div>
@@ -654,6 +739,16 @@ function InformationDisplayContent({ data, buttonId }) {
         )
 
       case 'stock_report':
+        if (loading) {
+          return <div className="vendor-info-display"><p>Loading stock report...</p></div>
+        }
+
+        // Use real inventory stats from backend or dashboard
+        const totalProducts = inventoryStatsData?.totalProducts || dashboard?.overview?.inventory?.totalProducts || 0
+        const inStockCount = inventoryStatsData?.inStockCount || dashboard?.overview?.inventory?.inStockCount || 0
+        const averageStockHealth = totalProducts > 0 ? Math.round((inStockCount / totalProducts) * 100) : 0
+        const reorderPoints = inventoryStatsData?.reorderPoints || dashboard?.overview?.inventory?.lowStockCount || 0
+
         return (
           <div className="vendor-info-display">
             <div className="vendor-info-display__section">
@@ -661,15 +756,15 @@ function InformationDisplayContent({ data, buttonId }) {
               <div className="vendor-info-display__metrics">
                 <div className="vendor-info-display__metric">
                   <span className="vendor-info-display__metric-label">Total SKUs</span>
-                  <span className="vendor-info-display__metric-value">{vendorSnapshot.inventory.length}</span>
+                  <span className="vendor-info-display__metric-value">{totalProducts}</span>
                 </div>
                 <div className="vendor-info-display__metric">
                   <span className="vendor-info-display__metric-label">Average Stock Health</span>
-                  <span className="vendor-info-display__metric-value">74%</span>
+                  <span className="vendor-info-display__metric-value">{averageStockHealth}%</span>
                 </div>
                 <div className="vendor-info-display__metric">
                   <span className="vendor-info-display__metric-label">Reorder Points</span>
-                  <span className="vendor-info-display__metric-value">8</span>
+                  <span className="vendor-info-display__metric-value">{reorderPoints}</span>
                 </div>
               </div>
             </div>

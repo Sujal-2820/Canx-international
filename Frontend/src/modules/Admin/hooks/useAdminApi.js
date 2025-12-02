@@ -181,6 +181,18 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
+  const updateVendor = useCallback(
+    (vendorId, vendorData) => {
+      return callApi(adminApi.updateVendor, vendorId, vendorData).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_VENDORS_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
   const approveVendorPurchase = useCallback(
     (requestId) => {
       return callApi(adminApi.approveVendorPurchase, requestId).then((result) => {

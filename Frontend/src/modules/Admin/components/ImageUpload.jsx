@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Upload, X, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { Upload, X, Image as ImageIcon, Loader2, GripVertical } from 'lucide-react'
 import { CLOUDINARY_CONFIG } from '../config/cloudinary'
 import { cn } from '../../../lib/cn'
 
@@ -15,6 +15,8 @@ import { cn } from '../../../lib/cn'
 export function ImageUpload({ images = [], onChange, maxImages = 4, disabled = false }) {
   const [uploadingIndex, setUploadingIndex] = useState(null)
   const [error, setError] = useState(null)
+  const [draggedIndex, setDraggedIndex] = useState(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
   const fileInputRefs = useRef({})
   const widgetRefs = useRef({})
 
@@ -160,6 +162,67 @@ export function ImageUpload({ images = [], onChange, maxImages = 4, disabled = f
     onChange(finalImages)
   }
 
+  // Drag and drop handlers for reordering images
+  const handleDragStart = (e, index) => {
+    if (disabled || images.length <= 1) return
+    setDraggedIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', index.toString())
+    // Set opacity on the dragged element
+    if (e.currentTarget) {
+      e.currentTarget.style.opacity = '0.5'
+    }
+  }
+
+  const handleDragEnd = (e) => {
+    // Reset opacity
+    if (e.currentTarget) {
+      e.currentTarget.style.opacity = '1'
+    }
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+  }
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index)
+    }
+  }
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null)
+  }
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault()
+    setDragOverIndex(null)
+    
+    if (draggedIndex === null || draggedIndex === dropIndex || disabled) {
+      return
+    }
+
+    const updatedImages = [...images]
+    const draggedImage = updatedImages[draggedIndex]
+    
+    // Remove dragged image from its position
+    updatedImages.splice(draggedIndex, 1)
+    
+    // Insert at new position
+    updatedImages.splice(dropIndex, 0, draggedImage)
+    
+    // Update order and primary status
+    const finalImages = updatedImages.map((img, idx) => ({
+      ...img,
+      isPrimary: idx === 0,
+      order: idx,
+    }))
+
+    onChange(finalImages)
+    setDraggedIndex(null)
+  }
+
   const canAddMore = images.length < maxImages
 
   return (
@@ -168,7 +231,7 @@ export function ImageUpload({ images = [], onChange, maxImages = 4, disabled = f
         <ImageIcon className="mr-1 inline h-4 w-4" />
         Product Images
         <span className="text-xs font-normal text-gray-500 ml-2">
-          (Max {maxImages} images. First image will be the primary image)
+          (Max {maxImages} images. First image will be the primary image. Drag images to reorder)
         </span>
       </label>
 
@@ -185,19 +248,42 @@ export function ImageUpload({ images = [], onChange, maxImages = 4, disabled = f
           const imageUrl = typeof image === 'string' ? image : (image?.url || '')
           if (!imageUrl) return null
           
+          const isDragging = draggedIndex === index
+          const isDragOver = dragOverIndex === index
+          
           return (
-          <div key={index} className="relative group">
+          <div 
+            key={index} 
+            className={cn(
+              "relative group transition-all",
+              !disabled && images.length > 1 && "cursor-move",
+              isDragging && "opacity-50 scale-95",
+              isDragOver && "ring-2 ring-purple-500 ring-offset-2 scale-105"
+            )}
+            draggable={!disabled && images.length > 1}
+            onDragStart={(e) => handleDragStart(e, index)}
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, index)}
+          >
             <div className="relative aspect-square rounded-xl border-2 border-gray-300 overflow-hidden bg-gray-50">
+              {!disabled && images.length > 1 && (
+                <div className="absolute top-2 left-2 z-10 p-1.5 bg-gray-800/70 text-white rounded cursor-move opacity-0 group-hover:opacity-100 transition-opacity">
+                  <GripVertical className="h-4 w-4" />
+                </div>
+              )}
               <img
                 src={imageUrl}
                 alt={`Product image ${index + 1}`}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover pointer-events-none"
+                draggable={false}
                 onError={(e) => {
                   e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI0U0RThFQiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Q0EzQUYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbWFnZSBub3QgZm91bmQ8L3RleHQ+PC9zdmc+'
                 }}
               />
               {((typeof image === 'object' && image.isPrimary) || (index === 0)) && (
-                <div className="absolute top-2 left-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded">
+                <div className="absolute top-2 right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded">
                   Primary
                 </div>
               )}
@@ -205,7 +291,7 @@ export function ImageUpload({ images = [], onChange, maxImages = 4, disabled = f
                 <button
                   type="button"
                   onClick={() => removeImage(index)}
-                  className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                  className="absolute bottom-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
                   aria-label="Remove image"
                 >
                   <X className="h-4 w-4" />
@@ -214,6 +300,11 @@ export function ImageUpload({ images = [], onChange, maxImages = 4, disabled = f
             </div>
             {index === 0 && images.length > 1 && (
               <p className="mt-1 text-xs text-center text-gray-500">Primary</p>
+            )}
+            {images.length > 1 && !disabled && (
+              <p className="mt-1 text-xs text-center text-gray-500">
+                Position {index + 1} • Drag to reorder
+              </p>
             )}
           </div>
         )})}

@@ -52,10 +52,18 @@ export async function openRazorpayCheckout(options) {
   try {
     const Razorpay = await loadRazorpay(options.key);
     
+    // Validate required fields
+    if (!options.order_id) {
+      throw new Error('Razorpay order ID is required');
+    }
+    if (!options.amount || options.amount <= 0) {
+      throw new Error('Payment amount must be greater than 0');
+    }
+    
     return new Promise((resolve, reject) => {
-      const razorpayInstance = new Razorpay({
+      const razorpayOptions = {
         key: options.key,
-        amount: Math.round(options.amount * 100), // Convert to paise
+        amount: Math.round(options.amount * 100), // Convert to paise (Razorpay expects amount in smallest currency unit)
         currency: options.currency || 'INR',
         order_id: options.order_id,
         name: options.name || 'IRA SATHI',
@@ -86,19 +94,34 @@ export async function openRazorpayCheckout(options) {
             });
           },
         },
+      };
+
+      console.log('💳 Razorpay Checkout Options:', {
+        key: razorpayOptions.key ? 'Present' : 'Missing',
+        amount: razorpayOptions.amount,
+        currency: razorpayOptions.currency,
+        order_id: razorpayOptions.order_id,
+        name: razorpayOptions.name,
+        description: razorpayOptions.description,
+        prefill: razorpayOptions.prefill,
       });
 
+      const razorpayInstance = new Razorpay(razorpayOptions);
+
       razorpayInstance.on('payment.failed', function (response) {
+        console.error('💳 Razorpay Payment Failed:', response);
         reject({
           success: false,
           error: response.error?.description || 'Payment failed',
           errorCode: response.error?.code,
+          errorDetails: response.error,
         });
       });
 
       razorpayInstance.open();
     });
   } catch (error) {
+    console.error('💳 Razorpay Checkout Error:', error);
     throw {
       success: false,
       error: error.message || 'Failed to initialize payment',

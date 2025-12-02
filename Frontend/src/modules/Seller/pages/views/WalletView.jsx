@@ -28,6 +28,7 @@ export function WalletView({ openPanel }) {
     lastCommissionDate: null,
   })
   const [bankAccounts, setBankAccounts] = useState([])
+  const bankAccountsSectionRef = useRef(null)
 
   const wallet = dashboard.wallet || {}
 
@@ -39,7 +40,7 @@ export function WalletView({ openPanel }) {
     return amount || '₹0'
   }
 
-  // Fetch wallet data on mount
+  // Fetch wallet data on mount and when bank accounts are added
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true)
@@ -126,6 +127,16 @@ export function WalletView({ openPanel }) {
       }
     }
     fetchData()
+
+    // Listen for bank account refresh event
+    const handleRefresh = () => {
+      fetchData()
+    }
+    window.addEventListener('seller-refresh-bank-accounts', handleRefresh)
+
+    return () => {
+      window.removeEventListener('seller-refresh-bank-accounts', handleRefresh)
+    }
   }, [fetchWalletData, getCommissionSummary, getBankAccounts])
 
   // Filter transactions
@@ -269,7 +280,7 @@ export function WalletView({ openPanel }) {
       )}
 
       {/* Bank Account Management */}
-      <section id="bank-accounts" className="seller-section">
+      <section id="bank-accounts" ref={bankAccountsSectionRef} className="seller-section">
         <div className="seller-section__header">
           <div>
             <h3 className="seller-section__title">Bank Accounts</h3>
@@ -277,7 +288,15 @@ export function WalletView({ openPanel }) {
           </div>
           <button
             type="button"
-            onClick={() => openPanel('add-bank-account')}
+            onClick={() => {
+              openPanel('add-bank-account')
+              // Scroll to bank accounts section after a short delay to allow panel to open
+              setTimeout(() => {
+                if (bankAccountsSectionRef.current) {
+                  bankAccountsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+              }, 300)
+            }}
             className="seller-wallet-action seller-wallet-action--secondary"
             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: '#10b981', color: '#fff', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}
           >

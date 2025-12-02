@@ -6,7 +6,7 @@ import * as adminApi from '../services/adminApi'
 export function AdminLogin({ onSubmit }) {
   const dispatch = useAdminDispatch()
   const [step, setStep] = useState('credentials') // 'credentials' | 'otp'
-  const [form, setForm] = useState({ email: '', password: '' })
+  const [form, setForm] = useState({ phone: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -22,23 +22,18 @@ export function AdminLogin({ onSubmit }) {
     setLoading(true)
 
     try {
-      if (!form.email.trim()) {
-        setError('Email is required')
-        setLoading(false)
-        return
-      }
-      if (!form.password.trim()) {
-        setError('Password is required')
+      if (!form.phone.trim()) {
+        setError('Phone number is required')
         setLoading(false)
         return
       }
 
-      // Step 1: Login with email/password (triggers OTP)
-      const result = await adminApi.loginAdmin({ email: form.email, password: form.password })
+      // Step 1: Login with phone (triggers OTP)
+      const result = await adminApi.loginAdmin({ phone: form.phone })
 
       if (result.success || result.data) {
-        // Request OTP to email
-        await adminApi.requestAdminOTP({ email: form.email })
+        // Request OTP to phone
+        await adminApi.requestAdminOTP({ phone: form.phone })
         setStep('otp')
       } else {
         setError(result.error?.message || 'Invalid credentials. Please try again.')
@@ -56,7 +51,7 @@ export function AdminLogin({ onSubmit }) {
 
     try {
       // Step 2: Verify OTP and complete login
-      const result = await adminApi.verifyAdminOTP({ email: form.email, otp: otpCode })
+      const result = await adminApi.verifyAdminOTP({ phone: form.phone, otp: otpCode })
 
       if (result.success || result.data) {
         // Store token
@@ -69,7 +64,7 @@ export function AdminLogin({ onSubmit }) {
           payload: {
             id: result.data.admin.id,
             name: result.data.admin.name,
-            email: result.data.admin.email,
+            phone: result.data.admin.phone,
             role: result.data.admin.role,
           },
         })
@@ -87,7 +82,7 @@ export function AdminLogin({ onSubmit }) {
   const handleResendOtp = async () => {
     setLoading(true)
     try {
-      await adminApi.requestAdminOTP({ email: form.email })
+      await adminApi.requestAdminOTP({ phone: form.phone })
     } catch (err) {
       setError('Failed to resend OTP. Please try again.')
     } finally {
@@ -101,7 +96,7 @@ export function AdminLogin({ onSubmit }) {
         <div className="w-full max-w-md space-y-6">
           <div className="rounded-3xl border border-gray-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm">
             <OtpVerification
-              email={form.email}
+              phone={form.phone}
               onVerify={handleVerifyOtp}
               onResend={handleResendOtp}
               onBack={() => setStep('credentials')}
@@ -125,7 +120,7 @@ export function AdminLogin({ onSubmit }) {
           </div>
           <p className="text-xs uppercase tracking-wide text-gray-600 font-semibold">Admin Access</p>
           <h1 className="text-3xl font-bold text-gray-900">Sign in to IRA Sathi</h1>
-          <p className="text-sm text-gray-600">Enter your credentials to access admin dashboard</p>
+          <p className="text-sm text-gray-600">Enter your phone number to access admin dashboard</p>
         </div>
 
         <div className="rounded-3xl border border-gray-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm">
@@ -137,33 +132,17 @@ export function AdminLogin({ onSubmit }) {
             )}
 
             <div className="space-y-1.5">
-              <label htmlFor="admin-email" className="text-xs font-semibold text-gray-700">
-                Email ID <span className="text-red-500">*</span>
+              <label htmlFor="admin-phone" className="text-xs font-semibold text-gray-700">
+                Contact Number <span className="text-red-500">*</span>
               </label>
               <input
-                id="admin-email"
-                name="email"
-                type="email"
+                id="admin-phone"
+                name="phone"
+                type="tel"
                 required
-                value={form.email}
+                value={form.phone}
                 onChange={handleChange}
-                placeholder="admin@irasathi.com"
-                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500/20 transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="admin-password" className="text-xs font-semibold text-gray-700">
-                Password <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="admin-password"
-                name="password"
-                type="password"
-                required
-                value={form.password}
-                onChange={handleChange}
-                placeholder="Enter your password"
+                placeholder="8878495502"
                 className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500/20 transition-all"
               />
             </div>

@@ -81,7 +81,14 @@ export function ToastContainer({ toasts, onDismiss }) {
             {toast.type === 'info' && <span>ℹ</span>}
           </div>
           <div className="flex-1">
-            <p className="text-[0.85rem] font-semibold leading-relaxed text-[#172022] m-0">{toast.message}</p>
+            <p className={cn(
+              "text-[0.85rem] font-semibold leading-relaxed m-0",
+              toast.type === 'success' && "text-[#1b8f5b]",
+              toast.type === 'error' && "text-[#dc2626]",
+              toast.type === 'warning' && "text-[#9b6532]",
+              toast.type === 'info' && "text-[rgba(16,102,112,0.9)]",
+              !toast.type || (toast.type !== 'success' && toast.type !== 'error' && toast.type !== 'warning' && toast.type !== 'info') && "text-[#172022]"
+            )}>{toast.message}</p>
           </div>
           <button
             type="button"

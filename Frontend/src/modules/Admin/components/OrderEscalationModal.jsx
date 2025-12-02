@@ -83,12 +83,23 @@ export function OrderEscalationModal({ isOpen, onClose, order, onFulfillFromWare
                 const quantity = item.quantity || 1
                 const unitPrice = item.unitPrice || item.price || item.amount || 0
                 const totalPrice = item.totalPrice || (unitPrice * quantity)
+                const variantAttrs = item.variantAttributes || {}
                 
                 return (
                   <div key={itemId} className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-2">
                     <div>
                       <p className="text-sm font-bold text-gray-900">{productName}</p>
-                      <p className="text-xs text-gray-600">Qty: {quantity} {item.unit || 'units'}</p>
+                      {/* Display variant attributes if present */}
+                      {variantAttrs && Object.keys(variantAttrs).length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {Object.entries(variantAttrs).map(([key, value]) => (
+                            <p key={key} className="text-xs text-gray-600">
+                              <span className="font-medium">{key}:</span> {value}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-600">Qty: {quantity} {item.unit || 'units'} × ₹{unitPrice.toLocaleString('en-IN')}</p>
                     </div>
                     <p className="text-sm font-bold text-gray-900">
                       {formatCurrency(totalPrice)}

@@ -9,7 +9,7 @@ const initialState = {
   authenticated: false,
   profile: {
     name: 'Guest Admin',
-    email: '',
+    phone: '',
     role: '',
   },
   filters: {

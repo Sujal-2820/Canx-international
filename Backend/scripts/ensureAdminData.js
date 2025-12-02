@@ -60,26 +60,29 @@ let createdData = {
 const ensureAdmin = async () => {
   console.log('\n🔐 Checking Admin User...\n');
   
-  const adminEmail = 'admin@irasathi.com';
-  let admin = await Admin.findOne({ email: adminEmail });
+  const adminPhone = '8878495502';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  let admin = await Admin.findOne({ phone: adminPhone });
   
   if (!admin) {
     admin = await Admin.create({
-      email: adminEmail,
-      password: 'admin123',
-      name: 'Test Admin',
+      phone: adminPhone,
+      password: adminPassword,
+      name: 'Admin',
       role: 'super_admin',
       isActive: true,
     });
-    console.log('✅ Admin created:', admin.email);
+    console.log('✅ Admin created:', admin.phone);
   } else {
     // Ensure password is set correctly
-    if (admin.password !== 'admin123') {
-      admin.password = 'admin123';
+    const tempAdmin = await Admin.findById(admin._id).select('+password');
+    const isPasswordMatch = await tempAdmin.comparePassword(adminPassword);
+    if (!isPasswordMatch) {
+      admin.password = adminPassword;
       await admin.save();
       console.log('✅ Admin password updated');
     } else {
-      console.log('✅ Admin already exists:', admin.email);
+      console.log('✅ Admin already exists:', admin.phone);
     }
   }
   

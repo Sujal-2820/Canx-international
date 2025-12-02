@@ -23,18 +23,6 @@ const columns = [
   { Header: 'Actions', accessor: 'actions' },
 ]
 
-const commissionColumns = [
-  { Header: 'Seller ID', accessor: 'sellerIdCode' },
-  { Header: 'Seller Name', accessor: 'sellerName' },
-  { Header: 'User Name', accessor: 'userName' },
-  { Header: 'User Location', accessor: 'userLocation' },
-  { Header: 'Order Number', accessor: 'orderNumber' },
-  { Header: 'Order Amount', accessor: 'orderAmount' },
-  { Header: 'Commission Rate', accessor: 'commissionRate' },
-  { Header: 'Commission Amount', accessor: 'commissionAmount' },
-  { Header: 'Status', accessor: 'status' },
-  { Header: 'Date', accessor: 'creditedAt' },
-]
 
 const REGIONS = ['All', 'West', 'North', 'South', 'Central', 'North East', 'East']
 const ORDER_STATUSES = ['All', 'Processing', 'Awaiting Dispatch', 'Completed', 'Cancelled']
@@ -48,7 +36,6 @@ export function OrdersPage({ subRoute = null, navigate }) {
     reassignOrder,
     generateInvoice,
     getVendors,
-    getCommissions,
     revertEscalation,
     fulfillOrderFromWarehouse,
     updateOrderStatus,
@@ -59,8 +46,6 @@ export function OrdersPage({ subRoute = null, navigate }) {
   const [ordersList, setOrdersList] = useState([])
   const [allOrdersList, setAllOrdersList] = useState([])
   const [availableVendors, setAvailableVendors] = useState([])
-  const [commissionsList, setCommissionsList] = useState([])
-  const [showCommissions, setShowCommissions] = useState(false)
   
   // Filter states
   const [filters, setFilters] = useState({
@@ -177,19 +162,10 @@ export function OrdersPage({ subRoute = null, navigate }) {
     }
   }, [getVendors])
 
-  // Fetch commissions
-  const fetchCommissions = useCallback(async () => {
-    const result = await getCommissions({ limit: 50 })
-    if (result.data?.commissions) {
-      setCommissionsList(result.data.commissions)
-    }
-  }, [getCommissions])
-
   useEffect(() => {
     fetchOrders()
     fetchVendors()
-    fetchCommissions()
-  }, [fetchOrders, fetchVendors, fetchCommissions])
+  }, [fetchOrders, fetchVendors])
 
   // Refresh when orders are updated
   useEffect(() => {
@@ -651,55 +627,6 @@ export function OrdersPage({ subRoute = null, navigate }) {
                 )}
               </div>
             </div>
-          )
-        },
-      }
-    }
-    return column
-  })
-
-  const commissionTableColumns = commissionColumns.map((column) => {
-    if (column.accessor === 'status') {
-      return {
-        ...column,
-        Cell: (row) => {
-          const status = row.status || 'credited'
-          const tone = status === 'credited' ? 'success' : status === 'pending' ? 'warning' : 'neutral'
-          return <StatusBadge tone={tone}>{status}</StatusBadge>
-        },
-      }
-    }
-    if (column.accessor === 'commissionRate') {
-      return {
-        ...column,
-        Cell: (row) => {
-          const rate = row.commissionRate || 0
-          return <span className="text-sm font-semibold text-gray-700">{rate}%</span>
-        },
-      }
-    }
-    if (column.accessor === 'orderAmount' || column.accessor === 'commissionAmount') {
-      return {
-        ...column,
-        Cell: (row) => {
-          const amount = row[column.accessor] || 0
-          const formatted = amount >= 100000 
-            ? `₹${(amount / 100000).toFixed(1)} L` 
-            : `₹${amount.toLocaleString('en-IN')}`
-          return <span className="text-sm font-semibold text-gray-900">{formatted}</span>
-        },
-      }
-    }
-    if (column.accessor === 'creditedAt') {
-      return {
-        ...column,
-        Cell: (row) => {
-          const date = row.creditedAt || row.createdAt
-          if (!date) return 'N/A'
-          return (
-            <span className="text-sm text-gray-600">
-              {new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
           )
         },
       }
@@ -1654,13 +1581,6 @@ export function OrdersPage({ subRoute = null, navigate }) {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-gray-900">Orders</h3>
-          <button
-            type="button"
-            onClick={() => setShowCommissions(!showCommissions)}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 px-4 py-2 text-sm font-bold text-white shadow-lg transition-all hover:shadow-xl"
-          >
-            {showCommissions ? 'Hide Commissions' : 'Show Commissions'}
-          </button>
         </div>
         <DataTable
           columns={tableColumns}
@@ -1669,24 +1589,6 @@ export function OrdersPage({ subRoute = null, navigate }) {
         />
       </div>
 
-      {showCommissions && (
-        <section className="space-y-4 rounded-3xl border border-green-200 bg-white p-6 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-bold text-green-700">Seller Commissions</h3>
-              <p className="text-sm text-gray-600">
-                Track which seller received commission from which order made by which user
-              </p>
-            </div>
-            <FileText className="h-5 w-5 text-green-600" />
-          </div>
-          <DataTable
-            columns={commissionTableColumns}
-            rows={commissionsList}
-            emptyState="No commissions found"
-          />
-        </section>
-      )}
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4 rounded-3xl border border-red-200 bg-white p-6 shadow-[0_4px_15px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)]">

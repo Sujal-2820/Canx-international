@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useUserState } from '../../context/UserContext'
 import { MIN_ORDER_VALUE } from '../../services/userData'
-import { PlusIcon, MinusIcon, TrashIcon, TruckIcon } from '../../components/icons'
+import { PlusIcon, MinusIcon, TrashIcon, TruckIcon, ChevronRightIcon } from '../../components/icons'
 import { cn } from '../../../../lib/cn'
 import * as userApi from '../../services/userApi'
 import { getPrimaryImageUrl } from '../../utils/productImages'
@@ -10,6 +10,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
   const { cart } = useUserState()
   const [suggestedProducts, setSuggestedProducts] = useState([])
   const [cartProducts, setCartProducts] = useState({})
+  const [expandedVariants, setExpandedVariants] = useState({}) // Track expanded state: { variantId: true/false }
 
   // Fetch suggested products (exclude items already in cart)
   useEffect(() => {
@@ -57,21 +58,111 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
     }
   }, [cart])
 
-  const cartItems = useMemo(() => {
-    return cart.map((item) => {
+  // Group items by productId, and if variants exist, group variants together
+  const groupedCartItems = useMemo(() => {
+    console.log('🛒 Cart Data:', cart)
+    console.log('🛒 Cart Products:', cartProducts)
+    
+    const grouped = {}
+    
+    cart.forEach((item, index) => {
+      console.log(`\n📦 Cart Item ${index + 1}:`, {
+        id: item.id,
+        cartItemId: item.cartItemId,
+        productId: item.productId,
+        name: item.name,
+        price: item.price,
+        unitPrice: item.unitPrice,
+        variantAttributes: item.variantAttributes,
+        quantity: item.quantity,
+        fullItem: item
+      })
+      
       const product = cartProducts[item.productId]
-      // Use price from item if available, otherwise from product, otherwise default to 0
-      const price = item.price || (product ? (product.priceToUser || product.price || 0) : 0)
-      return {
+      console.log(`📦 Product for ${item.productId}:`, product)
+      
+      // Use variant-specific price (unitPrice) if available, otherwise fallback
+      const unitPrice = item.unitPrice || item.price || (product ? (product.priceToUser || product.price || 0) : 0)
+      console.log(`💰 Unit Price calculated:`, unitPrice, {
+        'item.unitPrice': item.unitPrice,
+        'item.price': item.price,
+        'product.priceToUser': product?.priceToUser,
+        'product.price': product?.price
+      })
+      
+      // Check if item has variant attributes
+      const variantAttrs = item.variantAttributes || {}
+      const hasVariants = variantAttrs && typeof variantAttrs === 'object' && Object.keys(variantAttrs).length > 0
+      console.log(`🔖 Variant Attributes:`, variantAttrs, 'Has Variants:', hasVariants)
+      const key = item.productId
+      
+      if (!grouped[key]) {
+        grouped[key] = {
+          productId: item.productId,
+          product,
+          name: item.name || product?.name || 'Product',
+          image: product ? getPrimaryImageUrl(product) : (item.image || 'https://via.placeholder.com/400'),
+          variants: [], // Array of variant items
+          hasVariants: false,
+        }
+      }
+      
+      // Add this item as a variant - ensure we have proper ID and variant attributes
+      const variantItem = {
         ...item,
+        id: item.id || item._id || item.cartItemId, // Ensure ID is available
+        cartItemId: item.id || item._id || item.cartItemId, // For API calls
         product,
-        price, // Ensure price is always defined
+        unitPrice, // Variant-specific price from backend
+        variantAttributes: variantAttrs, // Ensure variant attributes are included
+        hasVariants,
+      }
+      
+      console.log(`✅ Adding variant to group ${key}:`, variantItem)
+      
+      grouped[key].variants.push(variantItem)
+      
+      // Mark as having variants if any variant exists
+      if (hasVariants) {
+        grouped[key].hasVariants = true
       }
     })
+    
+    const groupedArray = Object.values(grouped)
+    console.log('\n📊 Final Grouped Cart Items:', groupedArray)
+    console.log('📊 Grouped Items Summary:', groupedArray.map(g => ({
+      productId: g.productId,
+      name: g.name,
+      variantCount: g.variants.length,
+      hasVariants: g.hasVariants,
+      variants: g.variants.map((v, idx) => ({
+        index: idx,
+        id: v.id,
+        cartItemId: v.cartItemId,
+        unitPrice: v.unitPrice,
+        variantAttributes: v.variantAttributes,
+        quantity: v.quantity,
+        hasVariantAttrs: v.variantAttributes && Object.keys(v.variantAttributes).length > 0
+      }))
+    })))
+    
+    // Verify all cart items are included
+    const totalCartItems = cart.length
+    const totalGroupedVariants = groupedArray.reduce((sum, g) => sum + g.variants.length, 0)
+    console.log(`\n✅ Cart Items Check: ${totalCartItems} cart items → ${totalGroupedVariants} grouped variants`)
+    if (totalCartItems !== totalGroupedVariants) {
+      console.warn('⚠️ WARNING: Cart items count mismatch! Some items may be missing.')
+    }
+    
+    return groupedArray
   }, [cart, cartProducts])
 
   const totals = useMemo(() => {
-    const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    const subtotal = groupedCartItems.reduce((sum, group) => {
+      return sum + group.variants.reduce((variantSum, variant) => {
+        return variantSum + (variant.unitPrice * variant.quantity)
+      }, 0)
+    }, 0)
     const delivery = subtotal >= 5000 ? 0 : 50 // Free delivery above ₹5,000
     const total = subtotal + delivery
     const meetsMinimum = total >= MIN_ORDER_VALUE
@@ -83,9 +174,13 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
       meetsMinimum,
       shortfall: meetsMinimum ? 0 : MIN_ORDER_VALUE - total,
     }
-  }, [cartItems])
+  }, [groupedCartItems])
 
-  if (cartItems.length === 0) {
+  const totalItemsCount = useMemo(() => {
+    return groupedCartItems.reduce((sum, group) => sum + group.variants.length, 0)
+  }, [groupedCartItems])
+
+  if (groupedCartItems.length === 0) {
     return (
       <div className="user-cart-view space-y-4">
         <div className="text-center py-12">
@@ -100,68 +195,164 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
     <div className="user-cart-view space-y-6">
       <div className="mb-4">
         <h2 className="text-xl font-bold text-[#172022] mb-1">Shopping Cart</h2>
-        <p className="text-sm text-[rgba(26,42,34,0.65)]">{cartItems.length} {cartItems.length === 1 ? 'item' : 'items'}</p>
+        <p className="text-sm text-[rgba(26,42,34,0.65)]">{totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'}</p>
       </div>
 
-      <div className="space-y-3">
-        {cartItems.map((item) => (
+      <div className="space-y-4">
+        {groupedCartItems.map((group) => (
           <div
-            key={item.productId}
-            className="flex gap-3 p-4 rounded-2xl border border-[rgba(34,94,65,0.16)] bg-gradient-to-br from-white to-[rgba(239,246,240,0.92)] shadow-[0_20px_42px_-30px_rgba(16,44,30,0.36)]"
+            key={group.productId}
+            className="rounded-2xl border border-[rgba(34,94,65,0.16)] bg-gradient-to-br from-white to-[rgba(239,246,240,0.92)] shadow-[0_20px_42px_-30px_rgba(16,44,30,0.36)] overflow-hidden"
           >
-            <div className="flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden bg-gray-100">
-              {(() => {
-                const productImage = item.product ? getPrimaryImageUrl(item.product) : (item.image || 'https://via.placeholder.com/400')
-                return (
-                  <img src={productImage} alt={item.name || item.product?.name || 'Product'} className="w-full h-full object-cover" />
-                )
-              })()}
+            {/* Product Header */}
+            <div className="flex gap-3 p-4 border-b border-[rgba(34,94,65,0.1)]">
+              <div className="flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden bg-gray-100">
+                <img src={group.image} alt={group.name} className="w-full h-full object-cover" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-[#172022] mb-1 line-clamp-2">{group.name}</h3>
+                {group.vendor && (
+                  <p className="text-xs text-[rgba(26,42,34,0.6)] mb-1">{group.vendor.name}</p>
+                )}
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-[#172022] mb-1 line-clamp-2">{item.name}</h3>
-              {item.vendor && (
-                <p className="text-xs text-[rgba(26,42,34,0.6)] mb-1">{item.vendor.name}</p>
-              )}
-              {item.deliveryTime && (
-                <div className="flex items-center gap-1 text-xs text-[rgba(26,42,34,0.6)] mb-2">
-                  <TruckIcon className="h-3.5 w-3.5" />
-                  <span>{item.deliveryTime}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between mt-2">
-                <div className="text-sm font-bold text-[#1b8f5b]">₹{item.price.toLocaleString('en-IN')}</div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 border border-[rgba(34,94,65,0.2)] rounded-xl bg-white">
+
+            {/* Variants List */}
+            <div className="p-4 space-y-3">
+              {group.variants.map((variant, variantIdx) => {
+                const variantId = variant.id || variant._id
+                const isExpanded = expandedVariants[variantId] || false
+                
+                return (
+                  <div key={variantId} className="rounded-xl bg-white border border-[rgba(34,94,65,0.1)] overflow-hidden">
+                    {/* Variant Header - Collapsible */}
                     <button
                       type="button"
-                      className="p-1.5 hover:bg-[rgba(240,245,242,0.5)] transition-colors"
-                      onClick={() => onUpdateQuantity(item.productId, item.quantity - 1)}
+                      onClick={() => setExpandedVariants(prev => ({ ...prev, [variantId]: !prev[variantId] }))}
+                      className="w-full flex items-start justify-between gap-3 p-3 hover:bg-[rgba(240,245,242,0.3)] transition-colors"
                     >
-                      <MinusIcon className="h-4 w-4" />
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-[#172022]">Variant {variantIdx + 1}</span>
+                          {variant.variantAttributes && Object.keys(variant.variantAttributes).length > 0 && (
+                            <span className="text-[0.65rem] text-[rgba(26,42,34,0.6)]">
+                              ({Object.keys(variant.variantAttributes).length} properties)
+                            </span>
+                          )}
+                        </div>
+                        {/* Show first property as preview */}
+                        {(() => {
+                          console.log(`🔍 Checking variant attributes for variant ${variantIdx + 1}:`, {
+                            variantAttributes: variant.variantAttributes,
+                            type: typeof variant.variantAttributes,
+                            isObject: variant.variantAttributes && typeof variant.variantAttributes === 'object',
+                            keys: variant.variantAttributes ? Object.keys(variant.variantAttributes) : [],
+                            length: variant.variantAttributes ? Object.keys(variant.variantAttributes).length : 0
+                          })
+                          return null
+                        })()}
+                        {variant.variantAttributes && Object.keys(variant.variantAttributes).length > 0 ? (
+                          <div className="text-xs text-[rgba(26,42,34,0.7)]">
+                            {Object.entries(variant.variantAttributes).slice(0, 1).map(([key, value]) => (
+                              <span key={key}>
+                                <span className="font-medium">{key}:</span> {value}
+                                {Object.keys(variant.variantAttributes).length > 1 && ' + more'}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[rgba(26,42,34,0.6)]">Standard variant</p>
+                        )}
+                        {/* Variant Price - Always visible */}
+                        <div className="text-sm font-bold text-[#1b8f5b] mt-1">
+                          ₹{(variant.unitPrice || 0).toLocaleString('en-IN')} per unit
+                          {(() => {
+                            console.log(`💰 Variant ${variantIdx + 1} Price Display:`, {
+                              unitPrice: variant.unitPrice,
+                              price: variant.price,
+                              calculated: variant.unitPrice || 0
+                            })
+                            return null
+                          })()}
+                        </div>
+                      </div>
+                      <ChevronRightIcon 
+                        className={cn(
+                          "h-4 w-4 text-[rgba(26,42,34,0.5)] transition-transform shrink-0",
+                          isExpanded && "rotate-90"
+                        )}
+                      />
                     </button>
-                    <span className="px-2 text-sm font-semibold text-[#172022] min-w-[2rem] text-center">{item.quantity}</span>
-                    <button
-                      type="button"
-                      className="p-1.5 hover:bg-[rgba(240,245,242,0.5)] transition-colors"
-                      onClick={() => onUpdateQuantity(item.productId, item.quantity + 1)}
-                    >
-                      <PlusIcon className="h-4 w-4" />
-                    </button>
+                    
+                    {/* Expanded Variant Details */}
+                    {isExpanded && (
+                      <div className="px-3 pb-3 border-t border-[rgba(34,94,65,0.1)] bg-[rgba(240,245,242,0.2)]">
+                        {variant.variantAttributes && Object.keys(variant.variantAttributes).length > 0 ? (
+                          <div className="pt-2 space-y-1">
+                            <p className="text-xs font-bold text-[rgba(26,42,34,0.7)] mb-2">Variant Properties:</p>
+                            {Object.entries(variant.variantAttributes).map(([key, value]) => (
+                              <div key={key} className="flex items-center justify-between text-xs py-1">
+                                <span className="text-[rgba(26,42,34,0.5)] font-medium">{key}:</span>
+                                <span className="text-[rgba(26,42,34,0.7)] font-semibold">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="pt-2">
+                            <p className="text-xs text-[rgba(26,42,34,0.6)]">No variant properties available</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Variant Controls - Always visible */}
+                    <div className="flex items-center justify-between gap-3 p-3 border-t border-[rgba(34,94,65,0.1)] bg-[rgba(240,245,242,0.1)]">
+                      <div className="flex items-center gap-2 border border-[rgba(34,94,65,0.2)] rounded-xl bg-white">
+                        <button
+                          type="button"
+                          className="p-1.5 hover:bg-[rgba(240,245,242,0.5)] transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onUpdateQuantity(variantId, variant.quantity - 1)
+                          }}
+                          disabled={variant.quantity <= 1}
+                        >
+                          <MinusIcon className="h-4 w-4" />
+                        </button>
+                        <span className="px-2 text-sm font-semibold text-[#172022] min-w-[2rem] text-center">{variant.quantity}</span>
+                        <button
+                          type="button"
+                          className="p-1.5 hover:bg-[rgba(240,245,242,0.5)] transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onUpdateQuantity(variantId, variant.quantity + 1)
+                          }}
+                        >
+                          <PlusIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                      
+                      {/* Variant Total */}
+                      <div className="text-right min-w-[80px]">
+                        <div className="text-base font-bold text-[#172022]">
+                          ₹{((variant.unitPrice || 0) * variant.quantity).toLocaleString('en-IN')}
+                        </div>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onRemove(variantId)
+                        }}
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                    onClick={() => onRemove(item.productId)}
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="text-right mt-2">
-                <span className="text-base font-bold text-[#172022]">
-                  ₹{(item.price * item.quantity).toLocaleString('en-IN')}
-                </span>
-              </div>
+                )
+              })}
             </div>
           </div>
         ))}

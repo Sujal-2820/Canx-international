@@ -16,21 +16,24 @@ const createAdmin = async () => {
     await connectDB();
 
     // Admin details
+    const adminPhone = '8878495502';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    
     const adminData = {
-      email: 'admin@irasathi.com',
-      password: 'admin123', // Will be hashed automatically
-      name: 'Test Admin',
+      phone: adminPhone,
+      password: adminPassword, // Will be hashed automatically
+      name: 'Admin',
       role: 'super_admin',
       isActive: true,
     };
 
     // Check if admin already exists
-    const existingAdmin = await Admin.findOne({ email: adminData.email });
+    const existingAdmin = await Admin.findOne({ phone: adminData.phone });
 
     if (existingAdmin) {
-      console.log('⚠️  Admin already exists with email:', adminData.email);
+      console.log('⚠️  Admin already exists with phone:', adminData.phone);
       console.log('Updating password...');
-      existingAdmin.password = adminData.password;
+      existingAdmin.password = adminPassword;
       existingAdmin.name = adminData.name;
       existingAdmin.role = adminData.role;
       existingAdmin.isActive = true;
@@ -40,10 +43,10 @@ const createAdmin = async () => {
       // Create new admin
       const admin = await Admin.create(adminData);
       console.log('✅ Admin created successfully!');
-      console.log('📧 Email:', admin.email);
+      console.log('📱 Phone:', admin.phone);
       console.log('👤 Name:', admin.name);
       console.log('🔑 Role:', admin.role);
-      console.log('🔒 Password:', adminData.password, '(hashed in database)');
+      console.log('🔒 Password: Set from ADMIN_PASSWORD env variable (hashed in database)');
     }
 
     // Close connection

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Award, Gift, Users, Edit2, Eye, Wallet, CheckCircle, XCircle, ArrowLeft, User, Hash, Percent, Target, IndianRupee, TrendingUp, Calendar } from 'lucide-react'
+import { Award, Gift, Users, Edit2, Eye, Wallet, CheckCircle, XCircle, ArrowLeft, User, Hash, Percent, Target, IndianRupee, TrendingUp, Calendar, Search } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { ProgressList } from '../components/ProgressList'
 import { SellerForm } from '../components/SellerForm'
+import { SellerEditForm } from '../components/SellerEditForm'
 import { useAdminState } from '../context/AdminContext'
 import { useAdminApi } from '../hooks/useAdminApi'
 import { useToast } from '../components/ToastNotification'
@@ -45,13 +46,15 @@ export function SellersPage({ subRoute = null, navigate }) {
   const [withdrawalRequests, setWithdrawalRequests] = useState([])
   
   // View states (replacing modals with full-screen views)
-  const [currentView, setCurrentView] = useState(null) // 'sellerForm', 'sellerDetail', 'withdrawalRequest', 'approveSeller', 'rejectSeller'
+  const [currentView, setCurrentView] = useState(null) // 'sellerForm', 'sellerDetail', 'withdrawalRequest', 'approveSeller', 'rejectSeller', 'editSeller'
   const [selectedSeller, setSelectedSeller] = useState(null)
   const [selectedSellerForDetail, setSelectedSellerForDetail] = useState(null)
   const [selectedWithdrawalRequest, setSelectedWithdrawalRequest] = useState(null)
   const [selectedSellerForAction, setSelectedSellerForAction] = useState(null)
+  const [selectedSellerForEdit, setSelectedSellerForEdit] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [withdrawalRejectReason, setWithdrawalRejectReason] = useState(null) // null = not showing, '' = showing input
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Format seller data for display
   const formatSellerForDisplay = (seller) => {
@@ -101,24 +104,44 @@ export function SellersPage({ subRoute = null, navigate }) {
     }
   }, [getSellers])
 
-  // Filter sellers based on subRoute
+  // Filter sellers based on subRoute and search
   useEffect(() => {
+    let filtered = allSellersList
+
+    // Filter by subRoute
     if (subRoute === 'active') {
       // Active IRA Partners: those with sales and commissions
-      setSellersList(allSellersList.filter((s) => {
+      filtered = filtered.filter((s) => {
         const sales = typeof s.totalSales === 'number' ? s.totalSales : parseFloat(s.sales?.replace(/[₹,\sL]/g, '') || '0') * 100000
         return sales > 0 && (s.status === 'approved' || s.status === 'On Track' || s.status === 'on_track')
-      }))
+      })
     } else if (subRoute === 'inactive') {
       // Inactive IRA Partners: those not getting sales and commissions
-      setSellersList(allSellersList.filter((s) => {
+      filtered = filtered.filter((s) => {
         const sales = typeof s.totalSales === 'number' ? s.totalSales : parseFloat(s.sales?.replace(/[₹,\sL]/g, '') || '0') * 100000
         return sales === 0 || (s.status !== 'approved' && s.status !== 'On Track' && s.status !== 'on_track')
-      }))
-    } else {
-      setSellersList(allSellersList)
+      })
     }
-  }, [subRoute, allSellersList])
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+      filtered = filtered.filter((s) => {
+        const name = (s.name || '').toLowerCase()
+        const phone = (s.phone || '').replace(/\D/g, '')
+        const email = (s.email || '').toLowerCase()
+        const sellerId = (s.sellerId || s.id || '').toLowerCase()
+        const searchPhone = query.replace(/\D/g, '')
+        
+        return name.includes(query) || 
+               phone.includes(searchPhone) || 
+               email.includes(query) ||
+               sellerId.includes(query)
+      })
+    }
+
+    setSellersList(filtered)
+  }, [subRoute, allSellersList, searchQuery])
 
   // Fetch withdrawal requests
   const fetchWithdrawalRequests = useCallback(async () => {
@@ -164,9 +187,34 @@ export function SellersPage({ subRoute = null, navigate }) {
     setSelectedSellerForDetail(null)
     setSelectedWithdrawalRequest(null)
     setSelectedSellerForAction(null)
+    setSelectedSellerForEdit(null)
     setRejectReason('')
     setWithdrawalRejectReason(null)
     if (navigate) navigate('sellers')
+  }
+
+  const handleEditSellerBasicInfo = (seller) => {
+    const originalSeller = sellersState.data?.sellers?.find((s) => s.id === seller.id) || seller
+    setSelectedSellerForEdit(originalSeller)
+    setCurrentView('editSeller')
+  }
+
+  const handleSaveSeller = async (sellerData) => {
+    try {
+      const result = await updateSeller(selectedSellerForEdit.id, sellerData)
+      if (result.data) {
+        setCurrentView(null)
+        setSelectedSellerForEdit(null)
+        fetchSellers()
+        success('IRA Partner information updated successfully!', 3000)
+        if (navigate) navigate('sellers')
+      } else if (result.error) {
+        const errorMessage = result.error.message || 'Failed to update IRA partner'
+        showError(errorMessage, 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to update IRA partner', 5000)
+    }
   }
 
   const handleDeleteSeller = async (sellerId) => {
@@ -366,6 +414,14 @@ export function SellersPage({ subRoute = null, navigate }) {
               >
                 <Eye className="h-4 w-4" />
               </button>
+              <button
+                type="button"
+                onClick={() => handleEditSellerBasicInfo(originalSeller)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-700"
+                title="Edit IRA partner information"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
               {isPending && (
                 <>
                   <button
@@ -471,6 +527,17 @@ export function SellersPage({ subRoute = null, navigate }) {
   }
 
   // If a full-screen view is active, render it instead of the main list
+  if (currentView === 'editSeller' && selectedSellerForEdit) {
+    return (
+      <SellerEditForm
+        seller={selectedSellerForEdit}
+        onSave={handleSaveSeller}
+        onCancel={handleBackToList}
+        loading={loading}
+      />
+    )
+  }
+
   if (currentView === 'sellerForm') {
     return (
       <div className="space-y-6">
@@ -1042,10 +1109,38 @@ export function SellersPage({ subRoute = null, navigate }) {
         </div>
       </header>
 
+      {/* Search Bar */}
+      <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-[0_4px_15px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)]">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search IRA partners by name, phone, email, or ID..."
+            className="w-full rounded-xl border border-gray-300 bg-white pl-12 pr-4 py-3 text-sm font-semibold transition-all focus:border-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/50"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <XCircle className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+        {searchQuery && (
+          <p className="mt-2 text-xs text-gray-600">
+            Found {sellersList.length} IRA partner{sellersList.length !== 1 ? 's' : ''} matching "{searchQuery}"
+          </p>
+        )}
+      </div>
+
       <DataTable
         columns={tableColumns}
         rows={sellersList}
-        emptyState="No IRA Partners found in the network"
+        emptyState={searchQuery ? `No IRA partners found matching "${searchQuery}"` : "No IRA Partners found in the network"}
       />
 
       <section className="grid gap-6 lg:grid-cols-2">

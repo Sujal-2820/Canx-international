@@ -15,7 +15,7 @@ const { authorizeAdmin } = require('../middleware/auth');
 
 /**
  * @route   POST /api/admin/auth/login
- * @desc    Admin login (Step 1: Email/Password)
+ * @desc    Admin login (Step 1: Phone only)
  * @access  Public
  */
 router.post('/auth/login', adminController.login);
@@ -606,6 +606,45 @@ router.put('/vendor-messages/:messageId/status', authorizeAdmin, vendorAdminMess
  * @access  Private (Admin)
  */
 router.put('/vendor-messages/:messageId/read', authorizeAdmin, vendorAdminMessageController.markMessageAsRead);
+
+// ============================================================================
+// OFFERS MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * @route   GET /api/admin/offers
+ * @desc    Get all offers
+ * @access  Private (Admin)
+ */
+router.get('/offers', authorizeAdmin, adminController.getOffers);
+
+/**
+ * @route   GET /api/admin/offers/:id
+ * @desc    Get single offer
+ * @access  Private (Admin)
+ */
+router.get('/offers/:id', authorizeAdmin, adminController.getOffer);
+
+/**
+ * @route   POST /api/admin/offers
+ * @desc    Create offer
+ * @access  Private (Admin)
+ */
+router.post('/offers', authorizeAdmin, adminController.createOffer);
+
+/**
+ * @route   PUT /api/admin/offers/:id
+ * @desc    Update offer
+ * @access  Private (Admin)
+ */
+router.put('/offers/:id', authorizeAdmin, adminController.updateOffer);
+
+/**
+ * @route   DELETE /api/admin/offers/:id
+ * @desc    Delete offer
+ * @access  Private (Admin)
+ */
+router.delete('/offers/:id', authorizeAdmin, adminController.deleteOffer);
 
 module.exports = router;
 

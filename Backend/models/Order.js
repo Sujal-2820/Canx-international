@@ -70,6 +70,12 @@ const orderSchema = new mongoose.Schema({
       min: [0, 'Total price cannot be negative'],
       // quantity * unitPrice
     },
+    // Variant attributes (for products with attributeStocks)
+    variantAttributes: {
+      type: Map,
+      of: String,
+      // Stores the selected variant's attributes (e.g., { "Type": "Amino Acid", "Concentration": "20%" })
+    },
     status: {
       type: String,
       enum: ['pending', 'accepted', 'rejected'],

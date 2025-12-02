@@ -326,6 +326,49 @@ export function SellerProvider({ children }) {
             })
             break
             
+          case 'commission_rate_change':
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                type: 'commission_rate_change',
+                title: 'Commission Rate Updated',
+                message: `Your commission rate has been updated from ${processedNotification.oldRate}% to ${processedNotification.newRate}%`,
+                oldRate: processedNotification.oldRate,
+                newRate: processedNotification.newRate,
+                read: false,
+              },
+            })
+            break
+            
+          case 'policy_update':
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                type: 'policy_update',
+                title: 'Policy Updated',
+                message: processedNotification.message || 'Commission policy has been updated. Please review the changes.',
+                read: false,
+              },
+            })
+            break
+            
+          case 'commission_added':
+            dispatch({
+              type: 'ADD_NOTIFICATION',
+              payload: {
+                id: processedNotification.id,
+                type: 'commission',
+                title: 'Commission Earned',
+                message: `You earned ₹${processedNotification.amount} commission from order #${processedNotification.orderId}`,
+                amount: processedNotification.amount,
+                orderId: processedNotification.orderId,
+                read: false,
+              },
+            })
+            break
+            
           default:
             dispatch({
               type: 'ADD_NOTIFICATION',

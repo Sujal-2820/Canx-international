@@ -1279,6 +1279,10 @@
   margin-top: -3.5rem;
 }
 
+.user-shell-content .user-carousel-products-view {
+  margin-top: -3.5rem;
+}
+
 /* Checkout Progress Indicator */
 .user-checkout-progress {
   position: relative;

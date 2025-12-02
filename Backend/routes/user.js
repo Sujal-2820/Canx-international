@@ -68,6 +68,34 @@ router.put('/profile', authorizeUser, userController.updateProfile);
  */
 router.get('/profile/seller-id', authorizeUser, userController.getSellerID);
 
+/**
+ * @route   POST /api/users/profile/phone/request-otp-current
+ * @desc    Request OTP for current phone verification (for phone update)
+ * @access  Private (User)
+ */
+router.post('/profile/phone/request-otp-current', authorizeUser, userController.requestOTPForCurrentPhone);
+
+/**
+ * @route   POST /api/users/profile/phone/verify-otp-current
+ * @desc    Verify OTP for current phone (for phone update)
+ * @access  Private (User)
+ */
+router.post('/profile/phone/verify-otp-current', authorizeUser, userController.verifyOTPForCurrentPhone);
+
+/**
+ * @route   POST /api/users/profile/phone/request-otp-new
+ * @desc    Request OTP for new phone number (for phone update)
+ * @access  Private (User)
+ */
+router.post('/profile/phone/request-otp-new', authorizeUser, userController.requestOTPForNewPhone);
+
+/**
+ * @route   POST /api/users/profile/phone/verify-otp-new
+ * @desc    Verify OTP for new phone and update phone number
+ * @access  Private (User)
+ */
+router.post('/profile/phone/verify-otp-new', authorizeUser, userController.verifyOTPForNewPhone);
+
 // ============================================================================
 // PRODUCT & CATALOG ROUTES
 // ============================================================================

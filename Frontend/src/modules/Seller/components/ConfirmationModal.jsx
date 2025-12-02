@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, X as CloseIcon } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 
 export function ConfirmationModal({

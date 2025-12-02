@@ -2,16 +2,14 @@ import { useState, useEffect } from 'react'
 import { useUserState, useUserDispatch } from '../../context/UserContext'
 import { useUserApi } from '../../hooks/useUserApi'
 import { useToast } from '../../components/ToastNotification'
+import * as userApi from '../../services/userApi'
+import { GoogleMapsLocationPicker } from '../../../../components/GoogleMapsLocationPicker'
 import {
   UserIcon,
-  MapPinIcon,
   PackageIcon,
   TruckIcon,
-  BellIcon,
-  ShieldCheckIcon,
   HelpCircleIcon,
   EditIcon,
-  PlusIcon,
   ChevronRightIcon,
   CheckIcon,
   XIcon,
@@ -20,54 +18,33 @@ import {
 import { cn } from '../../../../lib/cn'
 
 export function AccountView({ onNavigate }) {
-  const { profile, addresses, orders } = useUserState()
+  const { profile, orders } = useUserState()
   const dispatch = useUserDispatch()
   const { updateUserProfile, loading } = useUserApi()
   const { success, error: showError } = useToast()
   const [activeSection, setActiveSection] = useState('profile')
   const [editingName, setEditingName] = useState(false)
   const [editedName, setEditedName] = useState(profile.name)
-  const [showAddressPanel, setShowAddressPanel] = useState(false)
-  const [editingAddress, setEditingAddress] = useState(null)
-  const [showPasswordPanel, setShowPasswordPanel] = useState(false)
-  const [showDefaultAddressPanel, setShowDefaultAddressPanel] = useState(false)
   const [showChangeDeliveryAddressPanel, setShowChangeDeliveryAddressPanel] = useState(false)
+  const [deliveryAddressOTPStep, setDeliveryAddressOTPStep] = useState(1) // 1: request OTP, 2: verify OTP, 3: select address
+  const [deliveryAddressOTP, setDeliveryAddressOTP] = useState('')
+  const [deliveryAddressOTPLoading, setDeliveryAddressOTPLoading] = useState(false)
+  const [selectedDeliveryLocation, setSelectedDeliveryLocation] = useState(null)
   const [deliveryAddressForm, setDeliveryAddressForm] = useState({
     address: profile.location?.address || '',
     city: profile.location?.city || '',
     state: profile.location?.state || '',
     pincode: profile.location?.pincode || '',
   })
-  const [showAccountRecoveryPanel, setShowAccountRecoveryPanel] = useState(false)
-  const [showPrivacyPanel, setShowPrivacyPanel] = useState(false)
   const [showSupportPanel, setShowSupportPanel] = useState(false)
   const [showReportPanel, setShowReportPanel] = useState(false)
+  const [showPhoneUpdatePanel, setShowPhoneUpdatePanel] = useState(false)
+  const [phoneUpdateStep, setPhoneUpdateStep] = useState(1) // 1: request current OTP, 2: verify current OTP, 3: enter new phone, 4: request new OTP, 5: verify new OTP
+  const [currentPhoneOTP, setCurrentPhoneOTP] = useState('')
+  const [newPhone, setNewPhone] = useState('')
+  const [newPhoneOTP, setNewPhoneOTP] = useState('')
+  const [phoneUpdateLoading, setPhoneUpdateLoading] = useState(false)
   
-  // Notification preferences state
-  const [notificationPrefs, setNotificationPrefs] = useState({
-    sms: true,
-    email: true,
-    push: true,
-    newsletter: true,
-    promotional: false,
-  })
-  
-  // Password change form
-  const [passwordForm, setPasswordForm] = useState({
-    current: '',
-    new: '',
-    confirm: '',
-  })
-  
-  // Address form
-  const [addressForm, setAddressForm] = useState({
-    name: 'Home',
-    address: '',
-    city: profile.location?.city || '',
-    state: profile.location?.state || '',
-    pincode: profile.location?.pincode || '',
-    phone: profile.phone || '',
-  })
   
   // Report issue form
   const [reportForm, setReportForm] = useState({
@@ -81,151 +58,91 @@ export function AccountView({ onNavigate }) {
     setEditedName(profile.name)
   }, [profile.name])
   
-  // Update address form when profile changes
+  // Update delivery address form when profile changes
   useEffect(() => {
-    setAddressForm({
-      name: 'Home',
-      address: '',
-      city: profile.location?.city || '',
-      state: profile.location?.state || '',
-      pincode: profile.location?.pincode || '',
-      phone: profile.phone || '',
-    })
     setDeliveryAddressForm({
       address: profile.location?.address || '',
       city: profile.location?.city || '',
       state: profile.location?.state || '',
       pincode: profile.location?.pincode || '',
     })
-  }, [profile.location, profile.phone])
+  }, [profile.location])
 
-  const handleSaveName = () => {
+  const handleSaveName = async () => {
     if (!editedName.trim()) {
       alert('Name cannot be empty')
       return
     }
-    dispatch({
-      type: 'AUTH_LOGIN',
-      payload: { ...profile, name: editedName.trim() },
-    })
-    setEditingName(false)
+    
+    try {
+      const result = await updateUserProfile({ name: editedName.trim() })
+      
+      // Close edit modal immediately
+      setEditingName(false)
+      
+      // useUserApi hook returns { data, error } structure
+      // If error is null/undefined, it means success
+      if (result && !result.error && result.data) {
+        dispatch({
+          type: 'AUTH_LOGIN',
+          payload: { ...profile, name: result.data.user?.name || editedName.trim() },
+        })
+        // Show green success notification with tick icon
+        success(result.data.message || 'Name updated successfully')
+      } else {
+        // Show red error notification
+        showError(result?.error?.message || result?.data?.message || 'Failed to update name')
+      }
+    } catch (error) {
+      console.error('Error updating name:', error)
+      // Close edit modal on error
+      setEditingName(false)
+      // Show red error notification
+      showError(error?.error?.message || error?.message || 'Failed to update name')
+    }
   }
 
-  const handleSetDefaultAddress = (addressId) => {
-    dispatch({ type: 'SET_DEFAULT_ADDRESS', payload: { id: addressId } })
-    setShowDefaultAddressPanel(false)
-  }
-  
-  const handleOpenAddressPanel = (address = null) => {
-    if (address) {
-      setEditingAddress(address.id)
-      setAddressForm({
-        name: address.name || address.label || 'Home',
-        address: address.address || address.street || '',
-        city: address.city || '',
-        state: address.state || '',
-        pincode: address.pincode || '',
-        phone: address.phone || profile.phone || '',
-      })
-    } else {
-      setEditingAddress(null)
-      setAddressForm({
-        name: 'Home',
-        address: '',
-        city: profile.location?.city || '',
-        state: profile.location?.state || '',
-        pincode: profile.location?.pincode || '',
-        phone: profile.phone || '',
-      })
-    }
-    setShowAddressPanel(true)
-  }
-  
-  const handleCloseAddressPanel = () => {
-    setShowAddressPanel(false)
-    setTimeout(() => {
-      setEditingAddress(null)
-      setAddressForm({
-        name: 'Home',
-        address: '',
-        city: profile.location?.city || '',
-        state: profile.location?.state || '',
-        pincode: profile.location?.pincode || '',
-        phone: profile.phone || '',
-      })
-    }, 300)
-  }
-  
-  const handleSaveAddress = () => {
-    if (!addressForm.name || !addressForm.address || !addressForm.city || !addressForm.state || !addressForm.pincode || !addressForm.phone) {
-      alert('Please fill in all required fields')
+  const handleSaveDeliveryAddress = async () => {
+    // Validate that location is selected from Google Maps
+    if (!selectedDeliveryLocation || !selectedDeliveryLocation.coordinates) {
+      showError('Please select a location from Google Maps')
       return
     }
     
-    if (editingAddress) {
-      dispatch({
-        type: 'UPDATE_ADDRESS',
-        payload: {
-          id: editingAddress,
-          name: addressForm.name,
-          label: addressForm.name,
-          address: addressForm.address,
-          street: addressForm.address,
-          city: addressForm.city,
-          state: addressForm.state,
-          pincode: addressForm.pincode,
-          phone: addressForm.phone,
+    if (!selectedDeliveryLocation.city || !selectedDeliveryLocation.state || !selectedDeliveryLocation.pincode) {
+      showError('Please select a complete address with city, state, and pincode')
+      return
+    }
+    
+    try {
+      const result = await updateUserProfile({
+        location: {
+          address: selectedDeliveryLocation.address || '',
+          city: selectedDeliveryLocation.city,
+          state: selectedDeliveryLocation.state,
+          pincode: selectedDeliveryLocation.pincode,
+          coordinates: selectedDeliveryLocation.coordinates,
         },
       })
-    } else {
-      const newAddress = {
-        id: `addr-${Date.now()}`,
-        name: addressForm.name,
-        label: addressForm.name,
-        address: addressForm.address,
-        street: addressForm.address,
-        city: addressForm.city,
-        state: addressForm.state,
-        pincode: addressForm.pincode,
-        phone: addressForm.phone,
-        isDefault: addresses.length === 0,
+      
+      // useUserApi hook returns { data, error } structure
+      if (result && !result.error && result.data) {
+        dispatch({
+          type: 'AUTH_LOGIN',
+          payload: { ...profile, location: result.data.user?.location || selectedDeliveryLocation },
+        })
+        success('Delivery address updated successfully')
+        setShowChangeDeliveryAddressPanel(false)
+        setDeliveryAddressOTPStep(1)
+        setDeliveryAddressOTP('')
+        setSelectedDeliveryLocation(null)
+      } else {
+        showError(result?.error?.message || result?.data?.message || 'Failed to update delivery address')
       }
-      dispatch({ type: 'ADD_ADDRESS', payload: newAddress })
+    } catch (error) {
+      console.error('Error updating delivery address:', error)
+      showError(error?.error?.message || error?.message || 'Failed to update delivery address')
     }
-    handleCloseAddressPanel()
-  }
-  
-  const handleDeleteAddress = (addressId) => {
-    if (window.confirm('Are you sure you want to delete this address?')) {
-      dispatch({ type: 'DELETE_ADDRESS', payload: { id: addressId } })
-    }
-  }
-  
-  const handleSavePassword = () => {
-    if (!passwordForm.current || !passwordForm.new || !passwordForm.confirm) {
-      alert('Please fill in all fields')
-      return
-    }
-    if (passwordForm.new !== passwordForm.confirm) {
-      alert('New passwords do not match')
-      return
-    }
-    if (passwordForm.new.length < 6) {
-      alert('Password must be at least 6 characters long')
-      return
-    }
-    // In a real app, this would make an API call
-    alert('Password changed successfully!')
-    setPasswordForm({ current: '', new: '', confirm: '' })
-    setShowPasswordPanel(false)
-  }
-  
-  const handleToggleNotification = (key) => {
-    setNotificationPrefs((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }))
-    // In a real app, this would save to backend
   }
   
   const handleSubmitReport = () => {
@@ -253,39 +170,19 @@ export function AccountView({ onNavigate }) {
           onEdit: () => setEditingName(true),
         },
         {
-          id: 'email',
-          label: 'Email',
-          value: profile.email || 'Not set',
-          editable: false,
-        },
-        {
           id: 'phone',
           label: 'Phone',
           value: profile.phone || 'Not set',
-          editable: false,
-        },
-        {
-          id: 'password',
-          label: 'Password',
-          value: '••••••••',
           editable: true,
-          onEdit: () => setShowPasswordPanel(true),
+          onEdit: () => {
+            setPhoneUpdateStep(1)
+            setShowPhoneUpdatePanel(true)
+            setCurrentPhoneOTP('')
+            setNewPhone('')
+            setNewPhoneOTP('')
+          },
         },
       ],
-    },
-    {
-      id: 'addresses',
-      title: 'Location & Addresses',
-      icon: MapPinIcon,
-      items: addresses.length > 0 ? addresses.map((addr) => ({
-        id: addr.id,
-        label: addr.label || addr.name || addr.type || 'Address',
-        value: `${addr.street || addr.address || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.pincode || ''}`,
-        isDefault: addr.isDefault,
-        editable: true,
-        onEdit: () => handleOpenAddressPanel(addr),
-        onDelete: () => handleDeleteAddress(addr.id),
-      })) : [],
     },
     {
       id: 'orders',
@@ -298,14 +195,6 @@ export function AccountView({ onNavigate }) {
           value: `${orders.length} orders`,
           action: () => {
             if (onNavigate) onNavigate('orders')
-          },
-        },
-        {
-          id: 'invoices',
-          label: 'Invoices',
-          value: 'Download invoices',
-          action: () => {
-            alert('Invoice download feature coming soon')
           },
         },
       ],
@@ -322,81 +211,12 @@ export function AccountView({ onNavigate }) {
             ? `${profile.location.address || ''}, ${profile.location.city}, ${profile.location.state} - ${profile.location.pincode}`.replace(/^,\s*|,\s*$/g, '').trim() || 'Not set'
             : 'Not set',
           editable: true,
-          action: () => setShowChangeDeliveryAddressPanel(true),
-        },
-        {
-          id: 'track-deliveries',
-          label: 'Track Deliveries',
-          value: `${orders.filter((o) => o.status === 'pending' || o.status === 'processing').length} active`,
           action: () => {
-            if (onNavigate) onNavigate('orders')
+            setDeliveryAddressOTPStep(1)
+            setDeliveryAddressOTP('')
+            setSelectedDeliveryLocation(null)
+            setShowChangeDeliveryAddressPanel(true)
           },
-        },
-      ],
-    },
-    {
-      id: 'notifications',
-      title: 'Notifications & Alerts',
-      icon: BellIcon,
-      items: [
-        {
-          id: 'sms',
-          label: 'SMS Notifications',
-          value: notificationPrefs.sms ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.sms,
-          onToggle: () => handleToggleNotification('sms'),
-        },
-        {
-          id: 'email',
-          label: 'Email Notifications',
-          value: notificationPrefs.email ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.email,
-          onToggle: () => handleToggleNotification('email'),
-        },
-        {
-          id: 'push',
-          label: 'Push Notifications',
-          value: notificationPrefs.push ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.push,
-          onToggle: () => handleToggleNotification('push'),
-        },
-        {
-          id: 'newsletter',
-          label: 'Newsletter',
-          value: notificationPrefs.newsletter ? 'Subscribed' : 'Not subscribed',
-          toggle: true,
-          enabled: notificationPrefs.newsletter,
-          onToggle: () => handleToggleNotification('newsletter'),
-        },
-        {
-          id: 'promotional',
-          label: 'Promotional Messages',
-          value: notificationPrefs.promotional ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.promotional,
-          onToggle: () => handleToggleNotification('promotional'),
-        },
-      ],
-    },
-    {
-      id: 'security',
-      title: 'Security & Permissions',
-      icon: ShieldCheckIcon,
-      items: [
-        {
-          id: 'recovery',
-          label: 'Account Recovery',
-          value: 'Set up recovery options',
-          action: () => setShowAccountRecoveryPanel(true),
-        },
-        {
-          id: 'privacy',
-          label: 'Privacy Settings',
-          value: 'Manage privacy',
-          action: () => setShowPrivacyPanel(true),
         },
       ],
     },
@@ -487,16 +307,6 @@ export function AccountView({ onNavigate }) {
               <h3 className="user-account-view__section-title">{section.title}</h3>
             </div>
             <div className="user-account-view__section-content">
-              {section.id === 'addresses' && (
-                <button
-                  type="button"
-                  className="user-account-view__add-button"
-                  onClick={() => handleOpenAddressPanel()}
-                >
-                  <PlusIcon className="h-4 w-4" />
-                  Add New Address
-                </button>
-              )}
               {section.items.length > 0 ? (
                 section.items.map((item) => (
                   <div key={item.id} className="user-account-view__item">
@@ -558,400 +368,12 @@ export function AccountView({ onNavigate }) {
                 <div className="user-account-view__empty">
                   <section.icon className="user-account-view__empty-icon" />
                   <p className="user-account-view__empty-text">No {section.title.toLowerCase()} yet</p>
-                  {section.id === 'addresses' && (
-                    <button
-                      type="button"
-                      className="user-account-view__empty-button"
-                      onClick={() => handleOpenAddressPanel()}
-                    >
-                      Add Address
-                    </button>
-                  )}
                 </div>
               )}
             </div>
           </div>
         ))}
       </div>
-
-      {/* Address Management Panel */}
-      <div
-        className={cn(
-          'user-address-panel',
-          showAddressPanel && 'user-address-panel--open'
-        )}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            handleCloseAddressPanel()
-          }
-        }}
-      >
-        <div className="user-address-panel__content">
-          <div className="user-address-panel__header">
-            <h3 className="user-address-panel__title">
-              {editingAddress ? 'Edit Address' : 'Add New Address'}
-            </h3>
-            <button
-              type="button"
-              onClick={handleCloseAddressPanel}
-              className="user-address-panel__close"
-              aria-label="Close"
-            >
-              <XIcon className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="user-address-panel__form">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                  Address Label <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={addressForm.name}
-                  onChange={(e) => setAddressForm({ ...addressForm, name: e.target.value })}
-                  placeholder="Home, Office, etc."
-                  className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                  Street Address <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={addressForm.address}
-                  onChange={(e) => setAddressForm({ ...addressForm, address: e.target.value })}
-                  placeholder="Enter your street address"
-                  rows={3}
-                  className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b] resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    City <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={addressForm.city}
-                    onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
-                    placeholder="City"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    State <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={addressForm.state}
-                    onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
-                    placeholder="State"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Pincode <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={addressForm.pincode}
-                    onChange={(e) => setAddressForm({ ...addressForm, pincode: e.target.value })}
-                    placeholder="Pincode"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Phone <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    value={addressForm.phone}
-                    onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
-                    placeholder="Phone number"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              {editingAddress && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteAddress(editingAddress)}
-                  className="flex-1 py-2.5 px-4 rounded-xl border border-red-200 bg-red-50 text-red-600 text-sm font-semibold hover:bg-red-100 transition-colors"
-                >
-                  Delete
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSaveAddress}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors"
-              >
-                {editingAddress ? 'Update Address' : 'Save Address'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Password Change Panel */}
-      {showPasswordPanel && (
-        <div
-          className="user-account-view__panel"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowPasswordPanel(false)
-              setPasswordForm({ current: '', new: '', confirm: '' })
-            }
-          }}
-        >
-          <div className="user-account-view__panel-content">
-            <div className="user-account-view__panel-header">
-              <h3 className="user-account-view__panel-title">Change Password</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPasswordPanel(false)
-                  setPasswordForm({ current: '', new: '', confirm: '' })
-                }}
-                className="user-account-view__panel-close"
-              >
-                <XIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="user-account-view__panel-body">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Current Password <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={passwordForm.current}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
-                    placeholder="Enter current password"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    New Password <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={passwordForm.new}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
-                    placeholder="Enter new password (min 6 characters)"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Confirm New Password <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={passwordForm.confirm}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
-                    placeholder="Confirm new password"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                  />
-                </div>
-              </div>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={handleSavePassword}
-                  className="w-full py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors"
-                >
-                  Change Password
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Default Address Selection Panel */}
-      {showDefaultAddressPanel && addresses.length > 0 && (
-        <div
-          className="user-account-view__panel"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowDefaultAddressPanel(false)
-            }
-          }}
-        >
-          <div className="user-account-view__panel-content">
-            <div className="user-account-view__panel-header">
-              <h3 className="user-account-view__panel-title">Select Default Address</h3>
-              <button
-                type="button"
-                onClick={() => setShowDefaultAddressPanel(false)}
-                className="user-account-view__panel-close"
-              >
-                <XIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="user-account-view__panel-body">
-              <div className="space-y-2">
-                {addresses.map((addr) => (
-                  <button
-                    key={addr.id}
-                    type="button"
-                    onClick={() => handleSetDefaultAddress(addr.id)}
-                    className={cn(
-                      "w-full text-left p-4 rounded-xl border-2 transition-all",
-                      addr.isDefault
-                        ? "border-[#1b8f5b] bg-[rgba(240,245,242,0.5)]"
-                        : "border-[rgba(34,94,65,0.15)] bg-white hover:border-[#1b8f5b]"
-                    )}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-[#172022]">{addr.label || addr.name || 'Address'}</span>
-                          {addr.isDefault && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#1b8f5b] text-white">
-                              Default
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-[rgba(26,42,34,0.7)]">
-                          {addr.street || addr.address || ''}, {addr.city || ''}, {addr.state || ''} {addr.pincode || ''}
-                        </p>
-                      </div>
-                      {addr.isDefault && (
-                        <CheckIcon className="h-5 w-5 text-[#1b8f5b] flex-shrink-0 ml-2" />
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Account Recovery Panel */}
-      {showAccountRecoveryPanel && (
-        <div
-          className="user-account-view__panel"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowAccountRecoveryPanel(false)
-            }
-          }}
-        >
-          <div className="user-account-view__panel-content">
-            <div className="user-account-view__panel-header">
-              <h3 className="user-account-view__panel-title">Account Recovery</h3>
-              <button
-                type="button"
-                onClick={() => setShowAccountRecoveryPanel(false)}
-                className="user-account-view__panel-close"
-              >
-                <XIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="user-account-view__panel-body">
-              <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
-                  <h4 className="font-semibold text-[#172022] mb-2">Recovery Email</h4>
-                  <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
-                    {profile.email || 'Not set'}
-                  </p>
-                  <button
-                    type="button"
-                    className="text-sm text-[#1b8f5b] font-semibold hover:underline"
-                  >
-                    Update Email
-                  </button>
-                </div>
-                <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
-                  <h4 className="font-semibold text-[#172022] mb-2">Recovery Phone</h4>
-                  <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
-                    {profile.phone || 'Not set'}
-                  </p>
-                  <button
-                    type="button"
-                    className="text-sm text-[#1b8f5b] font-semibold hover:underline"
-                  >
-                    Update Phone
-                  </button>
-                </div>
-                <p className="text-xs text-[rgba(26,42,34,0.6)]">
-                  These recovery options help you regain access to your account if you forget your password.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Privacy Settings Panel */}
-      {showPrivacyPanel && (
-        <div
-          className="user-account-view__panel"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowPrivacyPanel(false)
-            }
-          }}
-        >
-          <div className="user-account-view__panel-content">
-            <div className="user-account-view__panel-header">
-              <h3 className="user-account-view__panel-title">Privacy Settings</h3>
-              <button
-                type="button"
-                onClick={() => setShowPrivacyPanel(false)}
-                className="user-account-view__panel-close"
-              >
-                <XIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="user-account-view__panel-body">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 rounded-xl border border-[rgba(34,94,65,0.15)]">
-                  <div>
-                    <h4 className="font-semibold text-[#172022] mb-1">Profile Visibility</h4>
-                    <p className="text-sm text-[rgba(26,42,34,0.7)]">Control who can see your profile</p>
-                  </div>
-                  <label className="user-account-view__toggle">
-                    <input type="checkbox" defaultChecked className="user-account-view__toggle-input" />
-                    <span className="user-account-view__toggle-slider" />
-                  </label>
-                </div>
-                <div className="flex items-center justify-between p-4 rounded-xl border border-[rgba(34,94,65,0.15)]">
-                  <div>
-                    <h4 className="font-semibold text-[#172022] mb-1">Data Sharing</h4>
-                    <p className="text-sm text-[rgba(26,42,34,0.7)]">Allow data sharing for better experience</p>
-                  </div>
-                  <label className="user-account-view__toggle">
-                    <input type="checkbox" defaultChecked className="user-account-view__toggle-input" />
-                    <span className="user-account-view__toggle-slider" />
-                  </label>
-                </div>
-                <p className="text-xs text-[rgba(26,42,34,0.6)]">
-                  Your privacy is important to us. We never share your personal information with third parties without your consent.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Support Panel */}
       {showSupportPanel && (
@@ -1095,6 +517,277 @@ export function AccountView({ onNavigate }) {
         </div>
       )}
 
+      {/* Phone Update Panel */}
+      {showPhoneUpdatePanel && (
+        <div
+          className="user-account-view__panel"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowPhoneUpdatePanel(false)
+              setPhoneUpdateStep(1)
+              setCurrentPhoneOTP('')
+              setNewPhone('')
+              setNewPhoneOTP('')
+            }
+          }}
+        >
+          <div className="user-account-view__panel-content">
+            <div className="user-account-view__panel-header">
+              <h3 className="user-account-view__panel-title">Update Phone Number</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPhoneUpdatePanel(false)
+                  setPhoneUpdateStep(1)
+                  setCurrentPhoneOTP('')
+                  setNewPhone('')
+                  setNewPhoneOTP('')
+                }}
+                className="user-account-view__panel-close"
+              >
+                <XIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="user-account-view__panel-body">
+              {/* Step 1: Request OTP for current phone */}
+              {phoneUpdateStep === 1 && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
+                    <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
+                      We'll send an OTP to your current phone number <strong>{profile.phone}</strong> to verify your identity.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setPhoneUpdateLoading(true)
+                      try {
+                        const result = await userApi.requestOTPForCurrentPhone()
+                        if (result.success) {
+                          success('OTP sent to your current phone number')
+                          setPhoneUpdateStep(2)
+                        } else {
+                          showError(result.message || 'Failed to send OTP')
+                        }
+                      } catch (error) {
+                        console.error('Error requesting OTP:', error)
+                        showError(error.error?.message || 'Failed to send OTP')
+                      } finally {
+                        setPhoneUpdateLoading(false)
+                      }
+                    }}
+                    disabled={phoneUpdateLoading}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {phoneUpdateLoading ? 'Sending...' : 'Send OTP to Current Phone'}
+                  </button>
+                </div>
+              )}
+
+              {/* Step 2: Verify OTP for current phone */}
+              {phoneUpdateStep === 2 && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
+                    <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
+                      Enter the OTP sent to <strong>{profile.phone}</strong>
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                      OTP <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={currentPhoneOTP}
+                      onChange={(e) => setCurrentPhoneOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="Enter 6-digit OTP"
+                      maxLength={6}
+                      className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPhoneUpdateStep(1)}
+                      className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!currentPhoneOTP || currentPhoneOTP.length !== 6) {
+                          showError('Please enter a valid 6-digit OTP')
+                          return
+                        }
+                        setPhoneUpdateLoading(true)
+                        try {
+                          const result = await userApi.verifyOTPForCurrentPhone({ otp: currentPhoneOTP })
+                          if (result.success) {
+                            success('Current phone verified successfully')
+                            setPhoneUpdateStep(3)
+                          } else {
+                            showError(result.message || 'Invalid OTP')
+                          }
+                        } catch (error) {
+                          console.error('Error verifying OTP:', error)
+                          showError(error.error?.message || 'Invalid OTP')
+                        } finally {
+                          setPhoneUpdateLoading(false)
+                        }
+                      }}
+                      disabled={phoneUpdateLoading || !currentPhoneOTP || currentPhoneOTP.length !== 6}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {phoneUpdateLoading ? 'Verifying...' : 'Verify OTP'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Enter new phone number */}
+              {phoneUpdateStep === 3 && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
+                    <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
+                      Current phone verified! Now enter your new phone number.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                      New Phone Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, ''))}
+                      placeholder="Enter new phone number"
+                      className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhoneUpdateStep(2)
+                        setNewPhone('')
+                      }}
+                      className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!newPhone || newPhone.length < 10) {
+                          showError('Please enter a valid phone number')
+                          return
+                        }
+                        if (newPhone === profile.phone) {
+                          showError('New phone number must be different from current phone number')
+                          return
+                        }
+                        setPhoneUpdateLoading(true)
+                        try {
+                          const result = await userApi.requestOTPForNewPhone({ newPhone })
+                          if (result.success) {
+                            success('OTP sent to your new phone number')
+                            setPhoneUpdateStep(4)
+                          } else {
+                            showError(result.message || 'Failed to send OTP')
+                          }
+                        } catch (error) {
+                          console.error('Error requesting OTP:', error)
+                          showError(error.error?.message || 'Failed to send OTP')
+                        } finally {
+                          setPhoneUpdateLoading(false)
+                        }
+                      }}
+                      disabled={phoneUpdateLoading || !newPhone || newPhone.length < 10}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {phoneUpdateLoading ? 'Sending...' : 'Send OTP to New Phone'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 4: Verify OTP for new phone */}
+              {phoneUpdateStep === 4 && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
+                    <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
+                      Enter the OTP sent to <strong>{newPhone}</strong>
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                      OTP <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newPhoneOTP}
+                      onChange={(e) => setNewPhoneOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="Enter 6-digit OTP"
+                      maxLength={6}
+                      className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhoneUpdateStep(3)
+                        setNewPhoneOTP('')
+                      }}
+                      className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!newPhoneOTP || newPhoneOTP.length !== 6) {
+                          showError('Please enter a valid 6-digit OTP')
+                          return
+                        }
+                        setPhoneUpdateLoading(true)
+                        try {
+                          const result = await userApi.verifyOTPForNewPhone({ otp: newPhoneOTP })
+                          if (result.success) {
+                            success('Phone number updated successfully')
+                            dispatch({
+                              type: 'AUTH_LOGIN',
+                              payload: { ...profile, phone: result.data?.user?.phone || newPhone },
+                            })
+                            setShowPhoneUpdatePanel(false)
+                            setPhoneUpdateStep(1)
+                            setCurrentPhoneOTP('')
+                            setNewPhone('')
+                            setNewPhoneOTP('')
+                          } else {
+                            showError(result.message || 'Invalid OTP')
+                          }
+                        } catch (error) {
+                          console.error('Error verifying OTP:', error)
+                          showError(error.error?.message || 'Invalid OTP')
+                        } finally {
+                          setPhoneUpdateLoading(false)
+                        }
+                      }}
+                      disabled={phoneUpdateLoading || !newPhoneOTP || newPhoneOTP.length !== 6}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {phoneUpdateLoading ? 'Updating...' : 'Update Phone Number'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Change Delivery Address Panel */}
       {showChangeDeliveryAddressPanel && (
         <div
@@ -1102,6 +795,9 @@ export function AccountView({ onNavigate }) {
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowChangeDeliveryAddressPanel(false)
+              setDeliveryAddressOTPStep(1)
+              setDeliveryAddressOTP('')
+              setSelectedDeliveryLocation(null)
             }
           }}
         >
@@ -1110,85 +806,172 @@ export function AccountView({ onNavigate }) {
               <h3 className="user-account-view__panel-title">Change Delivery Address</h3>
               <button
                 type="button"
-                onClick={() => setShowChangeDeliveryAddressPanel(false)}
+                onClick={() => {
+                  setShowChangeDeliveryAddressPanel(false)
+                  setDeliveryAddressOTPStep(1)
+                  setDeliveryAddressOTP('')
+                  setSelectedDeliveryLocation(null)
+                }}
                 className="user-account-view__panel-close"
               >
                 <XIcon className="h-5 w-5" />
               </button>
             </div>
             <div className="user-account-view__panel-body">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Street Address
-                  </label>
-                  <textarea
-                    value={deliveryAddressForm.address}
-                    onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, address: e.target.value })}
-                    placeholder="Enter your street address"
-                    rows={3}
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b] resize-none"
-                  />
+              {/* Step 1: Request OTP for current phone */}
+              {deliveryAddressOTPStep === 1 && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
+                    <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
+                      We'll send an OTP to your registered phone number <strong>{profile.phone}</strong> to verify your identity before updating the delivery address.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setDeliveryAddressOTPLoading(true)
+                      try {
+                        const result = await userApi.requestOTPForCurrentPhone()
+                        if (result.success) {
+                          success('OTP sent to your registered phone number')
+                          setDeliveryAddressOTPStep(2)
+                        } else {
+                          showError(result.message || 'Failed to send OTP')
+                        }
+                      } catch (error) {
+                        console.error('Error requesting OTP:', error)
+                        showError(error.error?.message || 'Failed to send OTP')
+                      } finally {
+                        setDeliveryAddressOTPLoading(false)
+                      }
+                    }}
+                    disabled={deliveryAddressOTPLoading}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deliveryAddressOTPLoading ? 'Sending...' : 'Send OTP'}
+                  </button>
                 </div>
+              )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                      City <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={deliveryAddressForm.city}
-                      onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, city: e.target.value })}
-                      placeholder="City"
-                      className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                    />
+              {/* Step 2: Verify OTP */}
+              {deliveryAddressOTPStep === 2 && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
+                    <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
+                      Enter the OTP sent to <strong>{profile.phone}</strong>
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                      State <span className="text-red-500">*</span>
+                      OTP <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      value={deliveryAddressForm.state}
-                      onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, state: e.target.value })}
-                      placeholder="State"
+                      value={deliveryAddressOTP}
+                      onChange={(e) => setDeliveryAddressOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="Enter 6-digit OTP"
+                      maxLength={6}
                       className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
                     />
                   </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryAddressOTPStep(1)}
+                      className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!deliveryAddressOTP || deliveryAddressOTP.length !== 6) {
+                          showError('Please enter a valid 6-digit OTP')
+                          return
+                        }
+                        setDeliveryAddressOTPLoading(true)
+                        try {
+                          const result = await userApi.verifyOTPForCurrentPhone({ otp: deliveryAddressOTP })
+                          if (result.success) {
+                            success('Phone verified successfully')
+                            setDeliveryAddressOTPStep(3)
+                          } else {
+                            showError(result.message || 'Invalid OTP')
+                          }
+                        } catch (error) {
+                          console.error('Error verifying OTP:', error)
+                          showError(error.error?.message || 'Invalid OTP')
+                        } finally {
+                          setDeliveryAddressOTPLoading(false)
+                        }
+                      }}
+                      disabled={deliveryAddressOTPLoading || !deliveryAddressOTP || deliveryAddressOTP.length !== 6}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {deliveryAddressOTPLoading ? 'Verifying...' : 'Verify OTP'}
+                    </button>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Pincode <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={deliveryAddressForm.pincode}
-                    onChange={(e) => setDeliveryAddressForm({ ...deliveryAddressForm, pincode: e.target.value })}
-                    placeholder="Pincode"
-                    maxLength={6}
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
+              {/* Step 3: Select Address from Google Maps */}
+              {deliveryAddressOTPStep === 3 && (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
+                    <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
+                      Phone verified! Now select your delivery address using Google Maps. You can search for an address or use your live location.
+                    </p>
+                  </div>
+                  
+                  <GoogleMapsLocationPicker
+                    onLocationSelect={(location) => {
+                      setSelectedDeliveryLocation(location)
+                    }}
+                    initialLocation={profile.location ? {
+                      address: profile.location.address || '',
+                      city: profile.location.city || '',
+                      state: profile.location.state || '',
+                      pincode: profile.location.pincode || '',
+                      coordinates: profile.location.coordinates || null,
+                    } : null}
+                    required={true}
+                    label="Delivery Address"
                   />
+
+                  {selectedDeliveryLocation && (
+                    <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
+                      <p className="text-xs font-semibold text-[#172022] mb-2">Selected Address:</p>
+                      <p className="text-sm text-[rgba(26,42,34,0.7)]">
+                        {selectedDeliveryLocation.address}
+                      </p>
+                      <p className="text-xs text-[rgba(26,42,34,0.6)] mt-1">
+                        {selectedDeliveryLocation.city}, {selectedDeliveryLocation.state} - {selectedDeliveryLocation.pincode}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeliveryAddressOTPStep(2)
+                        setSelectedDeliveryLocation(null)
+                      }}
+                      className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveDeliveryAddress}
+                      disabled={loading || !selectedDeliveryLocation}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loading ? 'Saving...' : 'Save Address'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-6 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowChangeDeliveryAddressPanel(false)}
-                  className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveDeliveryAddress}
-                  disabled={loading}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Saving...' : 'Save Address'}
-                </button>
-              </div>
+              )}
             </div>
           </div>
         </div>

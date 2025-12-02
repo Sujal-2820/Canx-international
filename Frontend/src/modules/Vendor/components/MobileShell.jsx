@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { cn } from '../../../lib/cn'
-import { CloseIcon, MenuIcon, SearchIcon } from './icons'
+import { CloseIcon, MenuIcon, SearchIcon, BellIcon } from './icons'
 import iraSathiLogo from '../../../assets/IRA SathiNew.png'
 import { MapPinIcon } from './icons'
 
-export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick }) {
+export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick, onNotificationClick, notificationCount = 0, isNotificationAnimating = false }) {
   const [open, setOpen] = useState(false)
   const [compact, setCompact] = useState(false)
 
@@ -53,6 +53,22 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
             >
               <SearchIcon className="h-5 w-5" />
             </button>
+            {onNotificationClick && (
+              <button
+                type="button"
+                onClick={onNotificationClick}
+                className={cn('vendor-icon-button vendor-icon-button--notification', isNotificationAnimating && 'is-animating')}
+                aria-label="Notifications"
+                style={{ position: 'relative' }}
+              >
+                <BellIcon className="h-5 w-5" />
+                {notificationCount > 0 && (
+                  <span className="vendor-notification-badge">
+                    {notificationCount > 3 ? '3+' : notificationCount}
+                  </span>
+                )}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setOpen(true)}

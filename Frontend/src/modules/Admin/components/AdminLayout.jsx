@@ -9,32 +9,32 @@ export function AdminLayout({ sidebar, children, onExit }) {
     <div className="flex min-h-screen bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100">
       <aside
         className={cn(
-          'sticky top-0 h-screen overflow-y-auto transition-all duration-300 ease-in-out',
+          'sticky top-0 h-screen flex flex-col transition-all duration-300 ease-in-out',
           open ? 'w-64' : 'w-[4.5rem]',
-          'hidden lg:block border-r border-gray-200/50 bg-blue-500 backdrop-blur-xl shadow-[2px_0_8px_rgba(0,0,0,0.05)]',
+          'hidden lg:flex bg-[#23282d]',
         )}
         style={{
-          boxShadow: '2px 0 8px rgba(0, 0, 0, 0.05)',
+          boxShadow: 'none',
         }}
       >
         <div className={cn(
-          'flex h-16 items-center border-b border-white/30 bg-blue-600/50 backdrop-blur-sm shadow-[0_1px_4px_rgba(0,0,0,0.03)]',
+          'flex h-16 items-center border-b border-[#32373c] flex-shrink-0',
           open ? 'justify-between px-4' : 'justify-center px-3'
         )}>
           <div className={cn('flex items-center gap-3 overflow-hidden transition-all', open ? 'opacity-100' : 'opacity-0 w-0')}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-blue-600 shadow-[0_2px_6px_rgba(0,0,0,0.1)]">
-              <span className="text-lg font-bold">A</span>
+            <div className="flex h-8 w-8 items-center justify-center bg-white text-[#23282d]">
+              <span className="text-sm font-bold">A</span>
             </div>
             <div>
-              <p className="text-sm font-bold text-white">IRA Sathi</p>
-              <p className="text-xs text-white/80">Administrator</p>
+              <p className="text-sm font-semibold text-white">IRA Sathi</p>
+              <p className="text-xs text-[#b4b9be]">Administrator</p>
             </div>
           </div>
           <button
             type="button"
             className={cn(
-              'flex items-center justify-center rounded-xl bg-white/20 text-white transition-all duration-200 hover:bg-white/30 hover:shadow-[0_2px_6px_rgba(0,0,0,0.08)] active:shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
-              open ? 'h-9 w-9' : 'h-10 w-10',
+              'flex items-center justify-center text-[#b4b9be] transition-all duration-200 hover:text-white hover:bg-[#32373c]',
+              open ? 'h-8 w-8' : 'h-10 w-10',
             )}
             onClick={() => setOpen((prev) => !prev)}
             aria-label="Toggle sidebar"
@@ -42,7 +42,27 @@ export function AdminLayout({ sidebar, children, onExit }) {
             <Menu className={cn('transition-all', open ? 'h-4 w-4' : 'h-5 w-5')} />
           </button>
         </div>
-        <div className="p-3">{sidebar({ condensed: !open })}</div>
+        <div className="flex-1 overflow-y-auto p-0">{sidebar({ condensed: !open, onSignOut: onExit })}</div>
+        <div className="border-t border-[#32373c] flex-shrink-0 space-y-0">
+          <button
+            type="button"
+            onClick={() => setOpen((prev) => !prev)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-[#b4b9be] hover:bg-[#32373c] hover:text-white transition-colors duration-150"
+          >
+            <Menu className="h-5 w-5 flex-shrink-0" />
+            {open && <span className="text-sm">Collapse menu</span>}
+          </button>
+          {onExit && (
+            <button
+              type="button"
+              onClick={onExit}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-white bg-[#dc3232] hover:bg-[#c92a2a] transition-colors duration-150"
+            >
+              <LogOut className="h-5 w-5 flex-shrink-0" />
+              {open && <span className="text-sm font-medium">Sign Out</span>}
+            </button>
+          )}
+        </div>
       </aside>
 
       <div className="flex flex-1 flex-col">

@@ -18,6 +18,7 @@ import { OrderConfirmationView } from './views/OrderConfirmationView'
 import { AccountView } from './views/AccountView'
 import { FavouritesView } from './views/FavouritesView'
 import { CategoryProductsView } from './views/CategoryProductsView'
+import { CarouselProductsView } from './views/CarouselProductsView'
 import { OrdersView } from './views/OrdersView'
 import { VendorAvailabilityWarning } from '../components/VendorAvailabilityWarning'
 import '../user.css'
@@ -61,6 +62,7 @@ function UserDashboardContent({ onLogout }) {
   const [activeTab, setActiveTab] = useState('home')
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState(null)
+  const [selectedCarousel, setSelectedCarousel] = useState(null)
   const [showCheckout, setShowCheckout] = useState(false)
   const [orderConfirmation, setOrderConfirmation] = useState(null)
   const { toasts, dismissToast, success, error, warning, info } = useToast()
@@ -150,13 +152,31 @@ function UserDashboardContent({ onLogout }) {
   }, [])
 
   const mapCartItemsFromResponse = useCallback((cartData) => {
-    if (!cartData?.items) return []
-    return cartData.items
-      .map((item) => {
+    console.log('🔄 Mapping Cart Items from Response:', cartData)
+    
+    if (!cartData?.items) {
+      console.log('⚠️ No items in cart data')
+      return []
+    }
+    
+    const mappedItems = cartData.items
+      .map((item, index) => {
+        console.log(`\n🔄 Mapping Item ${index + 1}:`, item)
+        
         const cartItemId = resolveId(item.id || item._id)
         const product = item.product || item.productId || {}
         const productId = resolveId(product.id || product._id || item.productId)
-        if (!productId) return null
+        
+        console.log(`🔄 Item IDs:`, { cartItemId, productId })
+        console.log(`🔄 Product:`, product)
+        console.log(`🔄 Variant Attributes (raw):`, item.variantAttributes)
+        
+        if (!productId) {
+          console.log(`⚠️ Skipping item - no productId`)
+          return null
+        }
+        
+        // Use variant-specific price (unitPrice) if available, otherwise fallback
         const price =
           typeof item.unitPrice === 'number'
             ? item.unitPrice
@@ -165,18 +185,42 @@ function UserDashboardContent({ onLogout }) {
               : typeof product.price === 'number'
                 ? product.price
                 : 0
-        return {
+        
+        // Extract variant attributes if present
+        const variantAttributes = item.variantAttributes || null
+        
+        console.log(`💰 Price Calculation:`, {
+          'item.unitPrice': item.unitPrice,
+          'product.priceToUser': product.priceToUser,
+          'product.price': product.price,
+          'final price': price,
+          'final unitPrice': item.unitPrice || price
+        })
+        console.log(`🔖 Variant Attributes (final):`, variantAttributes)
+        
+        const mappedItem = {
+          id: cartItemId, // Add id field for compatibility
           cartItemId,
           productId,
           name: product.name || item.productName || 'Unknown Product',
           price,
+          unitPrice: item.unitPrice || price, // Variant-specific price
           image: item.image || product.images?.[0]?.url || product.primaryImage || product.image || '',
           quantity: item.quantity || 1,
           vendor: product.vendor || null,
           deliveryTime: product.deliveryTime || null,
+          variantAttributes: variantAttributes, // Include variant attributes
         }
+        
+        console.log(`✅ Mapped Item:`, mappedItem)
+        
+        return mappedItem
       })
       .filter(Boolean)
+    
+    console.log(`\n✅ Final Mapped Cart Items (${mappedItems.length} items):`, mappedItems)
+    
+    return mappedItems
   }, [resolveId])
 
   const syncCartState = useCallback(
@@ -381,8 +425,10 @@ function UserDashboardContent({ onLogout }) {
     return () => clearTimeout(timer)
   }, [pendingScroll, activeTab])
 
-  const handleAddToCart = async (productId, quantity = 1) => {
+  const handleAddToCart = async (productId, quantity = 1, variantAttributes = {}) => {
     try {
+      console.log('🛒 handleAddToCart called:', { productId, quantity, variantAttributes })
+      
       // Fetch product details from API
       const result = await userApi.getProductDetails(productId)
       if (!result.success || !result.data?.product) {
@@ -396,9 +442,19 @@ function UserDashboardContent({ onLogout }) {
         return
       }
       
+      // Prepare cart payload with variant attributes if provided
+      const cartPayload = { productId, quantity }
+      if (variantAttributes && Object.keys(variantAttributes).length > 0) {
+        cartPayload.variantAttributes = variantAttributes
+        console.log('🛒 Adding variant to cart:', cartPayload)
+      } else {
+        console.log('🛒 Adding product without variants to cart:', cartPayload)
+      }
+      
       // Add to cart via API and sync state
-      const cartResult = await userApi.addToCart({ productId, quantity })
+      const cartResult = await userApi.addToCart(cartPayload)
       if (cartResult?.data?.cart) {
+        console.log('🛒 Cart result from API:', cartResult.data.cart)
         syncCartState(cartResult.data.cart)
       }
       success(`${product.name} added to cart`)
@@ -428,22 +484,30 @@ function UserDashboardContent({ onLogout }) {
     }
   }
 
-  const handleUpdateCartQuantity = async (productId, quantity) => {
-    const cartItem = cart.find((item) => item.productId === productId)
-    if (!cartItem?.cartItemId) {
+  const handleUpdateCartQuantity = async (itemId, quantity) => {
+    // itemId can be either cartItemId (string) or cart item object with id
+    const cartItemId = typeof itemId === 'string' ? itemId : (itemId?.id || itemId?._id || itemId?.cartItemId)
+    
+    if (!cartItemId) {
       error('Unable to update cart item')
       return
     }
+    
     if (quantity <= 0) {
-      await handleRemoveFromCart(productId)
+      await handleRemoveFromCart(itemId)
       return
     }
+    
     try {
-      const result = await userApi.updateCartItem(cartItem.cartItemId, { quantity })
+      const result = await userApi.updateCartItem(cartItemId, { quantity })
       if (result?.data?.cart) {
         syncCartState(result.data.cart)
       } else {
-        dispatch({ type: 'UPDATE_CART_ITEM', payload: { productId, quantity } })
+        // Fallback: find item by ID and update
+        const cartItem = cart.find((item) => (item.id || item._id || item.cartItemId) === cartItemId)
+        if (cartItem) {
+          dispatch({ type: 'UPDATE_CART_ITEM', payload: { itemId: cartItemId, quantity } })
+        }
       }
     } catch (err) {
       error(err?.error?.message || err.message || 'Failed to update quantity')
@@ -547,6 +611,7 @@ function UserDashboardContent({ onLogout }) {
               setActiveTab(item.id)
               setSelectedProduct(null)
               setSelectedCategory(null)
+              setSelectedCarousel(null)
               setShowCheckout(false)
             }}
             icon={<item.icon active={activeTab === item.id} className="h-5 w-5" filled={item.id === 'favourites' ? favouritesCount > 0 : undefined} />}
@@ -564,6 +629,11 @@ function UserDashboardContent({ onLogout }) {
                   // "View All" clicked - switch to search view instead of product detail
                   setActiveTab('search')
                   setSearchQuery('')
+                } else if (productId && productId.startsWith('carousel:')) {
+                  // Carousel clicked - show carousel products
+                  const carouselId = productId.replace('carousel:', '')
+                  setSelectedCarousel(carouselId)
+                  setActiveTab('carousel-products')
                 } else {
                   setSelectedProduct(productId)
                   setActiveTab('product-detail')
@@ -602,6 +672,22 @@ function UserDashboardContent({ onLogout }) {
               onAddToCart={handleAddToCart}
               onBack={() => {
                 setSelectedCategory(null)
+                setActiveTab('home')
+              }}
+              onToggleFavourite={handleToggleFavourite}
+              favourites={favourites}
+            />
+          )}
+          {activeTab === 'carousel-products' && selectedCarousel && (
+            <CarouselProductsView
+              carouselId={selectedCarousel}
+              onProductClick={(productId) => {
+                setSelectedProduct(productId)
+                setActiveTab('product-detail')
+              }}
+              onAddToCart={handleAddToCart}
+              onBack={() => {
+                setSelectedCarousel(null)
                 setActiveTab('home')
               }}
               onToggleFavourite={handleToggleFavourite}

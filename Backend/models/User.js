@@ -70,6 +70,15 @@ const userSchema = new mongoose.Schema({
     code: String,
     expiresAt: Date,
   },
+  // Temporary fields for phone update process
+  tempPhoneUpdateVerified: {
+    type: Boolean,
+    default: false,
+  },
+  tempNewPhone: {
+    type: String,
+    trim: true,
+  },
 }, {
   timestamps: true,
 });

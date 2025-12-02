@@ -5,7 +5,7 @@ import iraSathiLogo from '../../../assets/IRA SathiNew.png'
 import { MapPinIcon } from './icons'
 import { NotificationsDropdown } from './NotificationsDropdown'
 
-export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick, notificationsCount = 0, notifications = [], onProfileClick }) {
+export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick, notificationsCount = 0, notifications = [], onProfileClick, onNotificationClick, isNotificationAnimating = false }) {
   const [open, setOpen] = useState(false)
   const [compact, setCompact] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -54,13 +54,16 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
             </button>
             <button
               type="button"
-              onClick={() => setNotificationsOpen(!notificationsOpen)}
-              className="seller-icon-button seller-icon-button--notifications"
+              onClick={onNotificationClick || (() => setNotificationsOpen(!notificationsOpen))}
+              className={cn('seller-icon-button seller-icon-button--notifications', isNotificationAnimating && 'is-animating')}
               aria-label="Notifications"
+              style={{ position: 'relative' }}
             >
               <BellIcon className="h-5 w-5" />
               {notificationsCount > 0 && (
-                <span className="seller-notification-badge">{notificationsCount > 99 ? '99+' : notificationsCount}</span>
+                <span className="seller-notification-badge">
+                  {notificationsCount > 3 ? '3+' : notificationsCount}
+                </span>
               )}
             </button>
             {onProfileClick && (

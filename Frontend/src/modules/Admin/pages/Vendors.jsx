@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Building2, CreditCard, MapPin, ShieldAlert, Edit2, Eye, Package, Ban, Unlock, CheckCircle, XCircle, ArrowLeft, Calendar, FileText, ExternalLink } from 'lucide-react'
+import { Building2, CreditCard, MapPin, ShieldAlert, Edit2, Eye, Package, Ban, Unlock, CheckCircle, XCircle, ArrowLeft, Calendar, FileText, ExternalLink, Search } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { Timeline } from '../components/Timeline'
 import { VendorMap } from '../components/VendorMap'
 import { CreditPolicyForm } from '../components/CreditPolicyForm'
+import { VendorEditForm } from '../components/VendorEditForm'
 import { useAdminState } from '../context/AdminContext'
 import { useAdminApi } from '../hooks/useAdminApi'
 import { useToast } from '../components/ToastNotification'
@@ -85,6 +86,7 @@ export function VendorsPage({ subRoute = null, navigate }) {
     banVendor,
     unbanVendor,
     updateVendorCreditPolicy,
+    updateVendor,
     getVendorPurchaseRequests,
     approveVendorPurchase,
     rejectVendorPurchase,
@@ -99,18 +101,20 @@ export function VendorsPage({ subRoute = null, navigate }) {
   const [coverageReport, setCoverageReport] = useState(null)
   
   // View states (replacing modals with full-screen views)
-  const [currentView, setCurrentView] = useState(null) // 'creditPolicy', 'vendorDetail', 'vendorMap', 'purchaseRequest', 'approveVendor', 'rejectVendor', 'banVendor', 'unbanVendor'
+  const [currentView, setCurrentView] = useState(null) // 'creditPolicy', 'vendorDetail', 'vendorMap', 'purchaseRequest', 'approveVendor', 'rejectVendor', 'banVendor', 'unbanVendor', 'editVendor'
   const [selectedVendorForPolicy, setSelectedVendorForPolicy] = useState(null)
   const [selectedPurchaseRequest, setSelectedPurchaseRequest] = useState(null)
   const [selectedVendorForDetail, setSelectedVendorForDetail] = useState(null)
   const [selectedVendorForMap, setSelectedVendorForMap] = useState(null)
   const [selectedVendorForAction, setSelectedVendorForAction] = useState(null)
+  const [selectedVendorForEdit, setSelectedVendorForEdit] = useState(null)
   const [actionData, setActionData] = useState(null) // For storing form data for actions like reject/ban
   const [rejectReason, setRejectReason] = useState('')
   const [banType, setBanType] = useState('temporary')
   const [banReason, setBanReason] = useState('')
   const [revocationReason, setRevocationReason] = useState('')
   const [purchaseRejectReason, setPurchaseRejectReason] = useState(null) // null = not showing, '' = showing input
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Format vendor data for display
   const formatVendorForDisplay = (vendor, flaggedVendorIds = new Set()) => {
@@ -147,22 +151,41 @@ export function VendorsPage({ subRoute = null, navigate }) {
     setAllVendorsList(formatted)
   }, [getVendors])
 
-  // Filter vendors based on subRoute
+  // Filter vendors based on subRoute and search
   useEffect(() => {
+    let filtered = allVendorsList
+
+    // Filter by subRoute
     if (subRoute === 'on-track') {
-      setVendorsList(allVendorsList.filter((v) => {
+      filtered = filtered.filter((v) => {
         const status = v.status?.toLowerCase() || ''
         return status === 'on track' || status === 'approved' || status === 'active'
-      }))
+      })
     } else if (subRoute === 'out-of-track') {
-      setVendorsList(allVendorsList.filter((v) => {
+      filtered = filtered.filter((v) => {
         const status = v.status?.toLowerCase() || ''
         return status === 'delayed' || status === 'review' || status === 'pending' || status === 'rejected'
-      }))
-    } else {
-      setVendorsList(allVendorsList)
+      })
     }
-  }, [subRoute, allVendorsList])
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+      filtered = filtered.filter((v) => {
+        const name = (v.name || '').toLowerCase()
+        const phone = (v.phone || '').replace(/\D/g, '')
+        const email = (v.email || '').toLowerCase()
+        const searchPhone = query.replace(/\D/g, '')
+        
+        return name.includes(query) || 
+               phone.includes(searchPhone) || 
+               email.includes(query) ||
+               (v.id && v.id.toLowerCase().includes(query))
+      })
+    }
+
+    setVendorsList(filtered)
+  }, [subRoute, allVendorsList, searchQuery])
 
   // Fetch purchase requests
   const fetchPurchaseRequests = useCallback(async () => {
@@ -368,12 +391,37 @@ export function VendorsPage({ subRoute = null, navigate }) {
     setSelectedVendorForDetail(null)
     setSelectedVendorForMap(null)
     setSelectedVendorForAction(null)
+    setSelectedVendorForEdit(null)
     setRejectReason('')
     setBanType('temporary')
     setBanReason('')
     setRevocationReason('')
     setPurchaseRejectReason(null)
     if (navigate) navigate('vendors')
+  }
+
+  const handleEditVendor = (vendor) => {
+    const originalVendor = getRawVendorById(vendor.id) || vendor
+    setSelectedVendorForEdit(originalVendor)
+    setCurrentView('editVendor')
+  }
+
+  const handleSaveVendor = async (vendorData) => {
+    try {
+      const result = await updateVendor(selectedVendorForEdit.id, vendorData)
+      if (result.data) {
+        setCurrentView(null)
+        setSelectedVendorForEdit(null)
+        fetchVendors()
+        success('Vendor information updated successfully!', 3000)
+        if (navigate) navigate('vendors')
+      } else if (result.error) {
+        const errorMessage = result.error.message || 'Failed to update vendor'
+        showError(errorMessage, 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to update vendor', 5000)
+    }
   }
 
 
@@ -453,6 +501,14 @@ export function VendorsPage({ subRoute = null, navigate }) {
                 title="View details"
               >
                 <Eye className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleEditVendor(originalVendor)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700"
+                title="Edit vendor information"
+              >
+                <Edit2 className="h-4 w-4" />
               </button>
               
               {/* Approve/Reject buttons for pending vendors */}
@@ -536,6 +592,17 @@ export function VendorsPage({ subRoute = null, navigate }) {
   })
 
   // Render full-screen views
+  if (currentView === 'editVendor' && selectedVendorForEdit) {
+    return (
+      <VendorEditForm
+        vendor={selectedVendorForEdit}
+        onSave={handleSaveVendor}
+        onCancel={handleBackToList}
+        loading={loading}
+      />
+    )
+  }
+
   if (currentView === 'creditPolicy' && selectedVendorForPolicy) {
     return (
       <div className="space-y-6">
@@ -1361,10 +1428,38 @@ export function VendorsPage({ subRoute = null, navigate }) {
         </div>
       </header>
 
+      {/* Search Bar */}
+      <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-[0_4px_15px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)]">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search vendors by name, phone, email, or ID..."
+            className="w-full rounded-xl border border-gray-300 bg-white pl-12 pr-4 py-3 text-sm font-semibold transition-all focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/50"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <XCircle className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+        {searchQuery && (
+          <p className="mt-2 text-xs text-gray-600">
+            Found {vendorsList.length} vendor{vendorsList.length !== 1 ? 's' : ''} matching "{searchQuery}"
+          </p>
+        )}
+      </div>
+
       <DataTable
         columns={tableColumns}
         rows={vendorsList}
-        emptyState="No vendor records found"
+        emptyState={searchQuery ? `No vendors found matching "${searchQuery}"` : "No vendor records found"}
       />
 
       {coverageReport && (

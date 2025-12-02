@@ -25,8 +25,8 @@ export const BUTTON_CONFIGS = {
     data: {
       type: 'pricing',
       fields: [
-        { name: 'currentMRP', label: 'Current MRP', value: '₹450', type: 'text' },
-        { name: 'newMRP', label: 'New MRP', value: '', type: 'number' },
+        { name: 'currentMRP', label: 'Current MRP', value: '', type: 'text', placeholder: 'Enter current MRP' },
+        { name: 'newMRP', label: 'New MRP', value: '', type: 'number', placeholder: 'Enter new MRP' },
         { name: 'effectiveDate', label: 'Effective Date', value: new Date().toISOString().split('T')[0], type: 'date' },
       ],
     },

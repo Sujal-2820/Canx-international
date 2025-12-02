@@ -102,12 +102,14 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
           acceptedItems.push({
             itemId: itemId,
             quantity: item.quantity,
+            variantAttributes: item.variantAttributes || undefined,
           })
         } else {
           rejectedItems.push({
             itemId: itemId,
             quantity: item.quantity,
             reason: reason || 'Item not available',
+            variantAttributes: item.variantAttributes || undefined,
           })
         }
       })
@@ -160,6 +162,7 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
             itemId: itemId,
             escalatedQuantity: escalatedQty,
             reason: reason || 'Partial quantity not available',
+            variantAttributes: item.variantAttributes || undefined,
           })
         }
       })
@@ -248,7 +251,7 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
               const hasAttributes = product.attributeStocks && 
                                    Array.isArray(product.attributeStocks) && 
                                    product.attributeStocks.length > 0
-              const itemAttributes = item.attributeCombination || item.attributes || {}
+              const itemAttributes = item.variantAttributes || item.attributeCombination || item.attributes || {}
 
               return (
                 <div key={itemId} className="rounded-lg border border-gray-200 p-3 space-y-3">

@@ -46,11 +46,11 @@ async function apiRequest(endpoint, options = {}) {
 // ============================================================================
 
 /**
- * Admin Login (Step 1: Email/Password)
+ * Admin Login (Step 1: Phone only)
  * POST /admin/auth/login
  * 
- * @param {Object} credentials - { email, password }
- * @returns {Promise<Object>} - { requiresOtp: true, message: 'OTP sent to email' }
+ * @param {Object} credentials - { phone }
+ * @returns {Promise<Object>} - { requiresOtp: true, message: 'OTP sent to phone' }
  */
 export async function loginAdmin(credentials) {
   return apiRequest('/admin/auth/login', {
@@ -63,7 +63,7 @@ export async function loginAdmin(credentials) {
  * Request OTP for Admin
  * POST /admin/auth/request-otp
  * 
- * @param {Object} data - { email }
+ * @param {Object} data - { phone }
  * @returns {Promise<Object>} - { message: 'OTP sent successfully', expiresIn: 300 }
  */
 export async function requestAdminOTP(data) {
@@ -77,8 +77,8 @@ export async function requestAdminOTP(data) {
  * Verify Admin OTP and Complete Login
  * POST /admin/auth/verify-otp
  * 
- * @param {Object} data - { email, otp }
- * @returns {Promise<Object>} - { token, admin: { id, name, email, role } }
+ * @param {Object} data - { phone, otp }
+ * @returns {Promise<Object>} - { token, admin: { id, name, phone, role } }
  */
 export async function verifyAdminOTP(data) {
   return apiRequest('/admin/auth/verify-otp', {
@@ -369,7 +369,8 @@ function transformProductForBackend(frontendData) {
   
   const backendData = {
     name: frontendData.name,
-    description: frontendData.description || frontendData.name, // Use name as description if not provided
+    description: frontendData.description || frontendData.longDescription || frontendData.name, // Use name as description if not provided
+    shortDescription: frontendData.shortDescription || frontendData.description?.substring(0, 150) || frontendData.name.substring(0, 150),
     category: frontendData.category || 'fertilizer', // Default category
     // Only set isActive if visibility is explicitly provided, otherwise default to true (active)
     isActive: frontendData.visibility !== undefined 
@@ -441,9 +442,17 @@ function transformProductForBackend(frontendData) {
   // Add other optional fields
   if (frontendData.brand) backendData.brand = frontendData.brand
   if (frontendData.sku) backendData.sku = frontendData.sku.toUpperCase()
-  if (frontendData.tags && Array.isArray(frontendData.tags)) backendData.tags = frontendData.tags
+  // Always include tags array (even if empty) - tags are used for product searchability
+  if (frontendData.tags !== undefined) {
+    backendData.tags = Array.isArray(frontendData.tags) ? frontendData.tags : []
+  }
   if (frontendData.specifications) backendData.specifications = frontendData.specifications
   if (frontendData.images && Array.isArray(frontendData.images)) backendData.images = frontendData.images
+  
+  // Add attributeStocks if provided
+  if (frontendData.attributeStocks && Array.isArray(frontendData.attributeStocks) && frontendData.attributeStocks.length > 0) {
+    backendData.attributeStocks = frontendData.attributeStocks
+  }
 
   return backendData
 }
@@ -791,6 +800,63 @@ export async function updateVendorCreditPolicy(vendorId, policyData) {
       data: {
         vendor: transformVendor(response.data.vendor),
         message: response.data.message || 'Credit policy updated successfully',
+      },
+    }
+  }
+
+  return response
+}
+
+/**
+ * Update Vendor Basic Information
+ * PUT /admin/vendors/:vendorId
+ * 
+ * This endpoint updates vendor information in the database.
+ * Backend should persist: name, phone, email, and location (address, city, state, pincode, coordinates).
+ * 
+ * @param {string} vendorId - Vendor ID
+ * @param {Object} vendorData - { name?: string, phone?: string, email?: string, location?: Object }
+ * @param {Object} vendorData.location - { address: string, city: string, state: string, pincode: string, lat?: number, lng?: number }
+ * @returns {Promise<Object>} - { vendor: Object, message: string }
+ * @note This function sends a PUT request that updates the vendor record in the database
+ */
+export async function updateVendor(vendorId, vendorData) {
+  // Allow updating name, phone, email, and location
+  const backendData = {}
+  if (vendorData.name) backendData.name = vendorData.name
+  if (vendorData.phone) backendData.phone = vendorData.phone
+  if (vendorData.email) backendData.email = vendorData.email
+  
+  // Handle location update
+  if (vendorData.location) {
+    backendData.location = {
+      address: vendorData.location.address,
+      city: vendorData.location.city,
+      state: vendorData.location.state,
+      pincode: vendorData.location.pincode,
+    }
+    
+    // Add coordinates if provided
+    if (vendorData.location.lat && vendorData.location.lng) {
+      backendData.location.coordinates = {
+        lat: parseFloat(vendorData.location.lat),
+        lng: parseFloat(vendorData.location.lng),
+      }
+    }
+  }
+
+  const response = await apiRequest(`/admin/vendors/${vendorId}`, {
+    method: 'PUT',
+    body: JSON.stringify(backendData),
+  })
+
+  // Transform backend response to frontend format
+  if (response.success && response.data?.vendor) {
+    return {
+      success: true,
+      data: {
+        vendor: transformVendor(response.data.vendor),
+        message: response.data.message || 'Vendor updated successfully',
       },
     }
   }
@@ -1193,11 +1259,13 @@ function transformSellerForBackend(frontendData) {
     name: frontendData.name,
     phone: frontendData.phone,
     email: frontendData.email,
-    area: frontendData.area,
-    monthlyTarget: parseFloat(frontendData.monthlyTarget) || 0,
   }
-
-  // Optional fields
+  
+  // Optional fields - only include if provided
+  if (frontendData.area !== undefined) backendData.area = frontendData.area
+  if (frontendData.monthlyTarget !== undefined) {
+    backendData.monthlyTarget = parseFloat(frontendData.monthlyTarget) || 0
+  }
   if (frontendData.location) backendData.location = frontendData.location
   if (frontendData.assignedVendor) backendData.assignedVendor = frontendData.assignedVendor
   if (frontendData.sellerId) backendData.sellerId = frontendData.sellerId.toUpperCase()
@@ -1250,9 +1318,13 @@ export async function createSeller(sellerData) {
  * Update Seller
  * PUT /admin/sellers/:sellerId
  * 
+ * This endpoint updates seller information in the database.
+ * Backend should persist: name, phone, email, and other seller fields.
+ * 
  * @param {string} sellerId - Seller ID
- * @param {Object} sellerData - Seller data to update
+ * @param {Object} sellerData - Seller data to update (name, phone, email, etc.)
  * @returns {Promise<Object>} - { seller: Object, message: string }
+ * @note This function sends a PUT request that updates the seller record in the database
  */
 export async function updateSeller(sellerId, sellerData) {
   const backendData = transformSellerForBackend(sellerData)
@@ -3276,5 +3348,74 @@ export function handleRealtimeNotification(notification, dispatch, showToast) {
       dispatch({ type: 'ADD_NOTIFICATION', payload: notification })
       break
   }
+}
+
+// ============================================================================
+// OFFERS MANAGEMENT APIs
+// ============================================================================
+
+/**
+ * Get All Offers
+ * GET /admin/offers
+ * 
+ * @param {Object} params - { type, isActive }
+ * @returns {Promise<Object>} - { offers: Array, carouselCount: number, maxCarousels: number }
+ */
+export async function getOffers(params = {}) {
+  const queryParams = new URLSearchParams(params).toString()
+  return apiRequest(`/admin/offers?${queryParams}`)
+}
+
+/**
+ * Get Single Offer
+ * GET /admin/offers/:id
+ * 
+ * @param {string} id - Offer ID
+ * @returns {Promise<Object>} - { offer: Object }
+ */
+export async function getOffer(id) {
+  return apiRequest(`/admin/offers/${id}`)
+}
+
+/**
+ * Create Offer
+ * POST /admin/offers
+ * 
+ * @param {Object} data - Offer data (type, title, description, etc.)
+ * @returns {Promise<Object>} - { offer: Object }
+ */
+export async function createOffer(data) {
+  return apiRequest('/admin/offers', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update Offer
+ * PUT /admin/offers/:id
+ * 
+ * @param {string} id - Offer ID
+ * @param {Object} data - Updated offer data
+ * @returns {Promise<Object>} - { offer: Object }
+ */
+export async function updateOffer(id, data) {
+  return apiRequest(`/admin/offers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete Offer
+ * DELETE /admin/offers/:id
+ * 
+ * @param {string} id - Offer ID
+ * @returns {Promise<Object>} - { message: string }
+ */
+export async function deleteOffer(id) {
+  return apiRequest(`/admin/offers/${id}`, {
+    method: 'DELETE',
+  })
 }
 

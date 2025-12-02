@@ -20,6 +20,8 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
   const [categories, setCategories] = useState([])
   const [products, setProducts] = useState([])
   const [popularProducts, setPopularProducts] = useState([])
+  const [carousels, setCarousels] = useState([])
+  const [specialOffers, setSpecialOffers] = useState([])
   const [loading, setLoading] = useState(true)
   const { fetchCategories, fetchProducts } = useUserApi()
 
@@ -49,6 +51,17 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
         if (productsResult.data?.products) {
           setProducts(productsResult.data.products)
         }
+
+        // Fetch offers (carousels and special offers)
+        const offersResult = await userApi.getOffers()
+        if (offersResult.success && offersResult.data) {
+          // Filter active carousels and sort by order
+          const activeCarousels = (offersResult.data.carousels || [])
+            .filter(c => c.isActive !== false)
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+          setCarousels(activeCarousels)
+          setSpecialOffers(offersResult.data.specialOffers || [])
+        }
       } catch (error) {
         console.error('Error loading data:', error)
       } finally {
@@ -75,37 +88,30 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
     }
   }, [selectedCategory, fetchProducts])
 
-  // Temporary banners (will be replaced with API call later)
-  const banners = [
-    {
-      id: 'banner-1',
-      title: 'Seasonal Sale',
-      subtitle: 'Up to 30% off on all fertilizers',
-      image: 'https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=800',
-    },
-    {
-      id: 'banner-2',
-      title: 'New Arrivals',
-      subtitle: 'Premium organic fertilizers now available',
-      image: 'https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=800',
-    },
-    {
-      id: 'banner-3',
-      title: 'Free Delivery',
-      subtitle: 'On orders above ₹5,000',
-      image: 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=800',
-    },
-  ]
+  // Use dynamic carousels from API, fallback to empty array
+  // Carousels are already filtered and sorted by order in the fetch
+  const banners = carousels.length > 0 
+    ? carousels.map(carousel => ({
+        id: carousel.id || carousel._id,
+        title: carousel.title || '',
+        subtitle: carousel.description || '',
+        image: carousel.image || '',
+        productIds: carousel.productIds || [],
+      }))
+    : []
 
   const goToNextSlide = () => {
+    if (banners.length === 0) return
     setBannerIndex((prev) => (prev + 1) % banners.length)
   }
 
   const goToPreviousSlide = () => {
+    if (banners.length === 0) return
     setBannerIndex((prev) => (prev - 1 + banners.length) % banners.length)
   }
 
   const goToSlide = (index) => {
+    if (banners.length === 0 || index < 0 || index >= banners.length) return
     setBannerIndex(index)
     setIsUserInteracting(true)
     resetAutoSlide()
@@ -122,23 +128,26 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
 
   // Auto-slide when user is not interacting
   useEffect(() => {
-    if (isUserInteracting) return
+    if (isUserInteracting || banners.length === 0) return
 
     const interval = setInterval(() => {
       setBannerIndex((prev) => (prev + 1) % banners.length)
     }, 3000)
     
     return () => clearInterval(interval)
-  }, [isUserInteracting])
+  }, [isUserInteracting, banners.length])
 
-  // Cleanup on unmount
+  // Cleanup on unmount and reset banner index when banners change
   useEffect(() => {
+    if (banners.length > 0 && bannerIndex >= banners.length) {
+      setBannerIndex(0)
+    }
     return () => {
       if (autoSlideTimeoutRef.current) {
         clearTimeout(autoSlideTimeoutRef.current)
       }
     }
-  }, [])
+  }, [banners.length, bannerIndex])
 
   // Touch handlers for swipe
   const handleTouchStart = (e) => {
@@ -253,51 +262,59 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
         </div>
       </section>
 
-      {/* Hero Banner Section */}
-      <section id="home-hero" className="home-hero-section">
-        <div
-          ref={bannerRef}
-          className="home-hero-banner"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-        >
-          {banners.map((banner, index) => (
-            <div
-              key={banner.id}
-              className={cn(
-                'home-hero-banner__slide',
-                index === bannerIndex ? 'home-hero-banner__slide--active' : 'home-hero-banner__slide--hidden'
-              )}
-              style={{ backgroundImage: `url(${banner.image})` }}
-            >
-              <div className="home-hero-banner__overlay" />
-              <div className="home-hero-banner__content">
-                <h2 className="home-hero-banner__title">{banner.title}</h2>
-                <p className="home-hero-banner__subtitle">{banner.subtitle}</p>
+      {/* Hero Banner Section - Only show if carousels exist */}
+      {banners.length > 0 && (
+        <section id="home-hero" className="home-hero-section">
+          <div
+            ref={bannerRef}
+            className="home-hero-banner"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
+            {banners.map((banner, index) => (
+              <div
+                key={banner.id}
+                className={cn(
+                  'home-hero-banner__slide',
+                  index === bannerIndex ? 'home-hero-banner__slide--active' : 'home-hero-banner__slide--hidden'
+                )}
+                style={{ backgroundImage: `url(${banner.image})` }}
+                onClick={() => {
+                  // Navigate to carousel products view
+                  if (banner.productIds && banner.productIds.length > 0) {
+                    onProductClick(`carousel:${banner.id}`)
+                  }
+                }}
+              >
+                <div className="home-hero-banner__overlay" />
+                <div className="home-hero-banner__content">
+                  <h2 className="home-hero-banner__title">{banner.title}</h2>
+                  <p className="home-hero-banner__subtitle">{banner.subtitle}</p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-        <div className="home-hero-banner__indicators">
-          {banners.map((_, index) => (
-            <button
-              key={index}
-              type="button"
-              className={cn(
-                'home-hero-banner__indicator',
-                index === bannerIndex && 'home-hero-banner__indicator--active'
-              )}
-              onClick={() => goToSlide(index)}
-              aria-label={`Go to banner ${index + 1}`}
-            />
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+          <div className="home-hero-banner__indicators">
+            {banners.map((_, index) => (
+              <button
+                key={index}
+                type="button"
+                className={cn(
+                  'home-hero-banner__indicator',
+                  index === bannerIndex && 'home-hero-banner__indicator--active'
+                )}
+                onClick={() => goToSlide(index)}
+                aria-label={`Go to banner ${index + 1}`}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Categories Section */}
       <section id="home-categories" className="home-categories-section">
@@ -391,48 +408,33 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
         </div>
       </section>
 
-      {/* Special Deals Section */}
-      <section id="home-deals" className="home-deals-section">
-        <div className="home-section-header">
-          <div className="home-section-header__content">
-            <h3 className="home-section-header__title">Special Offers</h3>
-            <p className="home-section-header__subtitle">Limited time deals</p>
-          </div>
-        </div>
-        <div className="home-deals-grid">
-          {/* Special offers - static banners (will be replaced with offers API later) */}
-          <div className="home-deal-card">
-            <div className="home-deal-card__badge">Special Offer</div>
-            <div className="home-deal-card__content">
-              <h4 className="home-deal-card__title">Seasonal Discount</h4>
-              <p className="home-deal-card__description">Get up to 30% off on all fertilizers this season</p>
-              <div className="home-deal-card__price">
-                <span className="home-deal-card__price-current">30% OFF</span>
-              </div>
+      {/* Special Deals Section - Only show if special offers exist */}
+      {specialOffers.length > 0 && (
+        <section id="home-deals" className="home-deals-section">
+          <div className="home-section-header">
+            <div className="home-section-header__content">
+              <h3 className="home-section-header__title">Special Offers</h3>
+              <p className="home-section-header__subtitle">Limited time deals</p>
             </div>
           </div>
-          <div className="home-deal-card">
-            <div className="home-deal-card__badge">New Arrival</div>
-            <div className="home-deal-card__content">
-              <h4 className="home-deal-card__title">Premium Organic</h4>
-              <p className="home-deal-card__description">Premium organic fertilizers now available</p>
-              <div className="home-deal-card__price">
-                <span className="home-deal-card__price-current">NEW</span>
+          <div className="home-deals-grid">
+            {specialOffers.map((offer) => (
+              <div key={offer.id} className="home-deal-card">
+                <div className="home-deal-card__badge">{offer.specialTag}</div>
+                <div className="home-deal-card__content">
+                  <h4 className="home-deal-card__title">{offer.title}</h4>
+                  {offer.description && (
+                    <p className="home-deal-card__description">{offer.description}</p>
+                  )}
+                  <div className="home-deal-card__price">
+                    <span className="home-deal-card__price-current">{offer.specialValue}</span>
+                  </div>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
-          <div className="home-deal-card">
-            <div className="home-deal-card__badge">Free Delivery</div>
-            <div className="home-deal-card__content">
-              <h4 className="home-deal-card__title">Free Delivery</h4>
-              <p className="home-deal-card__description">On orders above ₹5,000</p>
-              <div className="home-deal-card__price">
-                <span className="home-deal-card__price-current">FREE</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Quick Stats Section */}
       <section id="home-stats" className="home-stats-section">
