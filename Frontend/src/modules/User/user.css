@@ -161,6 +161,10 @@
   transform: translateY(-20px);
   opacity: 0;
   transition: transform 0.32s ease, opacity 0.32s ease;
+  will-change: transform;
+  /* Prevent layout shift when keyboard opens */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .user-search-sheet.is-open .user-search-sheet__overlay,
@@ -225,6 +229,9 @@
   overflow-y: auto;
   display: grid;
   gap: 0.75rem;
+  /* Smooth scrolling for better performance */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .user-search-result {

@@ -151,11 +151,11 @@ router.get('/wallet', authorizeSeller, sellerController.getWalletDetails);
 router.get('/wallet/transactions', authorizeSeller, sellerController.getWalletTransactions);
 
 /**
- * @route   POST /api/sellers/wallet/withdraw
+ * @route   POST /api/sellers/wallet/withdrawals/request
  * @desc    Request wallet withdrawal
  * @access  Private (Seller)
  */
-router.post('/wallet/withdraw', authorizeSeller, sellerController.requestWithdrawal);
+router.post('/wallet/withdrawals/request', authorizeSeller, sellerController.requestWithdrawal);
 
 /**
  * @route   GET /api/sellers/wallet/withdrawals

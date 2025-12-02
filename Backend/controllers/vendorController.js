@@ -3664,6 +3664,24 @@ exports.getEarningsSummary = async (req, res, next) => {
 
     const thisMonthEarnings = thisMonthEarningsResult[0]?.totalEarnings || 0;
 
+    // Calculate total withdrawn amount (approved and completed withdrawals)
+    const totalWithdrawnResult = await WithdrawalRequest.aggregate([
+      {
+        $match: {
+          vendorId: vendor._id,
+          status: { $in: ['approved', 'completed'] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalWithdrawn: { $sum: '$amount' },
+        },
+      },
+    ]);
+
+    const totalWithdrawn = totalWithdrawnResult[0]?.totalWithdrawn || 0;
+
     // Get last withdrawal date
     const lastWithdrawal = await WithdrawalRequest.findOne({
       vendorId: vendor._id,
@@ -3676,6 +3694,7 @@ exports.getEarningsSummary = async (req, res, next) => {
         totalEarnings: Math.round(totalEarnings * 100) / 100,
         availableBalance: Math.round(availableBalance * 100) / 100,
         pendingWithdrawal: Math.round(pendingWithdrawalAmount * 100) / 100,
+        totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
         thisMonthEarnings: Math.round(thisMonthEarnings * 100) / 100,
         lastWithdrawalDate: lastWithdrawal?.createdAt || null,
       },
@@ -3894,10 +3913,10 @@ exports.requestWithdrawal = async (req, res, next) => {
     const vendor = req.vendor;
     const { amount, bankAccountId } = req.body;
 
-    if (!amount || amount < 100) {
+    if (!amount || amount < 1000) {
       return res.status(400).json({
         success: false,
-        message: 'Valid withdrawal amount is required (minimum ₹100)',
+        message: 'Valid withdrawal amount is required (minimum ₹1,000)',
       });
     }
 

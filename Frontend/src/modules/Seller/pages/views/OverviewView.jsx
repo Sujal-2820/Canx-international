@@ -35,19 +35,24 @@ export function OverviewView({ onNavigate, openPanel }) {
         const activityResult = await sellerApi.getRecentActivity({ limit: 15 })
         if (activityResult.success && activityResult.data?.activities) {
           // Transform backend activity data to frontend format
-          const transformedActivities = activityResult.data.activities.map((activity) => ({
-            id: activity.id || activity._id,
-            type: activity.type || 'commission',
-            action: activity.title || activity.message || 'Activity',
-            amount: activity.amount || 0,
-            date: activity.timestamp || activity.createdAt,
-            createdAt: activity.timestamp || activity.createdAt,
-            userName: activity.userName || activity.user?.name || 'User',
-            user: activity.userName || activity.user?.name || 'User',
-            orderId: activity.orderId,
-            orderNumber: activity.orderNumber,
-            status: activity.status,
-          }))
+          const transformedActivities = activityResult.data.activities.map((activity) => {
+            const isWithdrawal = activity.type === 'withdrawal'
+            return {
+              id: activity.id || activity._id,
+              type: activity.type || 'commission',
+              action: activity.title || activity.message || 'Activity',
+              amount: activity.amount || 0,
+              date: activity.timestamp || activity.createdAt,
+              createdAt: activity.timestamp || activity.createdAt,
+              // For withdrawals, don't set userName (will show "Withdrawal" in display)
+              userName: isWithdrawal ? null : (activity.userName || activity.user?.name || 'User'),
+              user: isWithdrawal ? null : (activity.userName || activity.user?.name || 'User'),
+              orderId: activity.orderId,
+              orderNumber: activity.orderNumber,
+              status: activity.status,
+              title: activity.title, // Preserve title for withdrawal display
+            }
+          })
           setRecentActivity(transformedActivities)
         }
 
@@ -246,27 +251,45 @@ export function OverviewView({ onNavigate, openPanel }) {
             </div>
           ) : (
             recentActivity.slice(0, 3).map((item) => {
-              const avatar = item.userName ? item.userName.substring(0, 2).toUpperCase() : 'U'
-              const amount = item.amount ? (item.amount > 0 ? `+₹${item.amount.toLocaleString('en-IN')}` : `₹${Math.abs(item.amount).toLocaleString('en-IN')}`) : '₹0'
-              const date = item.date || item.createdAt ? new Date(item.date || item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Recently'
+              // For withdrawals, show "WD" avatar, otherwise use user initials
+              const isWithdrawal = item.type === 'withdrawal'
+              const avatar = isWithdrawal 
+                ? 'WD' 
+                : (item.userName ? item.userName.substring(0, 2).toUpperCase() : 'U')
+              
+              // Format amount: positive amounts show +₹, negative show -₹
+              const amount = item.amount 
+                ? (item.amount > 0 
+                    ? `+₹${item.amount.toLocaleString('en-IN')}` 
+                    : `-₹${Math.abs(item.amount).toLocaleString('en-IN')}`)
+                : '₹0'
+              
+              const date = item.date || item.createdAt 
+                ? new Date(item.date || item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) 
+                : 'Recently'
+              
+              // For withdrawals, show "Withdrawal" instead of user name
+              const displayName = isWithdrawal 
+                ? 'Withdrawal' 
+                : (item.userName || item.user || 'User')
               
               return (
                 <div key={item.id || item._id} className="seller-activity__item">
                   <div className="seller-activity__avatar">{avatar}</div>
                   <div className="seller-activity__details">
                     <div className="seller-activity__row">
-                      <span className="seller-activity__name">{item.userName || item.user || 'User'}</span>
+                      <span className="seller-activity__name">{displayName}</span>
                       <span
                         className={cn(
                           'seller-activity__amount',
-                          amount.startsWith('-') ? 'is-negative' : 'is-positive',
+                          item.amount < 0 ? 'is-negative' : 'is-positive',
                         )}
                       >
                         {amount}
                       </span>
                     </div>
                     <div className="seller-activity__meta">
-                      <span>{item.action || item.type || 'Activity'}</span>
+                      <span>{item.action || item.title || item.type || 'Activity'}</span>
                       <span>{date}</span>
                     </div>
                   </div>

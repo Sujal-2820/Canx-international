@@ -24,7 +24,7 @@ export function WithdrawalRequestPanel({ isOpen, onClose, onSuccess, availableBa
     : (typeof wallet.balance === 'number' 
       ? wallet.balance 
       : parseFloat(wallet.balance?.replace(/[₹,\s]/g, '') || '0'))
-  const minWithdrawal = 5000
+  const minWithdrawal = 500
 
   // Fetch bank accounts if not provided
   useEffect(() => {

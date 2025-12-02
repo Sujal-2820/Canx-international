@@ -1039,48 +1039,100 @@ exports.getWalletTransactions = async (req, res, next) => {
 exports.requestWithdrawal = async (req, res, next) => {
   try {
     const seller = req.seller;
-    const { amount, paymentMethod = 'bank_transfer', paymentDetails, notes } = req.body;
+    const { amount, bankAccountId } = req.body;
 
-    if (!amount || amount <= 0) {
+    console.log(`🔍 [requestWithdrawal] Seller: ${seller.sellerId}, Amount: ${amount}, BankAccountId: ${bankAccountId}`);
+    console.log(`🔍 [requestWithdrawal] Wallet Balance: ${seller.wallet.balance}, Wallet Pending: ${seller.wallet.pending}`);
+
+    if (!amount || amount < 500) {
+      console.log(`❌ [requestWithdrawal] Invalid amount: ${amount}`);
       return res.status(400).json({
         success: false,
-        message: 'Valid withdrawal amount is required (minimum ₹100)',
+        message: 'Valid withdrawal amount is required (minimum ₹500)',
       });
     }
 
-    if (amount < 100) {
+    // Check if seller has a pending withdrawal request
+    const existingPending = await WithdrawalRequest.findOne({
+      sellerId: seller._id,
+      status: 'pending',
+    });
+
+    if (existingPending) {
+      console.log(`❌ [requestWithdrawal] Already has pending withdrawal: ${existingPending._id}`);
       return res.status(400).json({
         success: false,
-        message: 'Minimum withdrawal amount is ₹100',
+        message: 'You already have a pending withdrawal request. Please wait for admin approval.',
       });
     }
 
-    // Check available balance
+    // Calculate available balance (seller-specific)
+    // Sync wallet.pending with actual pending withdrawals to ensure accuracy
+    const actualPendingWithdrawals = await WithdrawalRequest.aggregate([
+      {
+        $match: {
+          sellerId: seller._id,
+          status: 'pending',
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: '$amount' },
+        },
+      },
+    ]);
+
+    const actualPendingAmount = actualPendingWithdrawals[0]?.totalAmount || 0;
+    
+    // Sync wallet.pending if it's out of sync (for data consistency)
+    if (Math.abs(seller.wallet.pending - actualPendingAmount) > 0.01) {
+      seller.wallet.pending = actualPendingAmount;
+      await seller.save();
+    }
+
     const availableBalance = seller.wallet.balance - seller.wallet.pending;
+    console.log(`🔍 [requestWithdrawal] Available Balance: ${availableBalance}, Requested: ${amount}`);
+
     if (amount > availableBalance) {
+      console.log(`❌ [requestWithdrawal] Insufficient balance. Available: ${availableBalance}, Requested: ${amount}`);
       return res.status(400).json({
         success: false,
-        message: `Insufficient balance. Available: ₹${availableBalance}, Requested: ₹${amount}`,
+        message: `Insufficient balance. Available: ₹${Math.round(availableBalance * 100) / 100}, Requested: ₹${amount}`,
       });
     }
 
-    // Get bank account if bankAccountId is provided
+    // Verify bank account if provided
     let bankAccount = null;
-    if (req.body.bankAccountId) {
-      bankAccount = await BankAccount.findById(req.body.bankAccountId);
-      if (!bankAccount || bankAccount.user.toString() !== seller._id.toString() || bankAccount.userType !== 'Seller') {
+    if (bankAccountId) {
+      bankAccount = await BankAccount.findOne({
+        _id: bankAccountId,
+        userId: seller._id,
+        userType: 'seller',
+      });
+
+      if (!bankAccount) {
+        console.log(`❌ [requestWithdrawal] Bank account not found: ${bankAccountId} for seller: ${seller._id}`);
         return res.status(400).json({
           success: false,
-          message: 'Invalid bank account',
+          message: 'Bank account not found',
         });
       }
     } else {
       // Get primary bank account
       bankAccount = await BankAccount.findOne({
-        user: seller._id,
-        userType: 'Seller',
+        userId: seller._id,
+        userType: 'seller',
         isPrimary: true,
       });
+
+      if (!bankAccount) {
+        console.log(`❌ [requestWithdrawal] No primary bank account found for seller: ${seller.sellerId}`);
+        return res.status(400).json({
+          success: false,
+          message: 'Please add a bank account before requesting withdrawal',
+        });
+      }
     }
 
     // Create withdrawal request
@@ -1088,19 +1140,12 @@ exports.requestWithdrawal = async (req, res, next) => {
       userType: 'seller',
       sellerId: seller._id,
       amount,
-      paymentMethod,
-      paymentDetails: paymentDetails || (bankAccount ? {
-        accountNumber: bankAccount.accountNumber,
-        ifscCode: bankAccount.ifscCode,
-        bankName: bankAccount.bankName,
-        accountHolderName: bankAccount.accountHolderName,
-      } : undefined),
-      bankAccountId: bankAccount?._id,
-      notes,
+      availableBalance,
+      bankAccountId: bankAccount._id,
       status: 'pending',
     });
 
-    // Update seller wallet pending amount
+    // Update seller wallet pending amount (seller-specific)
     seller.wallet.pending += amount;
     await seller.save();
 
@@ -1110,21 +1155,21 @@ exports.requestWithdrawal = async (req, res, next) => {
         activityType: 'seller_withdrawal_requested',
         sellerId: seller._id,
         withdrawalRequestId: withdrawal._id,
-        bankAccountId: bankAccount?._id,
+        bankAccountId: bankAccount._id,
         amount,
         status: 'pending',
-        paymentMethod: paymentMethod || 'bank_transfer',
-        bankDetails: bankAccount ? {
+        bankDetails: {
           accountHolderName: bankAccount.accountHolderName,
           accountNumber: bankAccount.accountNumber,
           ifscCode: bankAccount.ifscCode,
           bankName: bankAccount.bankName,
-        } : paymentDetails,
+        },
         description: `Seller ${seller.sellerId} requested withdrawal of ₹${amount}`,
         metadata: {
           sellerIdCode: seller.sellerId,
           sellerName: seller.name,
-          availableBalance: availableBalance,
+          sellerPhone: seller.phone,
+          availableBalance,
         },
       });
     } catch (historyError) {
@@ -1132,19 +1177,14 @@ exports.requestWithdrawal = async (req, res, next) => {
       // Don't fail withdrawal if history logging fails
     }
 
-    console.log(`✅ Withdrawal requested: ₹${amount} by seller ${seller.sellerId} - ${seller.name}`);
+    console.log(`✅ Withdrawal requested: ₹${amount} by seller ${seller.sellerId} (${seller.phone})`);
 
     res.status(201).json({
       success: true,
       data: {
         withdrawal,
-        wallet: {
-          balance: seller.wallet.balance,
-          pending: seller.wallet.pending,
-          available: seller.wallet.balance - seller.wallet.pending,
-        },
-        message: 'Withdrawal request submitted successfully. Awaiting admin approval.',
       },
+      message: 'Withdrawal request submitted successfully. Awaiting admin approval.',
     });
   } catch (error) {
     next(error);
@@ -1173,6 +1213,7 @@ exports.getWithdrawals = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const withdrawals = await WithdrawalRequest.find(query)
+      .populate('bankAccountId')
       .populate('reviewedBy', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -1774,6 +1815,16 @@ exports.getRecentActivity = async (req, res, next) => {
       .select('orderNumber totalAmount status createdAt')
       .lean();
 
+    // Fetch recent approved/completed withdrawals
+    const recentWithdrawals = await WithdrawalRequest.find({
+      sellerId: seller._id,
+      status: { $in: ['approved', 'completed'] },
+    })
+      .sort({ reviewedAt: -1, createdAt: -1 })
+      .limit(limitNum * 2)
+      .populate('bankAccountId', 'bankName accountNumber')
+      .lean();
+
     const activities = [
       ...recentCommissions.map(commission => ({
         id: commission._id,
@@ -1782,6 +1833,10 @@ exports.getRecentActivity = async (req, res, next) => {
         message: `You earned ₹${commission.commissionAmount} for order #${commission.orderId?.orderNumber || 'N/A'}`,
         amount: commission.commissionAmount,
         timestamp: commission.createdAt,
+        userName: commission.userId?.name || 'User',
+        user: commission.userId?.name || 'User',
+        orderId: commission.orderId?._id,
+        orderNumber: commission.orderId?.orderNumber,
       })),
       ...recentOrders.map(order => ({
         id: order._id,
@@ -1791,6 +1846,21 @@ exports.getRecentActivity = async (req, res, next) => {
         amount: order.totalAmount,
         status: order.status,
         timestamp: order.createdAt,
+        userName: order.userId?.name || 'User',
+        user: order.userId?.name || 'User',
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+      })),
+      ...recentWithdrawals.map(withdrawal => ({
+        id: withdrawal._id,
+        type: 'withdrawal',
+        title: withdrawal.status === 'completed' ? 'Withdrawal Completed' : 'Withdrawal Approved',
+        message: `Withdrawal of ₹${withdrawal.amount} ${withdrawal.status === 'completed' ? 'completed' : 'approved'}`,
+        amount: -withdrawal.amount, // Negative amount for withdrawal
+        timestamp: withdrawal.reviewedAt || withdrawal.createdAt,
+        status: withdrawal.status,
+        withdrawalId: withdrawal._id,
+        bankName: withdrawal.bankAccountId?.bankName || 'Bank',
       })),
     ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       .slice(0, limitNum);

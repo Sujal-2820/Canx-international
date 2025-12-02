@@ -60,6 +60,15 @@ const vendorEarningSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  withdrawnAt: {
+    type: Date,
+    // When this earning was withdrawn
+  },
+  withdrawalRequestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'WithdrawalRequest',
+    // Reference to withdrawal request that used this earning
+  },
   notes: {
     type: String,
     trim: true,

@@ -661,41 +661,50 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
 
           {/* Delivery Address Display */}
           {deliveryAddress ? (
-            <div className="p-4 rounded-xl border-2 border-[#1b8f5b] bg-[rgba(240,245,242,0.5)]">
-              <div className="flex items-start justify-between gap-3">
+            <div className="p-5 rounded-2xl border-2 border-[#1b8f5b] bg-gradient-to-br from-[rgba(240,253,249,0.95)] to-[rgba(255,255,255,0.98)] shadow-[0_4px_12px_-4px_rgba(27,143,91,0.25)]">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-[#1b8f5b] flex items-center justify-center">
+                  <MapPinIcon className="h-5 w-5 text-white" />
+                </div>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-[#172022]">{deliveryAddress.name}</span>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-[#1b8f5b]">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-base font-bold text-[#172022]">{deliveryAddress.name}</span>
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-[#1b8f5b] text-white uppercase tracking-wide">
                       Delivery Address
                     </span>
                   </div>
                   {deliveryAddress.address && (
-                    <p className="text-sm text-[rgba(26,42,34,0.7)] mb-1">{deliveryAddress.address}</p>
+                    <p className="text-sm text-[rgba(26,42,34,0.75)] mb-2 leading-relaxed font-medium">{deliveryAddress.address}</p>
                   )}
-                  <p className="text-sm text-[rgba(26,42,34,0.7)] mb-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-sm text-[rgba(26,42,34,0.75)] font-medium">
                     {deliveryAddress.city}, {deliveryAddress.state} - {deliveryAddress.pincode}
                   </p>
+                  </div>
                   {deliveryAddress.phone && (
-                    <p className="text-xs text-[rgba(26,42,34,0.6)]">{deliveryAddress.phone}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[rgba(26,42,34,0.6)] font-medium">Phone:</span>
+                      <p className="text-sm text-[rgba(26,42,34,0.75)] font-semibold">{deliveryAddress.phone}</p>
+                    </div>
                   )}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowChangeAddressPanel(true)}
-                className="mt-3 text-sm font-semibold text-[#1b8f5b] hover:text-[#2a9d61] transition-colors underline"
+                className="w-full mt-4 py-2.5 px-4 rounded-xl bg-white border border-[rgba(34,94,65,0.2)] text-sm font-semibold text-[#1b8f5b] hover:bg-[rgba(240,245,242,0.6)] transition-all hover:shadow-sm"
               >
                 Want to change Delivery Address?
               </button>
             </div>
           ) : (
-            <div className="text-center py-6 p-4 rounded-xl border border-red-200 bg-red-50">
-              <p className="text-sm text-red-700 mb-3">Delivery address is required to place an order.</p>
+            <div className="text-center py-8 p-5 rounded-2xl border-2 border-red-200 bg-gradient-to-br from-red-50 to-white shadow-[0_4px_12px_-4px_rgba(220,38,38,0.2)]">
+              <MapPinIcon className="h-12 w-12 text-red-400 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-red-700 mb-4">Delivery address is required to place an order.</p>
               <button
                 type="button"
                 onClick={() => setShowChangeAddressPanel(true)}
-                className="px-4 py-2 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors"
+                className="px-6 py-3 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors shadow-md hover:shadow-lg"
               >
                 Add Delivery Address
               </button>
@@ -704,22 +713,24 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
 
           {/* Shipping Methods */}
           <div className="mt-6">
-            <h3 className="text-base font-semibold text-[#172022] mb-3 flex items-center gap-2">
+            <h3 className="text-base font-bold text-[#172022] mb-4 flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-[rgba(27,143,91,0.1)] flex items-center justify-center">
               <TruckIcon className="h-5 w-5 text-[#1b8f5b]" />
+              </div>
               Shipping Method
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {shippingOptions.map((option) => {
                 const isAvailable = !option.minOrder || totals.subtotal >= option.minOrder
                 return (
                   <label
                     key={option.id}
                     className={cn(
-                      'flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all',
+                      'flex items-center gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all shadow-sm',
                       !isAvailable && 'opacity-50 cursor-not-allowed',
                       shippingMethod === option.id && isAvailable
-                        ? 'border-[#1b8f5b] bg-[rgba(240,245,242,0.5)]'
-                        : 'border-[rgba(34,94,65,0.15)] bg-white hover:border-[rgba(34,94,65,0.25)]'
+                        ? 'border-[#1b8f5b] bg-gradient-to-br from-[rgba(240,253,249,0.95)] to-[rgba(255,255,255,0.98)] shadow-[0_4px_12px_-4px_rgba(27,143,91,0.25)]'
+                        : 'border-[rgba(34,94,65,0.15)] bg-white hover:border-[rgba(34,94,65,0.3)] hover:shadow-md'
                     )}
                   >
                     <input
@@ -729,23 +740,23 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
                       checked={shippingMethod === option.id}
                       onChange={(e) => setShippingMethod(e.target.value)}
                       disabled={!isAvailable}
-                      className="w-4 h-4 accent-[#1b8f5b]"
+                      className="w-5 h-5 accent-[#1b8f5b]"
                     />
                     <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-semibold text-[#172022]">{option.label}</span>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-base font-bold text-[#172022]">{option.label}</span>
                         <div className="text-right">
-                          <span className="text-sm font-bold text-[#1b8f5b]">
+                          <span className="text-base font-bold text-[#1b8f5b]">
                             {option.cost === 0 || isFullPayment ? 'Free' : `₹${option.cost}`}
                           </span>
                           {isFullPayment && option.cost > 0 && (
-                            <p className="text-[10px] text-[#1b8f5b] font-semibold leading-tight">
+                            <p className="text-[10px] text-[#1b8f5b] font-bold leading-tight mt-0.5">
                               Savings: ₹{option.cost}
                             </p>
                           )}
                         </div>
                       </div>
-                      <p className="text-xs text-[rgba(26,42,34,0.6)]">
+                      <p className="text-xs text-[rgba(26,42,34,0.65)] font-medium">
                         Estimated delivery: {option.time}
                         {option.minOrder && !isAvailable && ` (Min order: ₹${option.minOrder.toLocaleString('en-IN')})`}
                       </p>
@@ -757,16 +768,19 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
           </div>
 
           {(assignedVendor || cartItems[0]?.vendor) && (
-            <div className="p-3 rounded-xl bg-[rgba(240,245,242,0.5)] border border-[rgba(34,94,65,0.15)]">
-              <p className="text-xs font-semibold text-[rgba(26,42,34,0.65)] uppercase tracking-wide mb-1">Assigned Vendor</p>
-              <p className="text-sm font-semibold text-[#172022]">
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-[rgba(240,245,242,0.6)] to-[rgba(255,255,255,0.9)] border border-[rgba(34,94,65,0.2)] shadow-sm">
+              <p className="text-xs font-bold text-[rgba(26,42,34,0.7)] uppercase tracking-wide mb-2 flex items-center gap-2">
+                <PackageIcon className="h-4 w-4 text-[#1b8f5b]" />
+                Assigned Vendor
+              </p>
+              <p className="text-sm font-bold text-[#172022] mb-1">
                 {assignedVendor?.name || cartItems[0]?.vendor?.name || 'Assigning...'}
               </p>
-              <p className="text-xs text-[rgba(26,42,34,0.6)]">
+              <p className="text-xs text-[rgba(26,42,34,0.65)] font-medium">
                 {assignedVendor?.location || cartItems[0]?.vendor?.location || 'Based on your location (20km radius)'}
               </p>
               {!assignedVendor && (
-                <p className="text-xs text-orange-600 mt-1">Vendor will be assigned automatically based on your address</p>
+                <p className="text-xs text-orange-600 font-semibold mt-2">Vendor will be assigned automatically based on your address</p>
               )}
             </div>
           )}
@@ -778,54 +792,67 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-[#172022] mb-2">Payment Method</h2>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 p-4 rounded-xl border-2 border-[#1b8f5b] bg-[rgba(240,245,242,0.5)]">
-              <CreditCardIcon className="h-5 w-5 text-[#1b8f5b]" />
-              <div className="flex-1">
-                <span className="text-sm font-semibold text-[#172022]">Razorpay</span>
-                <p className="text-xs text-[rgba(26,42,34,0.6)] mt-0.5">Secure payment gateway</p>
+          <div className="space-y-3">
+            <div className="flex items-center gap-4 p-5 rounded-2xl border-2 border-[#1b8f5b] bg-gradient-to-br from-[rgba(240,253,249,0.95)] to-[rgba(255,255,255,0.98)] shadow-[0_4px_12px_-4px_rgba(27,143,91,0.25)]">
+              <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-[#1b8f5b] flex items-center justify-center">
+                <CreditCardIcon className="h-6 w-6 text-white" />
               </div>
-              <CheckIcon className="h-5 w-5 text-[#1b8f5b]" />
+              <div className="flex-1">
+                <span className="text-base font-bold text-[#172022]">Razorpay</span>
+                <p className="text-xs text-[rgba(26,42,34,0.65)] mt-1 font-medium">Secure payment gateway</p>
+              </div>
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#1b8f5b] flex items-center justify-center">
+                <CheckIcon className="h-5 w-5 text-white" />
+              </div>
             </div>
           </div>
 
           {/* Final Summary */}
-          <div className="p-4 rounded-xl border border-[rgba(34,94,65,0.12)] bg-[rgba(240,245,242,0.3)]">
-            <h3 className="text-sm font-semibold text-[#172022] mb-3">Final Summary</h3>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[rgba(26,42,34,0.65)]">Subtotal</span>
-                <span className="font-semibold text-[#172022]">₹{totals.subtotal.toLocaleString('en-IN')}</span>
+          <div className="p-5 rounded-2xl border-2 border-[rgba(34,94,65,0.15)] bg-gradient-to-br from-[rgba(240,245,242,0.6)] to-[rgba(255,255,255,0.95)] shadow-[0_4px_12px_-4px_rgba(16,44,30,0.15)]">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-[rgba(27,143,91,0.1)] flex items-center justify-center">
+                <PackageIcon className="h-5 w-5 text-[#1b8f5b]" />
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[rgba(26,42,34,0.65)]">Delivery</span>
+              <h3 className="text-base font-bold text-[#172022]">Final Summary</h3>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-[rgba(34,94,65,0.1)]">
+                <span className="text-sm font-medium text-[rgba(26,42,34,0.7)]">Subtotal</span>
+                <span className="text-sm font-bold text-[#172022]">₹{totals.subtotal.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-[rgba(34,94,65,0.1)]">
+                <span className="text-sm font-medium text-[rgba(26,42,34,0.7)]">Delivery</span>
                 <div className="text-right">
-                  <span className="font-semibold text-[#172022]">
+                  <span className="text-sm font-bold text-[#172022]">
                     {totals.delivery === 0 ? 'Free' : `₹${totals.delivery}`}
                   </span>
                   {totals.delivery === 0 && totals.deliveryBeforeBenefit > 0 && isFullPayment && (
-                    <p className="text-[10px] text-[#1b8f5b] font-semibold leading-tight">
+                    <p className="text-[10px] text-[#1b8f5b] font-bold leading-tight mt-0.5">
                       Waived with 100% payment
                     </p>
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between pt-2 border-t border-[rgba(34,94,65,0.1)]">
+              <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-[rgba(27,143,91,0.1)] to-[rgba(27,143,91,0.05)] border-2 border-[#1b8f5b]">
                 <span className="text-base font-bold text-[#172022]">Total</span>
                 <span className="text-xl font-bold text-[#1b8f5b]">₹{totals.total.toLocaleString('en-IN')}</span>
               </div>
-              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[rgba(34,94,65,0.1)]">
-                <div className="p-2 rounded-lg bg-white border border-[rgba(34,94,65,0.15)]">
-                  <p className="text-xs font-semibold text-[rgba(26,42,34,0.65)] uppercase tracking-wide mb-1">
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="p-4 rounded-xl bg-gradient-to-br from-[rgba(240,253,249,0.8)] to-white border-2 border-[rgba(27,143,91,0.2)] shadow-sm">
+                  <p className="text-[10px] font-bold text-[rgba(26,42,34,0.65)] uppercase tracking-wide mb-2">
                     {paymentDueNowLabel}
                   </p>
-                  <p className="text-base font-bold text-[#1b8f5b]">₹{amountDueNow.toLocaleString('en-IN')}</p>
+                  <p className="text-lg font-bold text-[#1b8f5b]">₹{amountDueNow.toLocaleString('en-IN')}</p>
+                  <p className="text-[10px] text-[rgba(26,42,34,0.6)] font-medium mt-1">Pay now</p>
                 </div>
-                <div className="p-2 rounded-lg bg-white border border-[rgba(34,94,65,0.15)]">
-                  <p className="text-xs font-semibold text-[rgba(26,42,34,0.65)] uppercase tracking-wide mb-1">
+                <div className="p-4 rounded-xl bg-gradient-to-br from-[rgba(240,245,242,0.6)] to-white border-2 border-[rgba(34,94,65,0.15)] shadow-sm">
+                  <p className="text-[10px] font-bold text-[rgba(26,42,34,0.65)] uppercase tracking-wide mb-2">
                     {paymentDueLaterLabel}
                   </p>
-                  <p className="text-base font-bold text-[#1b8f5b]">₹{amountDueLater.toLocaleString('en-IN')}</p>
+                  <p className="text-lg font-bold text-[#1b8f5b]">₹{amountDueLater.toLocaleString('en-IN')}</p>
+                  <p className="text-[10px] text-[rgba(26,42,34,0.6)] font-medium mt-1">
+                    {isFullPayment ? 'No pending payment' : 'Pay after delivery'}
+                  </p>
                 </div>
               </div>
             </div>

@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { Wallet, ShieldCheck, Eye, CheckCircle, XCircle, Calendar, IndianRupee, Filter, Search } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
-import { WithdrawalRequestModal } from '../components/WithdrawalRequestModal'
+import { Modal } from '../components/Modal'
 import { ConfirmationModal } from '../components/ConfirmationModal'
+import { SellerWithdrawalApprovalScreen } from '../components/SellerWithdrawalApprovalScreen'
 import { useAdminApi } from '../hooks/useAdminApi'
 import { useToast } from '../components/ToastNotification'
 import { cn } from '../../../lib/cn'
+import { getMaskedBankDetails } from '../../../utils/maskSensitiveData'
 
 const columns = [
   { Header: 'IRA Partner', accessor: 'sellerName' },
@@ -16,7 +18,7 @@ const columns = [
   { Header: 'Actions', accessor: 'actions' },
 ]
 
-export function SellerWithdrawalsPage() {
+export function SellerWithdrawalsPage({ subRoute = null, navigate }) {
   const {
     getSellerWithdrawalRequests,
     approveSellerWithdrawal,
@@ -33,6 +35,7 @@ export function SellerWithdrawalsPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // { type: 'approve' | 'reject', requestId: string, reason?: string }
+  const [approvingRequest, setApprovingRequest] = useState(null) // Request being approved (for full-screen flow)
 
   const fetchWithdrawals = useCallback(async () => {
     try {
@@ -60,9 +63,17 @@ export function SellerWithdrawalsPage() {
     setModalOpen(true)
   }
 
-  const handleApprove = (requestId) => {
-    setPendingAction({ type: 'approve', requestId })
-    setConfirmationModalOpen(true)
+  const handleApprove = () => {
+    if (!selectedRequest) return
+    // Navigate to full-screen approval page
+    if (navigate) {
+      setApprovingRequest(selectedRequest)
+      navigate(`seller-withdrawals/approve/${selectedRequest.requestId || selectedRequest.id}`)
+    } else {
+      // Fallback to modal if navigate not available
+      setPendingAction({ type: 'approve', requestId: selectedRequest.requestId || selectedRequest.id })
+      setConfirmationModalOpen(true)
+    }
   }
 
   const handleReject = (requestId, rejectionData) => {
@@ -151,6 +162,41 @@ export function SellerWithdrawalsPage() {
   const pendingCount = withdrawals.filter((w) => w.status === 'pending').length
   const pendingAmount = withdrawals.filter((w) => w.status === 'pending').reduce((sum, w) => sum + (w.amount || 0), 0)
 
+  // Handle sub-route for approval screen
+  useEffect(() => {
+    if (subRoute && subRoute.startsWith('approve/')) {
+      const requestId = subRoute.replace('approve/', '')
+      const request = withdrawals.find((w) => (w.requestId || w.id) === requestId)
+      if (request) {
+        setApprovingRequest(request)
+      }
+    } else {
+      setApprovingRequest(null)
+    }
+  }, [subRoute, withdrawals])
+
+  // If approving, show approval screen
+  if (approvingRequest && subRoute?.startsWith('approve/')) {
+    return (
+      <SellerWithdrawalApprovalScreen
+        request={approvingRequest}
+        onBack={() => {
+          setApprovingRequest(null)
+          if (navigate) {
+            navigate('seller-withdrawals')
+          }
+        }}
+        onSuccess={() => {
+          setApprovingRequest(null)
+          fetchWithdrawals()
+          if (navigate) {
+            navigate('seller-withdrawals')
+          }
+        }}
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -238,17 +284,90 @@ export function SellerWithdrawalsPage() {
 
       {/* Request Detail Modal */}
       {selectedRequest && (
-        <WithdrawalRequestModal
+        <Modal
           isOpen={modalOpen}
           onClose={() => {
             setModalOpen(false)
             setSelectedRequest(null)
           }}
-          request={selectedRequest}
-          onApprove={handleApprove}
-          onReject={handleReject}
-          loading={actionLoading}
-        />
+          title="Withdrawal Request Details"
+        >
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="text-xs text-gray-600 mb-1">IRA Partner</p>
+                <p className="text-sm font-bold text-gray-900">{selectedRequest.sellerName || selectedRequest.sellerId || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 mb-1">Amount</p>
+                <p className="text-sm font-bold text-green-600">{formatCurrency(selectedRequest.amount || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 mb-1">Request Date</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {selectedRequest.date || selectedRequest.createdAt
+                    ? new Date(selectedRequest.date || selectedRequest.createdAt).toLocaleDateString('en-IN')
+                    : 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-600 mb-1">Status</p>
+                <StatusBadge tone={selectedRequest.status === 'approved' ? 'success' : selectedRequest.status === 'rejected' ? 'neutral' : 'warning'}>
+                  {selectedRequest.status?.charAt(0).toUpperCase() + selectedRequest.status?.slice(1) || 'Pending'}
+                </StatusBadge>
+              </div>
+            </div>
+            {selectedRequest.bankDetails && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <p className="text-xs font-bold text-gray-600 mb-2">Bank Account Details</p>
+                <div className="grid gap-2 md:grid-cols-2 text-sm text-gray-700">
+                  {selectedRequest.bankDetails.accountHolderName && (
+                    <div>
+                      <span className="text-gray-600">Account Holder: </span>
+                      <span className="font-medium">{selectedRequest.bankDetails.accountHolderName}</span>
+                    </div>
+                  )}
+                  {selectedRequest.bankDetails.accountNumber && (
+                    <div>
+                      <span className="text-gray-600">Account: </span>
+                      <span className="font-medium">{selectedRequest.bankDetails.accountNumber}</span>
+                    </div>
+                  )}
+                  {selectedRequest.bankDetails.ifscCode && (
+                    <div>
+                      <span className="text-gray-600">IFSC: </span>
+                      <span className="font-medium">{selectedRequest.bankDetails.ifscCode}</span>
+                    </div>
+                  )}
+                  {selectedRequest.bankDetails.bankName && (
+                    <div>
+                      <span className="text-gray-600">Bank: </span>
+                      <span className="font-medium">{selectedRequest.bankDetails.bankName}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {selectedRequest.status === 'pending' && (
+              <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={handleReject}
+                  className="flex-1 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition-all hover:bg-red-50"
+                >
+                  Reject
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApprove}
+                  className="flex-1 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-green-700"
+                >
+                  Approve
+                </button>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
 
       {/* Confirmation Modal */}

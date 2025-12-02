@@ -68,11 +68,24 @@ const withdrawalRequestSchema = new mongoose.Schema({
   },
   paymentMethod: {
     type: String,
-    enum: ['bank_transfer', 'upi', 'cash', 'other'],
+    enum: ['bank_transfer', 'upi', 'cash', 'razorpay', 'other'],
     default: 'bank_transfer',
   },
   paymentDate: Date,
   processedAt: Date,
+  // Razorpay payment gateway details
+  gatewayPaymentId: {
+    type: String,
+    trim: true,
+  },
+  gatewayOrderId: {
+    type: String,
+    trim: true,
+  },
+  gatewaySignature: {
+    type: String,
+    trim: true,
+  },
   // Notes
   notes: {
     type: String,

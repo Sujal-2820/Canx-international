@@ -83,10 +83,10 @@ export function AccountView({ onNavigate }) {
       // useUserApi hook returns { data, error } structure
       // If error is null/undefined, it means success
       if (result && !result.error && result.data) {
-        dispatch({
-          type: 'AUTH_LOGIN',
+    dispatch({
+      type: 'AUTH_LOGIN',
           payload: { ...profile, name: result.data.user?.name || editedName.trim() },
-        })
+    })
         // Show green success notification with tick icon
         success(result.data.message || 'Name updated successfully')
       } else {
@@ -96,12 +96,12 @@ export function AccountView({ onNavigate }) {
     } catch (error) {
       console.error('Error updating name:', error)
       // Close edit modal on error
-      setEditingName(false)
+    setEditingName(false)
       // Show red error notification
       showError(error?.error?.message || error?.message || 'Failed to update name')
     }
   }
-
+  
   const handleSaveDeliveryAddress = async () => {
     // Validate that location is selected from Google Maps
     if (!selectedDeliveryLocation || !selectedDeliveryLocation.coordinates) {
@@ -136,7 +136,7 @@ export function AccountView({ onNavigate }) {
         setDeliveryAddressOTPStep(1)
         setDeliveryAddressOTP('')
         setSelectedDeliveryLocation(null)
-      } else {
+    } else {
         showError(result?.error?.message || result?.data?.message || 'Failed to update delivery address')
       }
     } catch (error) {
@@ -551,7 +551,7 @@ export function AccountView({ onNavigate }) {
             <div className="user-account-view__panel-body">
               {/* Step 1: Request OTP for current phone */}
               {phoneUpdateStep === 1 && (
-                <div className="space-y-4">
+              <div className="space-y-4">
                   <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
                     <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
                       We'll send an OTP to your current phone number <strong>{profile.phone}</strong> to verify your identity.
@@ -592,10 +592,10 @@ export function AccountView({ onNavigate }) {
                       Enter the OTP sent to <strong>{profile.phone}</strong>
                     </p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                <div>
+                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
                       OTP <span className="text-red-500">*</span>
-                    </label>
+                  </label>
                     <input
                       type="text"
                       value={currentPhoneOTP}
@@ -603,8 +603,8 @@ export function AccountView({ onNavigate }) {
                       placeholder="Enter 6-digit OTP"
                       maxLength={6}
                       className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                    />
-                  </div>
+                  />
+                </div>
                   <div className="flex gap-3">
                     <button
                       type="button"
@@ -780,7 +780,7 @@ export function AccountView({ onNavigate }) {
                     >
                       {phoneUpdateLoading ? 'Updating...' : 'Update Phone Number'}
                     </button>
-                  </div>
+                </div>
                 </div>
               )}
             </div>
@@ -861,19 +861,19 @@ export function AccountView({ onNavigate }) {
                       Enter the OTP sent to <strong>{profile.phone}</strong>
                     </p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                <div>
+                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
                       OTP <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
+                  </label>
+                  <input
+                    type="text"
                       value={deliveryAddressOTP}
                       onChange={(e) => setDeliveryAddressOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       placeholder="Enter 6-digit OTP"
-                      maxLength={6}
-                      className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                    />
-                  </div>
+                    maxLength={6}
+                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
+                  />
+                </div>
                   <div className="flex gap-3">
                     <button
                       type="button"
@@ -910,7 +910,7 @@ export function AccountView({ onNavigate }) {
                     >
                       {deliveryAddressOTPLoading ? 'Verifying...' : 'Verify OTP'}
                     </button>
-                  </div>
+              </div>
                 </div>
               )}
 
@@ -951,25 +951,25 @@ export function AccountView({ onNavigate }) {
                   )}
 
                   <div className="flex gap-3">
-                    <button
-                      type="button"
+                <button
+                  type="button"
                       onClick={() => {
                         setDeliveryAddressOTPStep(2)
                         setSelectedDeliveryLocation(null)
                       }}
-                      className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
-                    >
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
+                >
                       Back
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveDeliveryAddress}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveDeliveryAddress}
                       disabled={loading || !selectedDeliveryLocation}
-                      className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? 'Saving...' : 'Save Address'}
-                    </button>
-                  </div>
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Saving...' : 'Save Address'}
+                </button>
+              </div>
                 </div>
               )}
             </div>

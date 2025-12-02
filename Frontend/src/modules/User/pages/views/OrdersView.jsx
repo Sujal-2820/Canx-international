@@ -301,57 +301,114 @@ export function OrdersView() {
               {renderStatusTracker(item)}
 
               <div className="user-orders-view__card-items">
-                {item.items?.map((orderItem, index) => (
-                  <div key={index} className="user-orders-view__card-item">
-                    <div className="user-orders-view__card-item-image">
-                      <img
-                        src={orderItem.product ? getPrimaryImageUrl(orderItem.product) : (orderItem.image || 'https://via.placeholder.com/60')}
-                        alt={orderItem.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="user-orders-view__card-item-details">
-                      <h4 className="user-orders-view__card-item-name">{orderItem.name}</h4>
-                      <div className="user-orders-view__card-item-meta">
-                        <span className="user-orders-view__card-item-quantity">
-                          Qty: {orderItem.quantity}
-                        </span>
-                        <span className="user-orders-view__card-item-price">
-                          ₹{orderItem.price?.toLocaleString('en-IN')}
-                        </span>
+                {item.items?.map((orderItem, index) => {
+                  // Handle variant attributes display
+                  const variantAttrs = orderItem.variantAttributes || {}
+                  const variantKeys = Object.keys(variantAttrs)
+                  const hasVariants = variantKeys.length > 0
+                  
+                  // Get product name - use productName from orderItem or product.name
+                  const productName = orderItem.productName || orderItem.name || (orderItem.product?.name || 'Product')
+                  
+                  // Get price - use unitPrice from orderItem or price
+                  const unitPrice = orderItem.unitPrice || orderItem.price || 0
+                  
+                  return (
+                    <div key={index} className="user-orders-view__card-item">
+                      <div className="user-orders-view__card-item-image">
+                        <img
+                          src={orderItem.product ? getPrimaryImageUrl(orderItem.product) : (orderItem.image || 'https://via.placeholder.com/60')}
+                          alt={productName}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="user-orders-view__card-item-details">
+                        <h4 className="user-orders-view__card-item-name">{productName}</h4>
+                        {hasVariants && (
+                          <div className="user-orders-view__card-item-variants">
+                            {variantKeys.map((key) => (
+                              <span key={key} className="text-xs text-gray-600">
+                                {key}: {variantAttrs[key]}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="user-orders-view__card-item-meta">
+                          <span className="user-orders-view__card-item-quantity">
+                            Qty: {orderItem.quantity}
+                          </span>
+                          <span className="user-orders-view__card-item-price">
+                            ₹{unitPrice.toLocaleString('en-IN')}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               <div className="user-orders-view__card-footer">
-                <div className="user-orders-view__card-total">
-                  <span className="user-orders-view__card-total-label">Total:</span>
-                  <span className="user-orders-view__card-total-amount">
-                    ₹{item.total?.toLocaleString('en-IN') || '0'}
-                  </span>
+                {/* Order Amount Breakdown */}
+                <div className="space-y-2 mb-3">
+                  {item.subtotal !== undefined && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Subtotal:</span>
+                      <span className="text-gray-900 font-medium">₹{item.subtotal?.toLocaleString('en-IN') || '0'}</span>
+                    </div>
+                  )}
+                  {item.deliveryCharge !== undefined && item.deliveryCharge > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Delivery:</span>
+                      <span className="text-gray-900 font-medium">₹{item.deliveryCharge?.toLocaleString('en-IN') || '0'}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-base font-semibold pt-2 border-t border-gray-200">
+                    <span className="text-gray-900">Total:</span>
+                    <span className="text-gray-900">₹{(item.totalAmount || item.total || 0).toLocaleString('en-IN')}</span>
+                  </div>
                 </div>
+                
+                {/* Payment Status */}
                 {item.paymentStatus && item.paymentStatus !== 'fully_paid' && (
-                  <div className="user-orders-view__card-payment">
-                    <span className="user-orders-view__card-payment-label">Payment:</span>
-                    <span
-                      className={cn(
-                        'user-orders-view__card-payment-status',
-                        item.paymentStatus === 'partial_paid' && 'text-orange-600',
-                        item.paymentStatus === 'pending' && 'text-red-600'
-                      )}
-                    >
-                      {item.paymentStatus === 'partial_paid'
-                        ? `Partial Paid (30%) - ₹${item.remaining?.toLocaleString('en-IN') || '0'} remaining`
-                        : item.paymentStatus === 'pending'
-                          ? 'Pending'
-                          : item.paymentStatus}
-                    </span>
+                  <div className="space-y-2 mb-3">
+                    {item.paymentPreference === 'partial' && item.upfrontAmount !== undefined && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Advance (30%):</span>
+                        <span className="text-green-600 font-medium">₹{item.upfrontAmount?.toLocaleString('en-IN') || '0'}</span>
+                      </div>
+                    )}
+                    {item.paymentPreference === 'partial' && item.remainingAmount !== undefined && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Remaining (70%):</span>
+                        <span className={cn(
+                          'font-medium',
+                          item.paymentStatus === 'partial_paid' ? 'text-orange-600' : 'text-red-600'
+                        )}>
+                          ₹{item.remainingAmount?.toLocaleString('en-IN') || '0'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
+                      <span className="text-gray-600">Payment Status:</span>
+                      <span
+                        className={cn(
+                          'font-semibold',
+                          item.paymentStatus === 'partial_paid' && 'text-orange-600',
+                          item.paymentStatus === 'pending' && 'text-red-600'
+                        )}
+                      >
+                        {item.paymentStatus === 'partial_paid'
+                          ? 'Partial Paid'
+                          : item.paymentStatus === 'pending'
+                            ? 'Pending'
+                            : item.paymentStatus}
+                      </span>
+                    </div>
                   </div>
                 )}
+                
                 {/* Pay Remaining Button - Show when order is delivered and partially paid */}
-                {item.status === 'delivered' && item.paymentStatus === 'partial_paid' && item.remaining > 0 && (
+                {item.status === 'delivered' && item.paymentStatus === 'partial_paid' && (item.remainingAmount || item.remaining) > 0 && (
                   <button
                     type="button"
                     onClick={() => handlePayRemaining(item)}
@@ -361,7 +418,7 @@ export function OrdersView() {
                     <CreditCardIcon className="h-4 w-4" />
                     {processingPayment === item.id || loading
                       ? 'Processing...'
-                      : `Pay Remaining ₹${item.remaining.toLocaleString('en-IN')}`}
+                      : `Pay Remaining ₹${((item.remainingAmount || item.remaining) || 0).toLocaleString('en-IN')}`}
                   </button>
                 )}
               </div>

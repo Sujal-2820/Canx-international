@@ -26,6 +26,13 @@ async function calculateVendorEarnings(order) {
       return [];
     }
 
+    // Only calculate earnings if vendor fulfilled the order themselves (not escalated to admin)
+    // Check if order is assigned to vendor and not escalated
+    if (order.assignedTo === 'admin' || order.isEscalated === true) {
+      console.log(`⚠️ Skipping earnings calculation for order ${order.orderNumber} - order was escalated to admin`);
+      return [];
+    }
+
     const vendor = await Vendor.findById(order.vendorId);
     if (!vendor) {
       console.warn(`⚠️ Vendor not found for order ${order.orderNumber}`);

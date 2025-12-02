@@ -334,6 +334,13 @@ export function useAdminApi() {
   // Vendor Withdrawal APIs
   const getVendorWithdrawalRequests = useCallback((params) => callApi(adminApi.getVendorWithdrawalRequests, params), [callApi])
 
+  const createVendorWithdrawalPaymentIntent = useCallback(
+    (requestId, data) => {
+      return callApi(adminApi.createVendorWithdrawalPaymentIntent, requestId, data)
+    },
+    [callApi],
+  )
+
   const approveVendorWithdrawal = useCallback(
     (requestId, data) => {
       return callApi(adminApi.approveVendorWithdrawal, requestId, data).then((result) => {
@@ -371,9 +378,16 @@ export function useAdminApi() {
   )
 
   // Seller Withdrawal APIs
+  const createSellerWithdrawalPaymentIntent = useCallback(
+    (requestId, data) => {
+      return callApi(adminApi.createSellerWithdrawalPaymentIntent, requestId, data)
+    },
+    [callApi],
+  )
+
   const approveSellerWithdrawal = useCallback(
-    (requestId) => {
-      return callApi(adminApi.approveSellerWithdrawal, requestId).then((result) => {
+    (requestId, data) => {
+      return callApi(adminApi.approveSellerWithdrawal, requestId, data).then((result) => {
         if (result.data) {
           dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
         }
@@ -703,9 +717,11 @@ export function useAdminApi() {
     rejectSeller,
     deleteSeller,
     getVendorWithdrawalRequests,
+    createVendorWithdrawalPaymentIntent,
     approveVendorWithdrawal,
     rejectVendorWithdrawal,
     completeVendorWithdrawal,
+    createSellerWithdrawalPaymentIntent,
     approveSellerWithdrawal,
     rejectSellerWithdrawal,
     getSellerWithdrawalRequests,

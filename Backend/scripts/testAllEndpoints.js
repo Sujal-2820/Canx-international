@@ -152,7 +152,7 @@ async function testAdminAuth() {
     console.log('⚠️  Admin login failed. Response:', JSON.stringify(loginResult.data || loginResult.error, null, 2));
     console.log('⚠️  Status:', loginResult.status);
     console.log('⚠️  Skipping admin tests.');
-    return;
+      return;
   }
 
   // Test 2: Request OTP

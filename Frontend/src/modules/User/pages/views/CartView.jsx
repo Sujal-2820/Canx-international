@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useUserState } from '../../context/UserContext'
 import { MIN_ORDER_VALUE } from '../../services/userData'
 import { PlusIcon, MinusIcon, TrashIcon, TruckIcon, ChevronRightIcon } from '../../components/icons'
@@ -11,6 +11,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
   const [suggestedProducts, setSuggestedProducts] = useState([])
   const [cartProducts, setCartProducts] = useState({})
   const [expandedVariants, setExpandedVariants] = useState({}) // Track expanded state: { variantId: true/false }
+  const fetchingProductsRef = useRef(new Set()) // Track which products are currently being fetched
 
   // Fetch suggested products (exclude items already in cart)
   useEffect(() => {
@@ -39,22 +40,50 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
   // Fetch product details for cart items
   useEffect(() => {
     const loadCartProducts = async () => {
-      const productMap = {}
-      for (const item of cart) {
-        try {
-          const result = await userApi.getProductDetails(item.productId)
-          if (result.success && result.data?.product) {
-            productMap[item.productId] = result.data.product
-          }
-        } catch (error) {
-          console.error(`Error loading product ${item.productId}:`, error)
+      // Use functional update to check current state without adding to dependencies
+      setCartProducts(currentProducts => {
+        // Only fetch products that aren't already loaded and aren't currently being fetched
+        const productsToFetch = cart.filter(item => 
+          !currentProducts[item.productId] && !fetchingProductsRef.current.has(item.productId)
+        )
+        
+        if (productsToFetch.length === 0) {
+          return currentProducts // All products already loaded or being fetched
         }
-      }
-      setCartProducts(productMap)
+        
+        // Mark products as being fetched
+        productsToFetch.forEach(item => fetchingProductsRef.current.add(item.productId))
+        
+        // Fetch missing products and update incrementally (async, doesn't block return)
+        productsToFetch.forEach(async (item) => {
+          try {
+            const result = await userApi.getProductDetails(item.productId)
+            if (result.success && result.data?.product) {
+              // Update state incrementally for each product as it loads
+              setCartProducts(prev => ({
+                ...prev,
+                [item.productId]: result.data.product
+              }))
+            }
+          } catch (error) {
+            console.error(`Error loading product ${item.productId}:`, error)
+          } finally {
+            // Remove from fetching set
+            fetchingProductsRef.current.delete(item.productId)
+          }
+        })
+        
+        // Return current products immediately (new products will be added via setState above)
+        return currentProducts
+      })
     }
     
     if (cart.length > 0) {
       loadCartProducts()
+    } else {
+      // Clear cartProducts when cart is empty
+      setCartProducts({})
+      fetchingProductsRef.current.clear()
     }
   }, [cart])
 
@@ -220,7 +249,8 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
             {/* Variants List */}
             <div className="p-4 space-y-3">
               {group.variants.map((variant, variantIdx) => {
-                const variantId = variant.id || variant._id
+                const variantId = variant.id || variant._id || variant.cartItemId
+                const cartItemId = variant.cartItemId || variant.id || variant._id
                 const isExpanded = expandedVariants[variantId] || false
                 
                 return (
@@ -344,7 +374,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
                         className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
                         onClick={(e) => {
                           e.stopPropagation()
-                          onRemove(variantId)
+                          onRemove(cartItemId)
                         }}
                       >
                         <TrashIcon className="h-4 w-4" />

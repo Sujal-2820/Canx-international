@@ -1158,17 +1158,35 @@ function transformSeller(backendSeller) {
  * Transform backend withdrawal request to frontend format
  */
 function transformWithdrawalRequest(backendWithdrawal) {
+  // Extract bank details from bankAccountId if populated, otherwise use paymentDetails
+  const bankDetails = backendWithdrawal.bankAccountId
+    ? {
+        accountHolderName: backendWithdrawal.bankAccountId.accountHolderName || '',
+        accountNumber: backendWithdrawal.bankAccountId.accountNumber || '',
+        ifscCode: backendWithdrawal.bankAccountId.ifscCode || '',
+        bankName: backendWithdrawal.bankAccountId.bankName || '',
+      }
+    : backendWithdrawal.paymentDetails || {}
+
+  // Extract seller name from populated sellerId or direct field
+  const sellerName = backendWithdrawal.sellerId?.name || 
+                     backendWithdrawal.sellerId?.sellerId || 
+                     backendWithdrawal.seller?.name || 
+                     backendWithdrawal.sellerName || 
+                     ''
+
   return {
     id: backendWithdrawal._id?.toString() || backendWithdrawal.id,
     requestId: backendWithdrawal._id?.toString() || backendWithdrawal.id,
-    sellerId: backendWithdrawal.sellerId?.toString() || backendWithdrawal.sellerId,
-    seller: backendWithdrawal.sellerId?.name || backendWithdrawal.seller?.name || backendWithdrawal.sellerName || '',
-    sellerName: backendWithdrawal.sellerId?.name || backendWithdrawal.seller?.name || backendWithdrawal.sellerName || '',
+    sellerId: backendWithdrawal.sellerId?._id?.toString() || backendWithdrawal.sellerId?.toString() || backendWithdrawal.sellerId,
+    seller: sellerName,
+    sellerName: sellerName,
     amount: backendWithdrawal.amount || 0,
     date: backendWithdrawal.createdAt ? new Date(backendWithdrawal.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    createdAt: backendWithdrawal.createdAt,
     status: backendWithdrawal.status || 'pending',
-    reason: backendWithdrawal.reason || '',
-    bankDetails: backendWithdrawal.paymentDetails || {},
+    reason: backendWithdrawal.reason || backendWithdrawal.rejectionReason || '',
+    bankDetails: bankDetails,
     sellerPerformance: {
       totalSales: 0, // TODO: Calculate from commissions
       pendingEarnings: backendWithdrawal.sellerId?.wallet?.balance || 0,
@@ -1421,15 +1439,34 @@ export async function deleteSeller(sellerId) {
 }
 
 /**
+ * Create Payment Intent for Seller Withdrawal
+ * POST /admin/sellers/withdrawals/:requestId/payment-intent
+ * 
+ * @param {string} requestId - Withdrawal request ID
+ * @param {Object} data - { amount?: number }
+ * @returns {Promise<Object>} - { paymentIntent: Object }
+ */
+export async function createSellerWithdrawalPaymentIntent(requestId, data = {}) {
+  const response = await apiRequest(`/admin/sellers/withdrawals/${requestId}/payment-intent`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+
+  return response
+}
+
+/**
  * Approve Seller Withdrawal
  * POST /admin/sellers/withdrawals/:requestId/approve
  * 
  * @param {string} requestId - Withdrawal request ID
+ * @param {Object} data - { paymentReference?, paymentMethod?, paymentDate?, adminRemarks?, gatewayPaymentId?, gatewayOrderId?, gatewaySignature? }
  * @returns {Promise<Object>} - { message: string, withdrawal: Object, seller: Object }
  */
-export async function approveSellerWithdrawal(requestId) {
+export async function approveSellerWithdrawal(requestId, data = {}) {
   const response = await apiRequest(`/admin/sellers/withdrawals/${requestId}/approve`, {
     method: 'POST',
+    body: JSON.stringify(data),
   })
 
   // Transform backend response to frontend format
@@ -1564,6 +1601,32 @@ export async function approveVendorWithdrawal(requestId, data = {}) {
         withdrawal: response.data.withdrawal ? transformVendorWithdrawalRequest(response.data.withdrawal) : undefined,
         vendor: response.data.vendor,
         message: response.data.message || 'Withdrawal approved successfully',
+      },
+    }
+  }
+
+  return response
+}
+
+/**
+ * Create Payment Intent for Vendor Withdrawal
+ * POST /admin/vendors/withdrawals/:requestId/payment-intent
+ * 
+ * @param {string} requestId - Withdrawal request ID
+ * @param {Object} data - { amount: number }
+ * @returns {Promise<Object>} - { paymentIntent: Object }
+ */
+export async function createVendorWithdrawalPaymentIntent(requestId, data = {}) {
+  const response = await apiRequest(`/admin/vendors/withdrawals/${requestId}/payment-intent`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+
+  if (response.success && response.data) {
+    return {
+      success: true,
+      data: {
+        paymentIntent: response.data.paymentIntent,
       },
     }
   }

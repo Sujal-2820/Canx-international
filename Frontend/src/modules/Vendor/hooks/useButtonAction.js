@@ -299,7 +299,7 @@ export const BUTTON_CONFIGS = {
     data: {
       type: 'withdrawal_request',
       fields: [
-        { name: 'amount', label: 'Withdrawal Amount', value: '', type: 'number', required: true, min: 100, placeholder: 'Enter amount (min ₹100)' },
+        { name: 'amount', label: 'Withdrawal Amount', value: '', type: 'number', required: true, min: 1000, placeholder: 'Enter amount (min ₹1,000)' },
         { name: 'bankAccountId', label: 'Bank Account', value: '', type: 'select', required: true, placeholder: 'Select bank account' },
       ],
     },

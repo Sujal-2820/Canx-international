@@ -285,18 +285,16 @@ export async function getWalletTransactions(params = {}) {
 
 /**
  * Request Withdrawal
- * POST /sellers/wallet/withdraw
+ * POST /sellers/wallet/withdrawals/request
  * 
  * @param {Object} withdrawalData - {
  *   amount: number,
- *   accountNumber: string,
- *   ifscCode: string,
- *   accountName: string
+ *   bankAccountId: string
  * }
- * @returns {Promise<Object>} - { requestId, message, status }
+ * @returns {Promise<Object>} - { withdrawal, message }
  */
 export async function requestWithdrawal(withdrawalData) {
-  return apiRequest('/sellers/wallet/withdraw', {
+  return apiRequest('/sellers/wallet/withdrawals/request', {
     method: 'POST',
     body: JSON.stringify(withdrawalData),
   })

@@ -2417,6 +2417,7 @@ exports.getOrders = async (req, res, next) => {
     // Execute query
     const [orders, total] = await Promise.all([
       Order.find(query)
+        .populate('items.productId', 'name description category priceToUser images sku')
         .populate('vendorId', 'name phone location')
         .populate('seller', 'sellerId name phone')
         .sort({ createdAt: -1 })
@@ -2433,10 +2434,37 @@ exports.getOrders = async (req, res, next) => {
           // If order is in grace period, show status as 'awaiting' to user (not accepted yet)
           const displayStatus = order.acceptanceGracePeriod?.isActive ? ORDER_STATUS.AWAITING : order.status;
           
+          // Map items to include product data
+          const mappedItems = order.items.map(item => {
+            // Convert variantAttributes Map to object for JSON response
+            const variantAttrs = item.variantAttributes instanceof Map
+              ? Object.fromEntries(item.variantAttributes)
+              : item.variantAttributes || {}
+            
+            return {
+              productId: item.productId?._id || item.productId,
+              product: item.productId ? {
+                id: item.productId._id,
+                name: item.productId.name,
+                description: item.productId.description,
+                category: item.productId.category,
+                priceToUser: item.productId.priceToUser,
+                images: item.productId.images,
+                sku: item.productId.sku,
+              } : null,
+              productName: item.productName,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+              variantAttributes: Object.keys(variantAttrs).length > 0 ? variantAttrs : undefined,
+              status: item.status,
+            }
+          })
+          
           return {
             id: order._id,
             orderNumber: order.orderNumber,
-            items: order.items,
+            items: mappedItems,
             subtotal: order.subtotal,
             deliveryCharge: order.deliveryCharge,
             totalAmount: order.totalAmount,
@@ -2445,6 +2473,7 @@ exports.getOrders = async (req, res, next) => {
             remainingAmount: order.remainingAmount,
             paymentStatus: order.paymentStatus,
             status: displayStatus,
+            statusTimeline: order.statusTimeline,
             vendor: order.vendorId ? {
               id: order.vendorId._id,
               name: order.vendorId.name,

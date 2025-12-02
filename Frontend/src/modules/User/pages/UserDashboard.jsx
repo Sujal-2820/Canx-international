@@ -60,6 +60,7 @@ function UserDashboardContent({ onLogout }) {
   const { profile, cart, favourites, notifications, orders } = useUserState()
   const dispatch = useUserDispatch()
   const [activeTab, setActiveTab] = useState('home')
+  const [cartRefreshKey, setCartRefreshKey] = useState(0) // Key to force CartView refresh
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [selectedCarousel, setSelectedCarousel] = useState(null)
@@ -70,6 +71,8 @@ function UserDashboardContent({ onLogout }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef(null)
+  const searchPanelRef = useRef(null)
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
 
   // Fetch user profile from API on mount
   useEffect(() => {
@@ -124,16 +127,19 @@ function UserDashboardContent({ onLogout }) {
     }
   }, [dispatch])
 
-  // Initialize sample notifications
+  // Initialize welcome notification (only first time user enters dashboard)
   useEffect(() => {
-    if (notifications.length === 0) {
+    const hasSeenWelcome = localStorage.getItem('hasSeenWelcomeNotification')
+    if (!hasSeenWelcome && notifications.length === 0) {
       dispatch({
         type: 'ADD_NOTIFICATION',
         payload: {
           title: 'Welcome to IRA Sathi!',
           message: 'Start shopping for your farming needs',
+          type: 'welcome',
         },
       })
+      localStorage.setItem('hasSeenWelcomeNotification', 'true')
     }
   }, [dispatch, notifications.length])
 
@@ -246,8 +252,14 @@ function UserDashboardContent({ onLogout }) {
                   orderNumber: order.orderNumber,
                   status: order.status,
                   totalAmount: order.totalAmount,
+                  subtotal: order.subtotal,
+                  deliveryCharge: order.deliveryCharge,
+                  paymentPreference: order.paymentPreference,
+                  upfrontAmount: order.upfrontAmount,
+                  remainingAmount: order.remainingAmount,
                   paymentStatus: order.paymentStatus,
                   items: order.items,
+                  statusTimeline: order.statusTimeline,
                   createdAt: order.createdAt,
                 },
               })
@@ -293,6 +305,143 @@ function UserDashboardContent({ onLogout }) {
       loadData()
     }
   }, [fetchOrders, fetchCart, dispatch, syncCartState])
+
+  // Track order status changes and send notifications
+  useEffect(() => {
+    const token = localStorage.getItem('user_token')
+    if (!token || orders.length === 0) return
+
+    const checkOrderStatusChanges = async () => {
+      try {
+        const ordersResult = await fetchOrders()
+        if (ordersResult.data?.orders) {
+          ordersResult.data.orders.forEach((order) => {
+            const existingOrder = orders.find((o) => o.id === order.id || o.id === order._id)
+            if (existingOrder && existingOrder.status !== order.status) {
+              // Order status changed - send notification
+              const statusMessages = {
+                accepted: 'Your order has been accepted and is being prepared',
+                dispatched: 'Your order has been dispatched and is on the way',
+                delivered: 'Your order has been delivered successfully',
+              }
+              
+              const message = statusMessages[order.status] || `Your order status has been updated to ${order.status}`
+              
+              dispatch({
+                type: 'ADD_NOTIFICATION',
+                payload: {
+                  type: 'order_status',
+                  title: 'Order Status Update',
+                  message: `${message}. Order #${order.orderNumber?.slice(-8) || order.id?.slice(-8) || 'N/A'}`,
+                  orderId: order.id || order._id,
+                  orderNumber: order.orderNumber,
+                  status: order.status,
+                },
+              })
+
+              // Update order in state
+              dispatch({
+                type: 'UPDATE_ORDER',
+                payload: {
+                  id: order.id || order._id,
+                  status: order.status,
+                  paymentStatus: order.paymentStatus,
+                  statusTimeline: order.statusTimeline,
+                },
+              })
+            }
+          })
+        }
+      } catch (error) {
+        console.error('Error checking order status changes:', error)
+      }
+    }
+
+    // Check immediately
+    checkOrderStatusChanges()
+
+    // Poll every 30 seconds for order status changes
+    const interval = setInterval(checkOrderStatusChanges, 30000)
+
+    return () => clearInterval(interval)
+  }, [orders, fetchOrders, dispatch])
+
+  // Check for new offers and send notifications
+  useEffect(() => {
+    const token = localStorage.getItem('user_token')
+    if (!token) return
+
+    const checkNewOffers = async () => {
+      try {
+        const offersResult = await userApi.getOffers()
+        if (offersResult.success && offersResult.data) {
+          const activeCarousels = (offersResult.data.carousels || [])
+            .filter(c => c.isActive !== false)
+          const specialOffers = offersResult.data.specialOffers || []
+          
+          // Check for new offers (created in last 24 hours)
+          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+          const newCarousels = activeCarousels.filter(c => {
+            const createdAt = new Date(c.createdAt)
+            return createdAt > oneDayAgo
+          })
+          const newSpecialOffers = specialOffers.filter(o => {
+            const createdAt = new Date(o.createdAt)
+            return createdAt > oneDayAgo
+          })
+          
+          // Send notification for new offers (only once per day)
+          if (newCarousels.length > 0 || newSpecialOffers.length > 0) {
+            const lastOfferCheck = localStorage.getItem('lastOfferCheckTime')
+            const now = Date.now()
+            const oneDayInMs = 24 * 60 * 60 * 1000
+            
+            if (!lastOfferCheck || (now - parseInt(lastOfferCheck)) > oneDayInMs) {
+              const offerCount = newCarousels.length + newSpecialOffers.length
+              dispatch({
+                type: 'ADD_NOTIFICATION',
+                payload: {
+                  type: 'offer',
+                  title: 'New Offers Available!',
+                  message: `${offerCount} new ${offerCount === 1 ? 'offer' : 'offers'} ${offerCount === 1 ? 'is' : 'are'} now available. Check them out!`,
+                },
+              })
+              localStorage.setItem('lastOfferCheckTime', now.toString())
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking new offers:', error)
+      }
+    }
+
+    // Check immediately
+    checkNewOffers()
+
+    // Poll every 5 minutes for new offers
+    const interval = setInterval(checkNewOffers, 5 * 60 * 1000)
+
+    return () => clearInterval(interval)
+  }, [dispatch])
+
+  // Reload cart data when cart tab is clicked
+  useEffect(() => {
+    if (activeTab === 'cart') {
+      const reloadCart = async () => {
+        try {
+          const cartResult = await fetchCart()
+          if (cartResult.data?.cart) {
+            syncCartState(cartResult.data.cart)
+            // Force CartView to refresh by updating key
+            setCartRefreshKey(prev => prev + 1)
+          }
+        } catch (error) {
+          console.error('Error reloading cart:', error)
+        }
+      }
+      reloadCart()
+    }
+  }, [activeTab, fetchCart, syncCartState])
 
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
   const favouritesCount = useMemo(() => favourites.length, [favourites])
@@ -464,17 +613,36 @@ function UserDashboardContent({ onLogout }) {
     }
   }
 
-  const handleRemoveFromCart = async (productId) => {
-    const cartItem = cart.find((item) => item.productId === productId)
-    if (!cartItem?.cartItemId) {
+  const handleRemoveFromCart = async (itemId) => {
+    // itemId can be either cartItemId (string) or productId
+    // First, try to find by cartItemId (for variant-based removal)
+    let cartItemId = itemId
+    let cartItem = cart.find((item) => 
+      (item.id || item._id || item.cartItemId) === itemId
+    )
+    
+    // If not found by ID, try to find by productId (for backward compatibility)
+    if (!cartItem) {
+      cartItem = cart.find((item) => item.productId === itemId)
+      if (cartItem) {
+        cartItemId = cartItem.cartItemId || cartItem.id || cartItem._id
+      }
+    } else {
+      cartItemId = cartItem.cartItemId || cartItem.id || cartItem._id
+    }
+    
+    if (!cartItemId) {
       error('Unable to remove item from cart')
       return
     }
+    
     try {
-      const result = await userApi.removeFromCart(cartItem.cartItemId)
+      const result = await userApi.removeFromCart(cartItemId)
       if (result?.data?.cart) {
         syncCartState(result.data.cart)
       } else {
+        // Fallback: remove by productId if available
+        const productId = cartItem?.productId || itemId
         dispatch({ type: 'REMOVE_FROM_CART', payload: { productId } })
       }
       success('Item removed from cart')
@@ -551,22 +719,104 @@ function UserDashboardContent({ onLogout }) {
   }
 
   const openSearch = () => {
+    // Prevent body scroll when search opens
+    document.body.style.overflow = 'hidden'
     setSearchMounted(true)
-    requestAnimationFrame(() => setSearchOpen(true))
+    requestAnimationFrame(() => {
+      setSearchOpen(true)
+      // Delay focus slightly to allow panel to render first, preventing keyboard jump
+      // This prevents the UI hang when keyboard opens
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          // Use requestAnimationFrame for smoother focus
+          requestAnimationFrame(() => {
+            if (searchInputRef.current) {
+              searchInputRef.current.focus()
+              searchInputRef.current.select()
+            }
+          })
+        }
+      }, 150)
+    })
   }
 
   const closeSearch = () => {
     setSearchOpen(false)
+    setKeyboardHeight(0)
+    // Restore body scroll
+    document.body.style.overflow = ''
     setTimeout(() => {
       setSearchMounted(false)
       setSearchQuery('')
     }, 260)
   }
 
+  // Handle keyboard visibility on mobile devices - smooth adjustment
   useEffect(() => {
-    if (searchOpen && searchInputRef.current) {
-      searchInputRef.current.focus()
-      searchInputRef.current.select()
+    if (!searchOpen) {
+      setKeyboardHeight(0)
+      return
+    }
+
+    let rafId = null
+    let initialViewportHeight = window.innerHeight
+
+    // Use visualViewport API for better keyboard detection (modern browsers)
+    const handleViewportResize = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      
+      rafId = requestAnimationFrame(() => {
+        if (window.visualViewport) {
+          const viewportHeight = window.visualViewport.height
+          const windowHeight = window.innerHeight
+          const keyboardHeight = windowHeight - viewportHeight
+          
+          // Only adjust if keyboard is significantly open (more than 150px)
+          if (keyboardHeight > 150) {
+            // Smooth adjustment - only move panel slightly up to prevent hang
+            setKeyboardHeight(Math.min(keyboardHeight * 0.25, 80))
+          } else {
+            setKeyboardHeight(0)
+          }
+        }
+      })
+    }
+
+    // Fallback for browsers without visualViewport
+    const handleResize = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      
+      rafId = requestAnimationFrame(() => {
+        if (!window.visualViewport) {
+          const currentHeight = window.innerHeight
+          const heightDiff = initialViewportHeight - currentHeight
+          
+          if (heightDiff > 150) {
+            // Smooth adjustment - only move panel slightly up
+            setKeyboardHeight(Math.min(heightDiff * 0.25, 80))
+          } else {
+            setKeyboardHeight(0)
+          }
+        }
+      })
+    }
+
+    // Store initial height when search opens
+    initialViewportHeight = window.innerHeight
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleViewportResize)
+    } else {
+      window.addEventListener('resize', handleResize)
+    }
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleViewportResize)
+      } else {
+        window.removeEventListener('resize', handleResize)
+      }
     }
   }, [searchOpen])
 
@@ -722,6 +972,7 @@ function UserDashboardContent({ onLogout }) {
           )}
           {activeTab === 'cart' && (
             <CartView
+              key={cartRefreshKey}
               onUpdateQuantity={handleUpdateCartQuantity}
               onRemove={handleRemoveFromCart}
               onCheckout={handleProceedToCheckout}
@@ -762,7 +1013,18 @@ function UserDashboardContent({ onLogout }) {
       {searchMounted ? (
         <div className={cn('user-search-sheet', searchOpen && 'is-open')}>
           <div className={cn('user-search-sheet__overlay', searchOpen && 'is-open')} onClick={closeSearch} />
-          <div className={cn('user-search-sheet__panel', searchOpen && 'is-open')}>
+          <div 
+            ref={searchPanelRef}
+            className={cn('user-search-sheet__panel', searchOpen && 'is-open')}
+            style={{
+              transform: keyboardHeight > 0 
+                ? `translateY(0) translateY(-${Math.min(keyboardHeight * 0.15, 60)}px)` 
+                : undefined,
+              transition: keyboardHeight > 0 
+                ? 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)' 
+                : undefined,
+            }}
+          >
             <div className="user-search-sheet__header">
               <input
                 ref={searchInputRef}

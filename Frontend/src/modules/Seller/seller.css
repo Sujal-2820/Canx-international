@@ -714,8 +714,9 @@
 
 .seller-section__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 1rem;
 }
 
 .seller-section__title {
@@ -732,19 +733,56 @@
 }
 
 .seller-section__cta {
-  padding: 0.4rem 0.75rem;
-  border: none;
+  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--seller-green-600);
   border-radius: 12px;
-  background: transparent;
+  background: linear-gradient(140deg, rgba(43, 118, 79, 0.08), rgba(43, 118, 79, 0.04));
   color: var(--seller-green-600);
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 2px 8px -4px rgba(24, 63, 44, 0.2),
+    0 1px 3px -1px rgba(24, 63, 44, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.seller-section__cta::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
 }
 
 .seller-section__cta:hover {
-  background: rgba(43, 118, 79, 0.1);
+  background: linear-gradient(140deg, rgba(43, 118, 79, 0.15), rgba(43, 118, 79, 0.08));
+  border-color: var(--seller-green-600);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 16px -6px rgba(24, 63, 44, 0.35),
+    0 3px 8px -2px rgba(24, 63, 44, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.seller-section__cta:hover::before {
+  opacity: 1;
+}
+
+.seller-section__cta:active {
+  transform: translateY(0);
+  box-shadow: 
+    0 2px 6px -3px rgba(24, 63, 44, 0.25),
+    0 1px 3px -1px rgba(24, 63, 44, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 /* Services/Shortcuts */
@@ -1345,6 +1383,11 @@
   background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(34, 94, 65, 0.12);
   box-shadow: 0 4px 12px -8px rgba(13, 38, 24, 0.2);
+}
+
+/* Reduce spacing between filter tabs and transaction history */
+#seller-wallet-filters.seller-section {
+  margin-bottom: 0.5rem;
 }
 
 .seller-filter-tab {
@@ -2049,6 +2092,38 @@
   color: var(--seller-green-600);
 }
 
+.seller-wallet-hero__view-earnings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(34, 94, 65, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 14px 28px -26px rgba(13, 38, 24, 0.45);
+  color: var(--seller-green-600);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.seller-wallet-hero__view-earnings:hover {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(43, 118, 79, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px -24px rgba(13, 38, 24, 0.5);
+}
+
+.seller-wallet-hero__view-earnings:active {
+  transform: translateY(0);
+  box-shadow: 0 12px 24px -22px rgba(13, 38, 24, 0.45);
+}
+
 /* Transactions */
 .seller-wallet-transactions {
   display: flex;
@@ -2242,34 +2317,209 @@
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px -8px rgba(13, 38, 24, 0.2);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 12px -8px rgba(13, 38, 24, 0.2),
+    0 2px 4px -1px rgba(13, 38, 24, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  position: relative;
+  overflow: hidden;
+}
+
+.seller-wallet-action::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
 }
 
 .seller-wallet-action:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px -12px rgba(13, 38, 24, 0.3);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 
+    0 12px 28px -10px rgba(13, 38, 24, 0.4),
+    0 6px 12px -4px rgba(13, 38, 24, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.seller-wallet-action:hover::before {
+  opacity: 1;
+}
+
+.seller-wallet-action:active {
+  transform: translateY(-1px) scale(1);
+  box-shadow: 
+    0 6px 16px -8px rgba(13, 38, 24, 0.3),
+    0 3px 6px -2px rgba(13, 38, 24, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .seller-wallet-action--primary {
-  background: linear-gradient(140deg, rgba(43, 118, 79, 0.12), rgba(43, 118, 79, 0.06));
+  background: linear-gradient(140deg, rgba(43, 118, 79, 0.15), rgba(43, 118, 79, 0.08));
   border-color: var(--seller-green-600);
   color: var(--seller-green-600);
-  box-shadow: 0 8px 20px -12px rgba(24, 63, 44, 0.4);
+  box-shadow: 
+    0 8px 20px -12px rgba(24, 63, 44, 0.5),
+    0 4px 8px -2px rgba(24, 63, 44, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .seller-wallet-action--primary:hover {
-  background: linear-gradient(140deg, rgba(43, 118, 79, 0.16), rgba(43, 118, 79, 0.10));
+  background: linear-gradient(140deg, rgba(43, 118, 79, 0.2), rgba(43, 118, 79, 0.12));
+  box-shadow: 
+    0 14px 32px -12px rgba(24, 63, 44, 0.6),
+    0 6px 14px -4px rgba(24, 63, 44, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .seller-wallet-action--secondary {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(34, 94, 65, 0.16);
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.95), rgba(250, 250, 250, 0.9));
+  border-color: rgba(34, 94, 65, 0.2);
+  box-shadow: 
+    0 4px 12px -8px rgba(13, 38, 24, 0.25),
+    0 2px 4px -1px rgba(13, 38, 24, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .seller-wallet-action--secondary:hover {
-  background: rgba(240, 248, 242, 0.8);
+  background: linear-gradient(140deg, rgba(240, 248, 242, 0.95), rgba(235, 245, 238, 0.9));
   border-color: var(--seller-green-600);
+  box-shadow: 
+    0 12px 28px -10px rgba(13, 38, 24, 0.35),
+    0 6px 12px -4px rgba(13, 38, 24, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+/* Bank Accounts List */
+.seller-bank-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.seller-bank-account-card {
+  position: relative;
+  padding: 1.25rem;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.98), rgba(250, 252, 251, 0.95));
+  border-radius: 16px;
+  border: 1.5px solid rgba(43, 118, 79, 0.12);
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 12px -6px rgba(13, 38, 24, 0.15),
+    0 2px 6px -2px rgba(13, 38, 24, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+}
+
+.seller-bank-account-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--seller-green-600), rgba(43, 118, 79, 0.6));
+  opacity: 0.6;
+}
+
+.seller-bank-account-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(43, 118, 79, 0.25);
+  box-shadow: 
+    0 8px 20px -8px rgba(13, 38, 24, 0.25),
+    0 4px 10px -4px rgba(13, 38, 24, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+.seller-bank-account-card__icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(43, 118, 79, 0.12), rgba(43, 118, 79, 0.08));
+  border-radius: 12px;
+  color: var(--seller-green-600);
+  box-shadow: 
+    0 2px 8px -4px rgba(24, 63, 44, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.seller-bank-account-card__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.seller-bank-account-card__name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--seller-ink);
+  margin: 0 0 0.5rem 0;
+  letter-spacing: -0.01em;
+}
+
+.seller-bank-account-card__details {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.seller-bank-account-card__account-number {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--seller-ink);
+  letter-spacing: 0.05em;
+  font-family: 'Courier New', monospace;
+}
+
+.seller-bank-account-card__separator {
+  font-size: 0.75rem;
+  color: rgba(26, 42, 34, 0.4);
+  font-weight: 600;
+}
+
+.seller-bank-account-card__bank {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--seller-green-600);
+}
+
+.seller-bank-account-card__ifsc {
+  font-size: 0.75rem;
+  color: rgba(26, 42, 34, 0.55);
+  margin: 0;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.seller-bank-account-card__badge {
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.seller-bank-account-card__badge span {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--seller-green-600);
+  background: linear-gradient(135deg, rgba(43, 118, 79, 0.1), rgba(43, 118, 79, 0.06));
+  border-radius: 20px;
+  border: 1px solid rgba(43, 118, 79, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 1px 3px -1px rgba(24, 63, 44, 0.1);
 }
 
 /* Announcements View */
@@ -3009,10 +3259,25 @@
   gap: 1.15rem;
   padding: 1.35rem 1.4rem 1.5rem;
   border-radius: 28px;
-  background: linear-gradient(150deg, rgba(43, 118, 79, 0.45), rgba(67, 160, 110, 0.40), rgba(107, 196, 143, 0.35));
+  background: var(--seller-hero-gradient);
   color: var(--seller-ink);
-  box-shadow: 0 24px 48px -30px rgba(13, 38, 24, 0.32);
+  box-shadow: 
+    0 24px 48px -30px rgba(13, 38, 24, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+    0 8px 32px -12px rgba(27, 143, 91, 0.4);
   overflow: hidden;
+}
+
+.seller-performance-hero__card::before {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -30%;
+  width: 180%;
+  height: 180%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, transparent 65%);
+  animation: rotate 10s linear infinite;
+  pointer-events: none;
 }
 
 .seller-performance-hero__card::after {
@@ -3020,7 +3285,7 @@
   position: absolute;
   inset: auto -40px -90px -40px;
   height: 220px;
-  background: radial-gradient(circle, rgba(164, 208, 178, 0.18), transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(254, 240, 138, 0.25) 0%, rgba(251, 191, 36, 0.15) 40%, transparent 70%);
   pointer-events: none;
 }
 
@@ -3070,9 +3335,9 @@
   gap: 0.75rem;
   padding: 1rem 1rem;
   border-radius: 18px;
-  border: 1px solid rgba(34, 94, 65, 0.12);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 12px 28px -20px rgba(13, 38, 24, 0.3);
+  border: 1px solid rgba(34, 94, 65, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 14px 28px -26px rgba(13, 38, 24, 0.45);
   min-width: 0;
   overflow: hidden;
   box-sizing: border-box;
@@ -3089,9 +3354,11 @@
 }
 
 .seller-performance-card__icon--sales {
-  background: linear-gradient(140deg, rgba(43, 118, 79, 0.12), rgba(43, 118, 79, 0.06));
+  background: linear-gradient(135deg, rgba(43, 118, 79, 0.18), rgba(43, 118, 79, 0.12));
   color: var(--seller-green-600);
-  box-shadow: inset 0 0 0 1px rgba(43, 118, 79, 0.16);
+  box-shadow: 
+    inset 0 0 0 1px rgba(43, 118, 79, 0.2),
+    0 2px 8px -4px rgba(24, 63, 44, 0.2);
 }
 
 .seller-performance-card__icon--target {
@@ -3101,15 +3368,19 @@
 }
 
 .seller-performance-card__icon--referrals {
-  background: linear-gradient(140deg, rgba(168, 85, 247, 0.12), rgba(168, 85, 247, 0.06));
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.18), rgba(168, 85, 247, 0.12));
   color: #a855f7;
-  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.16);
+  box-shadow: 
+    inset 0 0 0 1px rgba(168, 85, 247, 0.2),
+    0 2px 8px -4px rgba(139, 92, 246, 0.2);
 }
 
 .seller-performance-card__icon--commission {
-  background: linear-gradient(140deg, rgba(236, 201, 75, 0.12), rgba(236, 201, 75, 0.06));
-  color: #ecc94b;
-  box-shadow: inset 0 0 0 1px rgba(236, 201, 75, 0.16);
+  background: linear-gradient(135deg, rgba(236, 201, 75, 0.18), rgba(236, 201, 75, 0.12));
+  color: #d97706;
+  box-shadow: 
+    inset 0 0 0 1px rgba(236, 201, 75, 0.25),
+    0 2px 8px -4px rgba(217, 119, 6, 0.2);
 }
 
 .seller-performance-card__content {
@@ -3123,9 +3394,9 @@
 .seller-performance-card__label {
   font-size: 0.7rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: rgba(26, 42, 34, 0.65);
+  color: rgba(32, 52, 40, 0.75);
   margin: 0;
 }
 
@@ -3136,13 +3407,15 @@
   margin: 0;
   word-break: break-word;
   overflow-wrap: break-word;
+  letter-spacing: -0.01em;
 }
 
 .seller-performance-card__trend {
   font-size: 0.75rem;
-  color: rgba(26, 42, 34, 0.6);
+  color: rgba(32, 52, 40, 0.7);
   word-break: break-word;
   overflow-wrap: break-word;
+  font-weight: 500;
 }
 
 .seller-performance-breakdown {
@@ -3364,8 +3637,9 @@
 
 /* Enhanced Performance Cards */
 .seller-performance-card--highlight {
-  border-color: rgba(27, 143, 91, 0.2);
-  background: linear-gradient(135deg, rgba(240, 248, 242, 0.6) 0%, rgba(255, 255, 255, 0.9) 100%);
+  border-color: rgba(27, 143, 91, 0.25);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 16px 32px -24px rgba(13, 38, 24, 0.5);
 }
 
 .seller-performance-card__trend-group {
@@ -3377,9 +3651,10 @@
 
 .seller-performance-card__trend-secondary {
   font-size: 0.7rem;
-  color: rgba(26, 42, 34, 0.5);
+  color: rgba(32, 52, 40, 0.65);
   word-break: break-word;
   overflow-wrap: break-word;
+  font-weight: 500;
 }
 
 .seller-performance-card__trend--active {
@@ -3424,9 +3699,9 @@
 .seller-performance-breakdown-card {
   padding: 1.25rem;
   border-radius: 20px;
-  background: linear-gradient(135deg, rgba(240, 248, 242, 0.4) 0%, rgba(255, 255, 255, 0.9) 100%);
-  border: 1px solid rgba(27, 143, 91, 0.15);
-  box-shadow: 0 8px 24px -12px rgba(27, 143, 91, 0.15);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(34, 94, 65, 0.14);
+  box-shadow: 0 14px 28px -26px rgba(13, 38, 24, 0.45);
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
@@ -3452,7 +3727,7 @@
 .seller-performance-breakdown-card__target-label {
   font-size: 0.75rem;
   font-weight: 600;
-  color: rgba(26, 42, 34, 0.6);
+  color: rgba(32, 52, 40, 0.75);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0;
@@ -3489,10 +3764,11 @@
 
 .seller-performance-breakdown-card__progress-label {
   font-size: 0.65rem;
-  color: rgba(26, 42, 34, 0.6);
+  color: rgba(32, 52, 40, 0.7);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .seller-performance-breakdown-card__progress {
@@ -3526,8 +3802,9 @@
   gap: 0.75rem;
   padding: 0.85rem;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(34, 94, 65, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(34, 94, 65, 0.14);
+  box-shadow: 0 2px 8px -4px rgba(13, 38, 24, 0.15);
   min-width: 0;
   overflow: hidden;
 }
@@ -3552,7 +3829,7 @@
 .seller-performance-breakdown-card__detail-label {
   font-size: 0.65rem;
   font-weight: 600;
-  color: rgba(26, 42, 34, 0.6);
+  color: rgba(32, 52, 40, 0.7);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0;
@@ -3583,22 +3860,22 @@
 .seller-performance-commission-card {
   padding: 1rem;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(34, 94, 65, 0.12);
-  box-shadow: 0 8px 20px -12px rgba(13, 38, 24, 0.2);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(34, 94, 65, 0.14);
+  box-shadow: 0 14px 28px -26px rgba(13, 38, 24, 0.45);
   min-width: 0;
   overflow: hidden;
   box-sizing: border-box;
 }
 
 .seller-performance-commission-card--standard {
-  border-color: rgba(27, 143, 91, 0.2);
-  background: linear-gradient(135deg, rgba(240, 248, 242, 0.4) 0%, rgba(255, 255, 255, 0.9) 100%);
+  border-color: rgba(27, 143, 91, 0.25);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .seller-performance-commission-card--premium {
-  border-color: rgba(249, 115, 22, 0.2);
-  background: linear-gradient(135deg, rgba(255, 247, 237, 0.4) 0%, rgba(255, 255, 255, 0.9) 100%);
+  border-color: rgba(249, 115, 22, 0.25);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .seller-performance-commission-card__header {
@@ -3670,9 +3947,9 @@
   gap: 0.75rem;
   padding: 1rem;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(34, 94, 65, 0.12);
-  box-shadow: 0 8px 20px -12px rgba(13, 38, 24, 0.15);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(34, 94, 65, 0.14);
+  box-shadow: 0 14px 28px -26px rgba(13, 38, 24, 0.45);
   min-width: 0;
   overflow: hidden;
   box-sizing: border-box;
@@ -3699,7 +3976,7 @@
 .seller-stat-card-enhanced__label {
   font-size: 0.7rem;
   font-weight: 600;
-  color: rgba(26, 42, 34, 0.6);
+  color: rgba(32, 52, 40, 0.75);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0;
@@ -3716,8 +3993,9 @@
 
 .seller-stat-card-enhanced__note {
   font-size: 0.7rem;
-  color: rgba(26, 42, 34, 0.5);
+  color: rgba(32, 52, 40, 0.65);
   margin: 0;
+  font-weight: 500;
 }
 
 /* Top Users */
@@ -3734,9 +4012,9 @@
   gap: 0.75rem;
   padding: 0.85rem;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(34, 94, 65, 0.12);
-  box-shadow: 0 4px 12px -8px rgba(13, 38, 24, 0.15);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(34, 94, 65, 0.14);
+  box-shadow: 0 8px 16px -10px rgba(13, 38, 24, 0.3);
   min-width: 0;
   overflow: hidden;
   box-sizing: border-box;

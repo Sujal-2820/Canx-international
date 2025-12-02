@@ -829,8 +829,8 @@ export function VendorDashboard({ onLogout }) {
                 const availableBalance = data.availableBalance || 0
                 
                 // Validate amount
-                if (withdrawalAmount < 100) {
-                  error('Minimum withdrawal amount is ₹100')
+                if (withdrawalAmount < 1000) {
+                  error('Minimum withdrawal amount is ₹1,000')
                   return
                 }
                 
@@ -1014,9 +1014,10 @@ export function VendorDashboard({ onLogout }) {
 
 function OverviewView({ onNavigate, welcomeName, openPanel }) {
   const { profile, dashboard } = useVendorState()
-  const { fetchDashboardData } = useVendorApi()
+  const { fetchDashboardData, getWithdrawals } = useVendorApi()
   const servicesRef = useRef(null)
   const [servicePage, setServicePage] = useState(0)
+  const [recentWithdrawals, setRecentWithdrawals] = useState([])
 
   // Fetch dashboard data on mount
   useEffect(() => {
@@ -1038,12 +1039,27 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
     { label: 'Settings', note: 'Profile & verification', tone: 'success', target: 'credit', icon: CreditIcon, action: 'profile-settings' },
   ]
 
+  // Fetch recent withdrawals for activity
+  useEffect(() => {
+    const loadRecentWithdrawals = async () => {
+      try {
+        const result = await getWithdrawals({ page: 1, limit: 5, status: 'approved' })
+        if (result.data?.withdrawals) {
+          setRecentWithdrawals(result.data.withdrawals)
+        }
+      } catch (err) {
+        // Silently fail - withdrawals are optional for activity
+      }
+    }
+    loadRecentWithdrawals()
+  }, [getWithdrawals])
+
   // Use data from context or fallback to snapshot
   const overviewData = dashboard.overview || {}
   
   // Transform recent orders from backend to activity format
   const recentOrders = overviewData.recentOrders || []
-  const transactions = recentOrders.map((order) => {
+  const orderTransactions = recentOrders.map((order) => {
     const customerName = order.userId?.name || 'Unknown Customer'
     const initials = customerName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
     return {
@@ -1054,11 +1070,35 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
       avatar: initials,
       orderId: order._id || order.id,
       orderNumber: order.orderNumber,
+      type: 'order',
+      date: order.createdAt || order.updatedAt,
     }
   })
   
-  // If no recent orders, use empty array (don't show dummy data)
-  const displayTransactions = transactions.length > 0 ? transactions.slice(0, 4) : []
+  // Transform recent withdrawals to activity format
+  const withdrawalTransactions = recentWithdrawals.map((withdrawal) => {
+    const statusText = withdrawal.status === 'approved' ? 'Approved' : withdrawal.status === 'completed' ? 'Completed' : withdrawal.status
+    return {
+      name: 'Withdrawal Request',
+      action: `Withdrawal ${statusText}`,
+      amount: `-₹${(withdrawal.amount || 0).toLocaleString('en-IN')}`,
+      status: statusText,
+      avatar: 'WD',
+      withdrawalId: withdrawal._id || withdrawal.id,
+      type: 'withdrawal',
+      date: withdrawal.reviewedAt || withdrawal.createdAt,
+    }
+  })
+  
+  // Combine and sort by date (most recent first)
+  const allTransactions = [...orderTransactions, ...withdrawalTransactions].sort((a, b) => {
+    const dateA = a.date ? new Date(a.date).getTime() : 0
+    const dateB = b.date ? new Date(b.date).getTime() : 0
+    return dateB - dateA
+  })
+  
+  // If no transactions, use empty array (don't show dummy data)
+  const displayTransactions = allTransactions.length > 0 ? allTransactions.slice(0, 4) : []
 
   const walletBalance = overviewData.credit?.remaining
     ? `₹${(overviewData.credit.remaining / 100000).toFixed(1)}L`
@@ -1201,7 +1241,7 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
         </div>
         <div className="overview-activity__list">
           {displayTransactions.length > 0 ? displayTransactions.map((item, index) => (
-            <div key={item.orderId || `${item.name}-${index}`} className="overview-activity__item">
+            <div key={item.orderId || item.withdrawalId || `${item.name}-${index}`} className="overview-activity__item">
               <div className="overview-activity__avatar">{item.avatar}</div>
               <div className="overview-activity__details">
                 <div className="overview-activity__row">
@@ -4390,10 +4430,11 @@ function CreditView({ openPanel }) {
 function ReportsView() {
   const { dashboard } = useVendorState()
   const dispatch = useVendorDispatch()
-  const { getReports } = useVendorApi()
+  const { getReports, getEarningsSummary } = useVendorApi()
 
   const [activeTab, setActiveTab] = useState('revenue')
   const [timePeriod, setTimePeriod] = useState('week')
+  const [earningsSummary, setEarningsSummary] = useState(null)
 
   useEffect(() => {
     // Convert timePeriod to days for backend
@@ -4405,12 +4446,19 @@ function ReportsView() {
     }
     const periodDays = periodMap[timePeriod] || '30'
     
-    getReports({ period: periodDays }).then((result) => {
-      if (result.data) {
-        dispatch({ type: 'SET_REPORTS_DATA', payload: result.data })
+    // Fetch both reports and earnings summary
+    Promise.all([
+      getReports({ period: periodDays }),
+      getEarningsSummary(),
+    ]).then(([reportsResult, earningsResult]) => {
+      if (reportsResult.data) {
+        dispatch({ type: 'SET_REPORTS_DATA', payload: reportsResult.data })
+      }
+      if (earningsResult.data) {
+        setEarningsSummary(earningsResult.data)
       }
     })
-  }, [getReports, dispatch, timePeriod])
+  }, [getReports, getEarningsSummary, dispatch, timePeriod])
   // Remove static topVendors - this is vendor-specific data, not needed here
   // If needed in future, can be fetched from backend analytics
 
@@ -4467,7 +4515,8 @@ function ReportsView() {
   
   // Get revenue data from backend (backend returns 'revenue', not 'sales')
   const revenueData = reportsData?.revenue || {}
-  const totalSales = revenueData.totalRevenue || 0
+  // Use earnings summary for total earnings (vendor earnings), fallback to revenue if not available
+  const totalEarnings = earningsSummary?.totalEarnings || 0
   const orderCount = revenueData.orderCount || 0
   const averageOrderValue = revenueData.averageOrderValue || 0
   const maxValue = Math.max(...chartData.revenue, ...chartData.orders)
@@ -4491,7 +4540,11 @@ function ReportsView() {
                 <div className="reports-summary-card__stat">
                   <span className="reports-summary-card__stat-label">Total Earnings</span>
                   <span className="reports-summary-card__stat-value">
-                    {totalSales > 0 ? `₹${(totalSales / 100000).toFixed(1)}L` : '₹0'}
+                    {totalEarnings >= 100000 
+                      ? `₹${(totalEarnings / 100000).toFixed(1)}L` 
+                      : totalEarnings > 0 
+                        ? `₹${Math.round(totalEarnings).toLocaleString('en-IN')}` 
+                        : '₹0'}
                   </span>
             </div>
                 <div className="reports-summary-card__stat">
@@ -5003,12 +5056,14 @@ function EarningsView({ openPanel, onNavigate }) {
     totalEarnings: 0,
     availableBalance: 0,
     pendingWithdrawal: 0,
+    totalWithdrawn: 0,
     thisMonthEarnings: 0,
     lastWithdrawalDate: null,
   }
 
   const earningsMetrics = [
     { label: 'Available Balance', value: formatCurrency(summary.availableBalance), icon: SparkIcon, tone: 'success' },
+    { label: 'Total Withdrawn', value: formatCurrency(summary.totalWithdrawn || 0), icon: WalletIcon, tone: 'info' },
     { label: 'Pending Withdrawal', value: formatCurrency(summary.pendingWithdrawal), icon: CreditIcon, tone: 'warn' },
     { label: 'This Month', value: formatCurrency(summary.thisMonthEarnings), icon: ChartIcon, tone: 'teal' },
   ]
@@ -5062,6 +5117,10 @@ function EarningsView({ openPanel, onNavigate }) {
                     <span className="credit-status-card__info-value">{formatCurrency(summary.availableBalance)}</span>
                   </div>
                   <div className="credit-status-card__info-item">
+                    <span className="credit-status-card__info-label">Withdrawn</span>
+                    <span className="credit-status-card__info-value">{formatCurrency(summary.totalWithdrawn || 0)}</span>
+                  </div>
+                  <div className="credit-status-card__info-item">
                     <span className="credit-status-card__info-label">Pending</span>
                     <span className="credit-status-card__info-value">{formatCurrency(summary.pendingWithdrawal)}</span>
                   </div>
@@ -5101,9 +5160,10 @@ function EarningsView({ openPanel, onNavigate }) {
                   availableBalance: summary.availableBalance,
                   bankAccountOptions,
                   bankAccountId: defaultBankAccountId,
+                  bankAccounts: bankAccounts, // Pass full bank accounts array for confirmation modal
                 })
               }}
-              disabled={summary.availableBalance < 100 || bankAccounts.length === 0}
+              disabled={summary.availableBalance < 1000 || bankAccounts.length === 0}
             >
               Request Withdrawal
             </button>
@@ -5177,7 +5237,7 @@ function EarningsView({ openPanel, onNavigate }) {
             <h3 className="overview-section__title">Earnings Details</h3>
           </div>
         </div>
-        <div className="credit-action-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+        <div className="credit-action-grid credit-action-grid--scrollable">
           <button
             type="button"
             className={cn('credit-action-card', activeSection === 'history' && 'is-active')}
@@ -5200,6 +5260,18 @@ function EarningsView({ openPanel, onNavigate }) {
                 <CartIcon className="h-5 w-5" />
               </span>
               <h4 className="credit-action-card__title">By Orders</h4>
+            </header>
+          </button>
+          <button
+            type="button"
+            className={cn('credit-action-card', activeSection === 'withdrawals' && 'is-active')}
+            onClick={() => setActiveSection('withdrawals')}
+          >
+            <header>
+              <span className="credit-action-card__icon">
+                <WalletIcon className="h-5 w-5" />
+              </span>
+              <h4 className="credit-action-card__title">Withdrawals</h4>
             </header>
           </button>
         </div>
@@ -5303,6 +5375,73 @@ function EarningsView({ openPanel, onNavigate }) {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Withdrawals Section */}
+      {activeSection === 'withdrawals' && (
+        <section id="earnings-withdrawals" className="credit-section">
+          <div className="overview-section__header">
+            <div>
+              <h3 className="overview-section__title">Withdrawal History</h3>
+            </div>
+          </div>
+          {withdrawals.length === 0 ? (
+            <div className="credit-usage-card">
+              <p style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>No withdrawal requests yet</p>
+            </div>
+          ) : (
+            <div className="credit-usage-card">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {withdrawals.map((withdrawal) => {
+                  const statusColor = withdrawal.status === 'approved' || withdrawal.status === 'completed' 
+                    ? '#10b981' 
+                    : withdrawal.status === 'rejected' 
+                    ? '#ef4444' 
+                    : '#f59e0b'
+                  const statusText = withdrawal.status === 'approved' ? 'Approved' 
+                    : withdrawal.status === 'completed' ? 'Completed' 
+                    : withdrawal.status === 'rejected' ? 'Rejected' 
+                    : 'Pending'
+                  return (
+                    <div
+                      key={withdrawal._id || withdrawal.id}
+                      style={{
+                        padding: '1rem',
+                        borderBottom: '1px solid #e5e7eb',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div>
+                        <p style={{ fontWeight: '600', marginBottom: '0.25rem' }}>
+                          Withdrawal Request
+                        </p>
+                        <p style={{ fontSize: '0.875rem', color: '#666' }}>
+                          {withdrawal.bankAccountId?.bankName || 'Bank'} • {withdrawal.bankAccountId?.accountNumber ? `****${withdrawal.bankAccountId.accountNumber.slice(-4)}` : 'N/A'}
+                        </p>
+                        <p style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>
+                          {formatDate(withdrawal.reviewedAt || withdrawal.createdAt)}
+                        </p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <p style={{ fontWeight: '600', color: statusColor }}>{formatCurrency(withdrawal.amount)}</p>
+                        <p style={{ fontSize: '0.75rem', color: statusColor }}>
+                          {statusText}
+                        </p>
+                        {withdrawal.paymentReference && (
+                          <p style={{ fontSize: '0.7rem', color: '#999', marginTop: '0.25rem' }}>
+                            Ref: {withdrawal.paymentReference.slice(-8)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}

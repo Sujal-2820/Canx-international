@@ -23,6 +23,7 @@ const PaymentHistory = require('../models/PaymentHistory');
 const Settings = require('../models/Settings');
 const Notification = require('../models/Notification');
 const Offer = require('../models/Offer');
+const razorpayService = require('../services/razorpayService');
 const { VENDOR_COVERAGE_RADIUS_KM, MIN_VENDOR_PURCHASE, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 
 const { sendOTP } = require('../utils/otp');
@@ -2678,6 +2679,7 @@ exports.getAllSellerWithdrawals = async (req, res, next) => {
     // Execute query with seller population
     const withdrawals = await WithdrawalRequest.find(query)
       .populate('sellerId', 'sellerId name phone email wallet')
+      .populate('bankAccountId')
       .populate('reviewedBy', 'name email')
       .sort(sort)
       .skip(skip)
@@ -2739,6 +2741,8 @@ exports.getSellerWithdrawals = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const withdrawals = await WithdrawalRequest.find(query)
+      .populate('sellerId', 'sellerId name phone email wallet')
+      .populate('bankAccountId')
       .populate('reviewedBy', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -2765,6 +2769,97 @@ exports.getSellerWithdrawals = async (req, res, next) => {
 };
 
 /**
+ * @desc    Create payment intent for seller withdrawal
+ * @route   POST /api/admin/sellers/withdrawals/:requestId/payment-intent
+ * @access  Private (Admin)
+ */
+exports.createSellerWithdrawalPaymentIntent = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const { amount } = req.body;
+
+    const withdrawal = await WithdrawalRequest.findById(requestId)
+      .populate('sellerId', 'sellerId name phone email wallet')
+      .populate('bankAccountId');
+
+    if (!withdrawal) {
+      return res.status(404).json({
+        success: false,
+        message: 'Withdrawal request not found',
+      });
+    }
+
+    if (withdrawal.userType !== 'seller') {
+      return res.status(400).json({
+        success: false,
+        message: 'This is not a seller withdrawal request',
+      });
+    }
+
+    if (withdrawal.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `Withdrawal request is already ${withdrawal.status}`,
+      });
+    }
+
+    // Use withdrawal amount if not provided
+    const paymentAmount = amount || withdrawal.amount;
+
+    // Ensure seller is populated
+    if (!withdrawal.sellerId || !withdrawal.sellerId._id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Seller information not found',
+      });
+    }
+
+    // Create Razorpay order
+    // Receipt must be max 40 characters (Razorpay requirement)
+    const receiptPrefix = `swd_${withdrawal._id.toString().slice(-8)}_`;
+    const timestamp = Date.now().toString().slice(-8);
+    const receipt = (receiptPrefix + timestamp).slice(0, 40); // Ensure max 40 chars
+    
+    const razorpayOrder = await razorpayService.createOrder({
+      amount: paymentAmount,
+      currency: 'INR',
+      receipt: receipt,
+      notes: {
+        withdrawalRequestId: withdrawal._id.toString(),
+        sellerId: withdrawal.sellerId._id.toString(),
+        sellerIdCode: withdrawal.sellerId.sellerId || 'Unknown Seller',
+        type: 'seller_withdrawal',
+      },
+    });
+
+    // Get Razorpay Key ID
+    const keyId = process.env.RAZORPAY_KEY_ID || 'rzp_test_key';
+
+    res.status(200).json({
+      success: true,
+      data: {
+        paymentIntent: {
+          id: razorpayOrder.id,
+          amount: paymentAmount,
+          currency: 'INR',
+          status: razorpayOrder.status,
+          razorpayOrderId: razorpayOrder.id,
+          keyId: keyId,
+          receipt: razorpayOrder.receipt,
+          createdAt: new Date(),
+          isTestMode: !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET,
+        },
+        message: process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+          ? 'Payment intent created successfully'
+          : 'Payment intent created (Test Mode)',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * @desc    Approve seller withdrawal request
  * @route   POST /api/admin/sellers/withdrawals/:requestId/approve
  * @access  Private (Admin)
@@ -2772,13 +2867,23 @@ exports.getSellerWithdrawals = async (req, res, next) => {
 exports.approveSellerWithdrawal = async (req, res, next) => {
   try {
     const { requestId } = req.params;
+    const { paymentReference, paymentMethod, paymentDate, adminRemarks } = req.body;
 
-    const withdrawal = await WithdrawalRequest.findById(requestId);
+    const withdrawal = await WithdrawalRequest.findById(requestId)
+      .populate('sellerId')
+      .populate('bankAccountId');
 
     if (!withdrawal) {
       return res.status(404).json({
         success: false,
         message: 'Withdrawal request not found',
+      });
+    }
+
+    if (withdrawal.userType !== 'seller') {
+      return res.status(400).json({
+        success: false,
+        message: 'This is not a seller withdrawal request',
       });
     }
 
@@ -2798,12 +2903,14 @@ exports.approveSellerWithdrawal = async (req, res, next) => {
       });
     }
 
-    // Check if seller has sufficient balance
-    const availableBalance = seller.wallet.balance - seller.wallet.pending;
+    // Calculate available balance using wallet.pending (seller-specific)
+    // Note: wallet.pending already includes this withdrawal amount, so we add it back for validation
+    const availableBalance = seller.wallet.balance - (seller.wallet.pending - withdrawal.amount);
+
     if (withdrawal.amount > availableBalance) {
       return res.status(400).json({
         success: false,
-        message: `Insufficient balance. Available: ₹${availableBalance}, Requested: ₹${withdrawal.amount}`,
+        message: `Insufficient balance. Available: ₹${Math.round(availableBalance * 100) / 100}, Requested: ₹${withdrawal.amount}`,
       });
     }
 
@@ -2811,6 +2918,16 @@ exports.approveSellerWithdrawal = async (req, res, next) => {
     withdrawal.status = 'approved';
     withdrawal.reviewedBy = req.admin._id;
     withdrawal.reviewedAt = new Date();
+    if (paymentReference) withdrawal.paymentReference = paymentReference;
+    if (paymentMethod) withdrawal.paymentMethod = paymentMethod;
+    if (paymentDate) withdrawal.paymentDate = new Date(paymentDate);
+    if (adminRemarks) withdrawal.adminRemarks = adminRemarks;
+    
+    // Store payment gateway details if provided
+    if (req.body.gatewayPaymentId) withdrawal.gatewayPaymentId = req.body.gatewayPaymentId;
+    if (req.body.gatewayOrderId) withdrawal.gatewayOrderId = req.body.gatewayOrderId;
+    if (req.body.gatewaySignature) withdrawal.gatewaySignature = req.body.gatewaySignature;
+    
     await withdrawal.save();
 
     // Update seller wallet
@@ -2821,15 +2938,15 @@ exports.approveSellerWithdrawal = async (req, res, next) => {
 
     // Log to payment history
     try {
-      const bankAccount = await BankAccount.findById(withdrawal.bankAccountId);
+      const bankAccount = withdrawal.bankAccountId;
       await PaymentHistory.create({
         activityType: 'seller_withdrawal_approved',
         sellerId: seller._id,
         withdrawalRequestId: withdrawal._id,
-        bankAccountId: withdrawal.bankAccountId,
+        bankAccountId: bankAccount?._id,
         amount: withdrawal.amount,
         status: 'completed',
-        paymentMethod: withdrawal.paymentMethod || 'bank_transfer',
+        paymentMethod: paymentMethod || 'razorpay',
         bankDetails: bankAccount ? {
           accountHolderName: bankAccount.accountHolderName,
           accountNumber: bankAccount.accountNumber,
@@ -2837,11 +2954,15 @@ exports.approveSellerWithdrawal = async (req, res, next) => {
           bankName: bankAccount.bankName,
         } : undefined,
         processedBy: req.admin._id,
-        description: `Seller withdrawal of ₹${withdrawal.amount} approved for ${seller.sellerId}`,
+        description: `Seller withdrawal of ₹${withdrawal.amount} approved and paid for ${seller.sellerId}`,
         metadata: {
           sellerIdCode: seller.sellerId,
           sellerName: seller.name,
-          newBalance: seller.wallet.balance,
+          sellerPhone: seller.phone,
+          paymentReference,
+          gatewayPaymentId: req.body.gatewayPaymentId,
+          gatewayOrderId: req.body.gatewayOrderId,
+          adminRemarks,
         },
       });
     } catch (historyError) {
@@ -2849,10 +2970,7 @@ exports.approveSellerWithdrawal = async (req, res, next) => {
       // Don't fail approval if history logging fails
     }
 
-    // TODO: Process payment (bank transfer/UPI/etc.)
-    // TODO: Send notification to seller
-
-    console.log(`✅ Withdrawal approved: ₹${withdrawal.amount} for seller ${seller.sellerId} - ${seller.name}`);
+    console.log(`✅ Seller withdrawal approved: ₹${withdrawal.amount} for seller ${seller.sellerId} (${seller.phone})`);
 
     res.status(200).json({
       success: true,
@@ -2862,10 +2980,6 @@ exports.approveSellerWithdrawal = async (req, res, next) => {
           id: seller._id,
           sellerId: seller.sellerId,
           name: seller.name,
-          wallet: {
-            balance: seller.wallet.balance,
-            pending: seller.wallet.pending,
-          },
         },
         message: 'Withdrawal approved successfully',
       },
@@ -3057,6 +3171,136 @@ exports.getAllVendorWithdrawals = async (req, res, next) => {
 };
 
 /**
+ * @desc    Create payment intent for vendor withdrawal
+ * @route   POST /api/admin/vendors/withdrawals/:requestId/payment-intent
+ * @access  Private (Admin)
+ */
+exports.createVendorWithdrawalPaymentIntent = async (req, res, next) => {
+  try {
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Starting...');
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Request params:', req.params);
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Request body:', req.body);
+
+    const { requestId } = req.params;
+    const { amount } = req.body;
+
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Looking for withdrawal:', requestId);
+
+    const withdrawal = await WithdrawalRequest.findById(requestId)
+      .populate('vendorId');
+
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Withdrawal found:', withdrawal ? 'Yes' : 'No');
+    if (withdrawal) {
+      console.log('🔍 [createVendorWithdrawalPaymentIntent] Withdrawal status:', withdrawal.status);
+      console.log('🔍 [createVendorWithdrawalPaymentIntent] Withdrawal userType:', withdrawal.userType);
+      console.log('🔍 [createVendorWithdrawalPaymentIntent] Withdrawal amount:', withdrawal.amount);
+      console.log('🔍 [createVendorWithdrawalPaymentIntent] Vendor populated:', withdrawal.vendorId ? 'Yes' : 'No');
+      if (withdrawal.vendorId) {
+        console.log('🔍 [createVendorWithdrawalPaymentIntent] Vendor ID:', withdrawal.vendorId._id);
+        console.log('🔍 [createVendorWithdrawalPaymentIntent] Vendor name:', withdrawal.vendorId.name);
+      }
+    }
+
+    if (!withdrawal) {
+      console.error('❌ [createVendorWithdrawalPaymentIntent] Withdrawal not found');
+      return res.status(404).json({
+        success: false,
+        message: 'Withdrawal request not found',
+      });
+    }
+
+    if (withdrawal.userType !== 'vendor') {
+      console.error('❌ [createVendorWithdrawalPaymentIntent] Invalid userType:', withdrawal.userType);
+      return res.status(400).json({
+        success: false,
+        message: 'This is not a vendor withdrawal request',
+      });
+    }
+
+    if (withdrawal.status !== 'pending') {
+      console.error('❌ [createVendorWithdrawalPaymentIntent] Invalid status:', withdrawal.status);
+      return res.status(400).json({
+        success: false,
+        message: `Withdrawal request is already ${withdrawal.status}`,
+      });
+    }
+
+    // Use withdrawal amount if not provided
+    const paymentAmount = amount || withdrawal.amount;
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Payment amount:', paymentAmount);
+
+    // Ensure vendor is populated
+    if (!withdrawal.vendorId || !withdrawal.vendorId._id) {
+      console.error('❌ [createVendorWithdrawalPaymentIntent] Vendor information not found');
+      console.error('❌ [createVendorWithdrawalPaymentIntent] withdrawal.vendorId:', withdrawal.vendorId);
+      return res.status(400).json({
+        success: false,
+        message: 'Vendor information not found',
+      });
+    }
+
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Creating Razorpay order...');
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] razorpayService available:', typeof razorpayService !== 'undefined' ? 'Yes' : 'No');
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] razorpayService.createOrder:', typeof razorpayService?.createOrder === 'function' ? 'Yes' : 'No');
+
+    // Create Razorpay order
+    // Receipt must be max 40 characters (Razorpay requirement)
+    const receiptPrefix = `wd_${withdrawal._id.toString().slice(-8)}_`;
+    const timestamp = Date.now().toString().slice(-8);
+    const receipt = (receiptPrefix + timestamp).slice(0, 40); // Ensure max 40 chars
+    
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Receipt generated:', receipt, 'Length:', receipt.length);
+    
+    const razorpayOrder = await razorpayService.createOrder({
+      amount: paymentAmount,
+      currency: 'INR',
+      receipt: receipt,
+      notes: {
+        withdrawalRequestId: withdrawal._id.toString(),
+        vendorId: withdrawal.vendorId._id.toString(),
+        vendorName: withdrawal.vendorId.name || 'Unknown Vendor',
+        type: 'vendor_withdrawal',
+      },
+    });
+
+    console.log('✅ [createVendorWithdrawalPaymentIntent] Razorpay order created:', razorpayOrder?.id);
+
+    // Get Razorpay Key ID
+    const keyId = process.env.RAZORPAY_KEY_ID || 'rzp_test_key';
+    console.log('🔍 [createVendorWithdrawalPaymentIntent] Razorpay Key ID:', keyId ? 'Present' : 'Missing');
+
+    const response = {
+      success: true,
+      data: {
+        paymentIntent: {
+          id: razorpayOrder.id,
+          amount: paymentAmount,
+          currency: 'INR',
+          status: razorpayOrder.status,
+          razorpayOrderId: razorpayOrder.id,
+          keyId: keyId,
+          receipt: razorpayOrder.receipt,
+          createdAt: new Date(),
+          isTestMode: !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET,
+        },
+        message: process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+          ? 'Payment intent created successfully'
+          : 'Payment intent created (Test Mode)',
+      },
+    };
+
+    console.log('✅ [createVendorWithdrawalPaymentIntent] Sending success response');
+    res.status(200).json(response);
+  } catch (error) {
+    console.error('❌ [createVendorWithdrawalPaymentIntent] Error occurred:');
+    console.error('❌ [createVendorWithdrawalPaymentIntent] Error message:', error.message);
+    console.error('❌ [createVendorWithdrawalPaymentIntent] Error stack:', error.stack);
+    console.error('❌ [createVendorWithdrawalPaymentIntent] Full error:', error);
+    next(error);
+  }
+};
+
+/**
  * @desc    Approve vendor withdrawal request
  * @route   POST /api/admin/vendors/withdrawals/:requestId/approve
  * @access  Private (Admin)
@@ -3152,7 +3396,57 @@ exports.approveVendorWithdrawal = async (req, res, next) => {
     if (paymentMethod) withdrawal.paymentMethod = paymentMethod;
     if (paymentDate) withdrawal.paymentDate = new Date(paymentDate);
     if (adminRemarks) withdrawal.adminRemarks = adminRemarks;
+    
+    // Store payment gateway details if provided
+    if (req.body.gatewayPaymentId) withdrawal.gatewayPaymentId = req.body.gatewayPaymentId;
+    if (req.body.gatewayOrderId) withdrawal.gatewayOrderId = req.body.gatewayOrderId;
+    if (req.body.gatewaySignature) withdrawal.gatewaySignature = req.body.gatewaySignature;
+    
     await withdrawal.save();
+
+    // Mark vendor earnings as withdrawn (oldest first until withdrawal amount is covered)
+    let remainingAmount = withdrawal.amount;
+    const earningsToMark = await VendorEarning.find({
+      vendorId: vendor._id,
+      status: 'processed',
+    }).sort({ processedAt: 1 }); // Oldest first
+
+    for (const earning of earningsToMark) {
+      if (remainingAmount <= 0) break;
+      
+      if (earning.earnings <= remainingAmount) {
+        // Mark entire earning as withdrawn
+        earning.status = 'withdrawn';
+        earning.withdrawnAt = new Date();
+        earning.withdrawalRequestId = withdrawal._id;
+        remainingAmount -= earning.earnings;
+        await earning.save();
+      } else {
+        // Partial withdrawal - create a new earning record for remaining amount
+        const remainingEarning = new VendorEarning({
+          vendorId: earning.vendorId,
+          orderId: earning.orderId,
+          productId: earning.productId,
+          productName: earning.productName,
+          quantity: earning.quantity,
+          userPrice: earning.userPrice,
+          vendorPrice: earning.vendorPrice,
+          earnings: earning.earnings - remainingAmount,
+          status: 'processed',
+          processedAt: earning.processedAt,
+          notes: `Remaining amount after withdrawal ${withdrawal._id}`,
+        });
+        await remainingEarning.save();
+
+        // Mark original earning as withdrawn
+        earning.earnings = remainingAmount;
+        earning.status = 'withdrawn';
+        earning.withdrawnAt = new Date();
+        earning.withdrawalRequestId = withdrawal._id;
+        await earning.save();
+        remainingAmount = 0;
+      }
+    }
 
     // Log to payment history
     try {
@@ -3164,7 +3458,7 @@ exports.approveVendorWithdrawal = async (req, res, next) => {
         bankAccountId: bankAccount?._id,
         amount: withdrawal.amount,
         status: 'completed',
-        paymentMethod: paymentMethod || 'bank_transfer',
+        paymentMethod: paymentMethod || 'razorpay',
         bankDetails: bankAccount ? {
           accountHolderName: bankAccount.accountHolderName,
           accountNumber: bankAccount.accountNumber,
@@ -3172,11 +3466,13 @@ exports.approveVendorWithdrawal = async (req, res, next) => {
           bankName: bankAccount.bankName,
         } : undefined,
         processedBy: req.admin._id,
-        description: `Vendor withdrawal of ₹${withdrawal.amount} approved for ${vendor.name}`,
+        description: `Vendor withdrawal of ₹${withdrawal.amount} approved and paid for ${vendor.name}`,
         metadata: {
           vendorName: vendor.name,
           vendorPhone: vendor.phone,
           paymentReference,
+          gatewayPaymentId: req.body.gatewayPaymentId,
+          gatewayOrderId: req.body.gatewayOrderId,
           adminRemarks,
         },
       });
@@ -3184,10 +3480,6 @@ exports.approveVendorWithdrawal = async (req, res, next) => {
       console.error('Error logging withdrawal history:', historyError);
       // Don't fail approval if history logging fails
     }
-
-    // Note: Vendor earnings are not deducted from a wallet like sellers
-    // The earnings are tracked separately and withdrawal is just a request for payment
-    // Admin processes the payment externally
 
     console.log(`✅ Vendor withdrawal approved: ₹${withdrawal.amount} for vendor ${vendor.name} (${vendor.phone})`);
 

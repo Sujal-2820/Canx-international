@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useSellerDispatch, useSellerState } from '../context/SellerContext'
+import { useSellerApi } from '../hooks/useSellerApi'
 import { MobileShell } from '../components/MobileShell'
 import { BottomNavItem } from '../components/BottomNavItem'
 import { MenuList } from '../components/MenuList'
@@ -147,13 +148,9 @@ export function SellerDashboard({ onLogout }) {
         const balance = data?.availableBalance !== undefined 
           ? data.availableBalance 
           : (typeof wallet.balance === 'number' ? wallet.balance : parseFloat((wallet.balance || '0').toString().replace(/[₹,\s]/g, '')) || 0)
-        if (balance < 5000) {
-          warning('Minimum withdrawal amount is ₹5,000')
-        } else {
-          setPanelData(data || {})
-          setPanelMounted(true)
-          requestAnimationFrame(() => setActivePanel('request-withdrawal'))
-        }
+        setPanelData(data || {})
+        setPanelMounted(true)
+        requestAnimationFrame(() => setActivePanel('request-withdrawal'))
         break
       case 'add-bank-account':
       case 'edit-bank-account':

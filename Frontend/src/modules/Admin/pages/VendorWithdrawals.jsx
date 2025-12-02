@@ -4,6 +4,7 @@ import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { Modal } from '../components/Modal'
 import { ConfirmationModal } from '../components/ConfirmationModal'
+import { VendorWithdrawalApprovalScreen } from '../components/VendorWithdrawalApprovalScreen'
 import { useAdminApi } from '../hooks/useAdminApi'
 import { useToast } from '../components/ToastNotification'
 import { cn } from '../../../lib/cn'
@@ -17,7 +18,7 @@ const columns = [
   { Header: 'Actions', accessor: 'actions' },
 ]
 
-export function VendorWithdrawalsPage() {
+export function VendorWithdrawalsPage({ subRoute = null, navigate }) {
   const {
     getVendorWithdrawalRequests,
     approveVendorWithdrawal,
@@ -35,6 +36,7 @@ export function VendorWithdrawalsPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState(null) // { type: 'approve' | 'reject' | 'complete', requestId: string }
+  const [approvingRequest, setApprovingRequest] = useState(null) // Request being approved (for full-screen flow)
 
   const fetchWithdrawals = useCallback(async () => {
     try {
@@ -64,8 +66,15 @@ export function VendorWithdrawalsPage() {
 
   const handleApprove = () => {
     if (!selectedRequest) return
-    setPendingAction({ type: 'approve', requestId: selectedRequest.requestId || selectedRequest.id })
-    setConfirmationModalOpen(true)
+    // Navigate to full-screen approval page
+    if (navigate) {
+      setApprovingRequest(selectedRequest)
+      navigate(`vendor-withdrawals/approve/${selectedRequest.requestId || selectedRequest.id}`)
+    } else {
+      // Fallback to modal if navigate not available
+      setPendingAction({ type: 'approve', requestId: selectedRequest.requestId || selectedRequest.id })
+      setConfirmationModalOpen(true)
+    }
   }
 
   const handleReject = () => {
@@ -173,6 +182,44 @@ export function VendorWithdrawalsPage() {
 
   const pendingCount = withdrawals.filter((w) => w.status === 'pending').length
   const pendingAmount = withdrawals.filter((w) => w.status === 'pending').reduce((sum, w) => sum + (w.amount || 0), 0)
+
+  // Handle sub-route for approval flow
+  useEffect(() => {
+    if (subRoute) {
+      const parts = subRoute.split('/')
+      if (parts[0] === 'approve' && parts[1]) {
+        // Find request by ID
+        const request = withdrawals.find(w => (w.requestId || w.id) === parts[1])
+        if (request) {
+          setApprovingRequest(request)
+        } else if (withdrawals.length > 0) {
+          // Request not found, might need to refetch
+          fetchWithdrawals()
+        }
+      }
+    } else {
+      // Reset when navigating back
+      setApprovingRequest(null)
+    }
+  }, [subRoute, withdrawals, fetchWithdrawals])
+
+  // If in approval flow, show approval screen
+  if (subRoute && subRoute.startsWith('approve/') && approvingRequest) {
+    return (
+      <VendorWithdrawalApprovalScreen
+        request={approvingRequest}
+        onBack={() => {
+          setApprovingRequest(null)
+          if (navigate) navigate('vendor-withdrawals')
+        }}
+        onSuccess={() => {
+          setApprovingRequest(null)
+          if (navigate) navigate('vendor-withdrawals')
+          fetchWithdrawals()
+        }}
+      />
+    )
+  }
 
   return (
     <div className="space-y-6">

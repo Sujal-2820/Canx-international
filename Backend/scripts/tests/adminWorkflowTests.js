@@ -73,7 +73,7 @@ async function testAuthentication(record) {
   record('Admin Auth', 'Admin Login (Phone only)', login.success);
   
   if (!login.success || login.status !== 200) {
-    return false;
+      return false;
   }
   
   // Step 2: Request OTP

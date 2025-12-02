@@ -133,6 +133,41 @@ router.get('/vendors', authorizeAdmin, adminController.getVendors);
  */
 
 /**
+ * @route   GET /api/admin/vendors/withdrawals
+ * @desc    Get all vendor withdrawal requests (global, with optional filters)
+ * @access  Private (Admin)
+ */
+router.get('/vendors/withdrawals', authorizeAdmin, adminController.getAllVendorWithdrawals);
+
+/**
+ * @route   POST /api/admin/vendors/withdrawals/:requestId/payment-intent
+ * @desc    Create payment intent for vendor withdrawal
+ * @access  Private (Admin)
+ */
+router.post('/vendors/withdrawals/:requestId/payment-intent', authorizeAdmin, adminController.createVendorWithdrawalPaymentIntent);
+
+/**
+ * @route   POST /api/admin/vendors/withdrawals/:requestId/approve
+ * @desc    Approve vendor withdrawal request
+ * @access  Private (Admin)
+ */
+router.post('/vendors/withdrawals/:requestId/approve', authorizeAdmin, adminController.approveVendorWithdrawal);
+
+/**
+ * @route   POST /api/admin/vendors/withdrawals/:requestId/reject
+ * @desc    Reject vendor withdrawal request
+ * @access  Private (Admin)
+ */
+router.post('/vendors/withdrawals/:requestId/reject', authorizeAdmin, adminController.rejectVendorWithdrawal);
+
+/**
+ * @route   PUT /api/admin/vendors/withdrawals/:requestId/complete
+ * @desc    Mark vendor withdrawal as completed (after payment processed)
+ * @access  Private (Admin)
+ */
+router.put('/vendors/withdrawals/:requestId/complete', authorizeAdmin, adminController.completeVendorWithdrawal);
+
+/**
  * @route   POST /api/admin/vendors/:vendorId/approve
  * @desc    Approve vendor application
  * @access  Private (Admin)
@@ -260,6 +295,13 @@ router.get('/sellers/withdrawals', authorizeAdmin, adminController.getAllSellerW
 router.get('/sellers/:sellerId/withdrawals', authorizeAdmin, adminController.getSellerWithdrawals);
 
 /**
+ * @route   POST /api/admin/sellers/withdrawals/:requestId/payment-intent
+ * @desc    Create payment intent for seller withdrawal
+ * @access  Private (Admin)
+ */
+router.post('/sellers/withdrawals/:requestId/payment-intent', authorizeAdmin, adminController.createSellerWithdrawalPaymentIntent);
+
+/**
  * @route   POST /api/admin/sellers/withdrawals/:requestId/approve
  * @desc    Approve seller withdrawal request
  * @access  Private (Admin)
@@ -272,38 +314,6 @@ router.post('/sellers/withdrawals/:requestId/approve', authorizeAdmin, adminCont
  * @access  Private (Admin)
  */
 router.post('/sellers/withdrawals/:requestId/reject', authorizeAdmin, adminController.rejectSellerWithdrawal);
-
-// ============================================================================
-// VENDOR WITHDRAWAL MANAGEMENT ROUTES
-// ============================================================================
-
-/**
- * @route   GET /api/admin/vendors/withdrawals
- * @desc    Get all vendor withdrawal requests (global, with optional filters)
- * @access  Private (Admin)
- */
-router.get('/vendors/withdrawals', authorizeAdmin, adminController.getAllVendorWithdrawals);
-
-/**
- * @route   POST /api/admin/vendors/withdrawals/:requestId/approve
- * @desc    Approve vendor withdrawal request
- * @access  Private (Admin)
- */
-router.post('/vendors/withdrawals/:requestId/approve', authorizeAdmin, adminController.approveVendorWithdrawal);
-
-/**
- * @route   POST /api/admin/vendors/withdrawals/:requestId/reject
- * @desc    Reject vendor withdrawal request
- * @access  Private (Admin)
- */
-router.post('/vendors/withdrawals/:requestId/reject', authorizeAdmin, adminController.rejectVendorWithdrawal);
-
-/**
- * @route   PUT /api/admin/vendors/withdrawals/:requestId/complete
- * @desc    Mark vendor withdrawal as completed (after payment processed)
- * @access  Private (Admin)
- */
-router.put('/vendors/withdrawals/:requestId/complete', authorizeAdmin, adminController.completeVendorWithdrawal);
 
 // ============================================================================
 // UNIFIED WITHDRAWAL MANAGEMENT ROUTES

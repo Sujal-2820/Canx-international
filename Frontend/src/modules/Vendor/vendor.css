@@ -1118,10 +1118,13 @@
 }
 
 .orders-hero__filter.is-active {
-  background: linear-gradient(145deg, rgba(43, 118, 79, 0.18), rgba(43, 118, 79, 0.08));
-  border-color: rgba(43, 118, 79, 0.32);
+  background: rgba(255, 255, 255, 0.95);
+  border-color: var(--vendor-green-600);
+  border-width: 2px;
   color: var(--vendor-green-600);
-  box-shadow: 0 16px 32px -26px rgba(16, 44, 30, 0.45);
+  box-shadow: 0 4px 16px -8px rgba(27, 143, 91, 0.35), 0 0 0 2px rgba(27, 143, 91, 0.1);
+  font-weight: 700;
+  transform: translateY(-1px);
 }
 
 .orders-hero__filter:not(.is-active):hover {
@@ -2633,8 +2636,8 @@
   gap: 0.4rem;
   padding: 0.45rem 0.9rem;
   border-radius: 999px;
-  background: rgba(107, 196, 143, 0.18);
-  border: 1px solid rgba(107, 196, 143, 0.28);
+  background: var(--vendor-green-600);
+  border: 1px solid var(--vendor-green-600);
 }
 
 .credit-status-card__status-text {
@@ -2642,7 +2645,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--vendor-green-600);
+  color: white;
 }
 
 .credit-status-card__action {
@@ -2652,9 +2655,9 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  border: 1px solid rgba(43, 118, 79, 0.28);
-  background: linear-gradient(145deg, rgba(43, 118, 79, 0.15), rgba(43, 118, 79, 0.06));
-  color: var(--vendor-green-600);
+  border: 1px solid var(--vendor-green-600);
+  background: var(--vendor-green-600);
+  color: white;
   box-shadow: 0 16px 32px -26px rgba(16, 44, 30, 0.4);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   white-space: nowrap;
@@ -2802,6 +2805,40 @@
   color: var(--vendor-green-600);
 }
 
+.credit-action-grid.credit-action-grid--scrollable {
+  display: flex !important;
+  flex-direction: row !important;
+  grid-template-columns: none !important;
+  gap: 0.75rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(27, 143, 91, 0.3) transparent;
+  padding-bottom: 0.5rem;
+  width: 100%;
+}
+
+.credit-action-grid.credit-action-grid--scrollable::-webkit-scrollbar {
+  height: 4px;
+}
+
+.credit-action-grid.credit-action-grid--scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.credit-action-grid.credit-action-grid--scrollable::-webkit-scrollbar-thumb {
+  background-color: rgba(27, 143, 91, 0.3);
+  border-radius: 2px;
+}
+
+.credit-action-grid.credit-action-grid--scrollable .credit-action-card {
+  flex: 0 0 auto !important;
+  min-width: 140px;
+  width: auto;
+  max-width: none;
+}
+
 .credit-action-grid {
   display: grid;
   gap: 0.75rem;
@@ -2853,13 +2890,13 @@
   align-self: flex-start;
   padding: 0.5rem 1.1rem;
   border-radius: 999px;
-  border: 1px solid rgba(43, 118, 79, 0.28);
+  border: 1px solid var(--vendor-green-600);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: linear-gradient(145deg, rgba(43, 118, 79, 0.12), rgba(43, 118, 79, 0.04));
-  color: var(--vendor-green-600);
+  background: var(--vendor-green-600);
+  color: white;
   box-shadow: 0 16px 32px -26px rgba(16, 44, 30, 0.4);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -2919,48 +2956,60 @@
 }
 
 .credit-timeline-item.is-success {
-  border-color: rgba(34, 94, 65, 0.22);
-  background: linear-gradient(150deg, rgba(229, 245, 233, 0.94), rgba(255, 255, 255, 0.96));
+  border-color: rgba(43, 118, 79, 0.4);
+  background: rgba(43, 118, 79, 0.25);
 }
 
 .credit-timeline-item.is-success .credit-timeline-item__marker {
-  background: rgba(43, 118, 79, 0.6);
-  border-color: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 0 0 2px rgba(43, 118, 79, 0.18);
+  background: var(--vendor-green-600);
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(43, 118, 79, 0.2);
 }
 
 .credit-timeline-item.is-success .credit-timeline-item__period {
-  color: rgba(30, 82, 54, 0.85);
+  color: var(--vendor-green-600);
+}
+
+.credit-timeline-item.is-success .credit-timeline-item__description {
+  color: rgba(26, 42, 34, 0.85);
 }
 
 .credit-timeline-item.is-warn {
-  border-color: rgba(176, 113, 37, 0.24);
-  background: linear-gradient(150deg, rgba(252, 242, 225, 0.92), rgba(255, 255, 255, 0.96));
+  border-color: rgba(176, 113, 37, 0.4);
+  background: rgba(176, 113, 37, 0.2);
 }
 
 .credit-timeline-item.is-warn .credit-timeline-item__marker {
-  background: rgba(176, 113, 37, 0.6);
-  border-color: rgba(255, 255, 255, 0.95);
+  background: var(--vendor-brown-600);
+  border-color: rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 0 2px rgba(176, 113, 37, 0.2);
 }
 
 .credit-timeline-item.is-warn .credit-timeline-item__period {
-  color: rgba(123, 74, 18, 0.85);
+  color: var(--vendor-brown-600);
+}
+
+.credit-timeline-item.is-warn .credit-timeline-item__description {
+  color: rgba(26, 42, 34, 0.85);
 }
 
 .credit-timeline-item.is-critical {
-  border-color: rgba(220, 38, 38, 0.24);
-  background: linear-gradient(150deg, rgba(254, 242, 242, 0.92), rgba(255, 255, 255, 0.96));
+  border-color: rgba(220, 38, 38, 0.4);
+  background: rgba(220, 38, 38, 0.2);
 }
 
 .credit-timeline-item.is-critical .credit-timeline-item__marker {
-  background: rgba(220, 38, 38, 0.6);
-  border-color: rgba(255, 255, 255, 0.95);
+  background: #dc2626;
+  border-color: rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
 }
 
 .credit-timeline-item.is-critical .credit-timeline-item__period {
-  color: rgba(153, 27, 27, 0.85);
+  color: #b91c1c;
+}
+
+.credit-timeline-item.is-critical .credit-timeline-item__description {
+  color: rgba(26, 42, 34, 0.85);
 }
 
 .reports-view {
@@ -3058,7 +3107,7 @@
 .reports-summary-card__insights {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.75rem;
   padding-top: 0.85rem;
   border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
@@ -3066,18 +3115,19 @@
 .reports-summary-card__insight {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  font-size: 0.74rem;
+  gap: 0.75rem;
+  font-size: 0.85rem;
   color: white;
 }
 
 .reports-summary-card__insight-icon {
-  font-size: 1rem;
+  font-size: 1.2rem;
   line-height: 1;
 }
 
 .reports-summary-card__insight-text {
   font-weight: 500;
+  font-size: 0.85rem;
 }
 
 .reports-tab-section {
@@ -3941,6 +3991,17 @@
 
 .vendor-action-panel__input::placeholder {
   color: rgba(26, 42, 34, 0.4);
+}
+
+/* Hide number input spinners */
+.vendor-action-panel__input--no-spinner::-webkit-outer-spin-button,
+.vendor-action-panel__input--no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.vendor-action-panel__input--no-spinner[type=number] {
+  -moz-appearance: textfield;
 }
 
 .vendor-action-panel__label {

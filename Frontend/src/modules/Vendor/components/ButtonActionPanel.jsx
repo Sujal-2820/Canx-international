@@ -48,10 +48,15 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
   // Reset formData when action changes
   useEffect(() => {
     if (action && intent === BUTTON_INTENT.UPDATION) {
-      setFormData(initializeFormData())
+      const newFormData = initializeFormData()
+      // Pre-fill bankAccountId if provided in data
+      if (data.bankAccountId && !newFormData.bankAccountId) {
+        newFormData.bankAccountId = data.bankAccountId
+      }
+      setFormData(newFormData)
     }
     setUploadedFile(null)
-  }, [buttonId, action, intent, initializeFormData])
+  }, [buttonId, action, intent, initializeFormData, data])
 
   const handleFormChange = (fieldName, value) => {
     setFormData((prev) => ({
@@ -189,6 +194,15 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
       if (data?.currentStock !== undefined) {
         submissionData.currentStock = data.currentStock
       }
+      // For withdrawal requests, include bankAccounts and availableBalance
+      if (buttonId === 'request-withdrawal') {
+        submissionData.availableBalance = data.availableBalance
+        submissionData.bankAccounts = data.bankAccounts || []
+        // Ensure bankAccountId is included
+        if (!submissionData.bankAccountId && data.bankAccountId) {
+          submissionData.bankAccountId = data.bankAccountId
+        }
+      }
       // Simulate API call
       onAction?.({ type: 'update', data: submissionData, buttonId })
       onShowNotification?.('Changes saved successfully', 'success')
@@ -276,9 +290,12 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
                 ) : field.type === 'select' ? (
                   (() => {
                     // Get options from field or from additionalData (for dynamic options like bank accounts)
-                    let filteredOptions = data.bankAccountOptions && field.name === 'bankAccountId' 
-                      ? data.bankAccountOptions 
-                      : field.options || []
+                    let filteredOptions = []
+                    if (field.name === 'bankAccountId' && data.bankAccountOptions) {
+                      filteredOptions = data.bankAccountOptions
+                    } else if (field.options) {
+                      filteredOptions = field.options
+                    }
                     
                     // For status field, filter to only show current and next status
                     if (field.name === 'status' && orderInfo) {
@@ -333,18 +350,28 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
                         )}
                         value={formData[field.name] || field.value || ''}
                         onChange={(e) => handleFormChange(field.name, e.target.value)}
+                        required={field.required}
                       >
-                        {filteredOptions.map((option) => {
-                          // Handle both string and object options
-                          const optionValue = typeof option === 'object' ? option.value : option
-                          const optionLabel = typeof option === 'object' ? option.label : option.charAt(0).toUpperCase() + option.slice(1)
-                          
-                          return (
-                            <option key={optionValue} value={optionValue}>
-                              {optionLabel}
-                            </option>
-                          )
-                        })}
+                        {filteredOptions.length === 0 ? (
+                          <option value="">{field.placeholder || 'No options available'}</option>
+                        ) : (
+                          <>
+                            {!formData[field.name] && !field.value && (
+                              <option value="">{field.placeholder || 'Select an option'}</option>
+                            )}
+                            {filteredOptions.map((option) => {
+                              // Handle both string and object options
+                              const optionValue = typeof option === 'object' ? option.value : option
+                              const optionLabel = typeof option === 'object' ? option.label : option.charAt(0).toUpperCase() + option.slice(1)
+                              
+                              return (
+                                <option key={optionValue} value={optionValue}>
+                                  {optionLabel}
+                                </option>
+                              )
+                            })}
+                          </>
+                        )}
                       </select>
                     )
                   })()
@@ -415,9 +442,21 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
                       className={cn(
                         'vendor-action-panel__input',
                         formErrors[field.name] && 'is-error',
+                        field.type === 'number' && 'vendor-action-panel__input--no-spinner',
                       )}
                       value={formData[field.name] || field.value || ''}
-                      onChange={(e) => handleFormChange(field.name, e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        // For withdrawal amount, prevent entering more than available balance
+                        if (field.name === 'amount' && data?.availableBalance) {
+                          const numValue = parseFloat(value)
+                          if (!isNaN(numValue) && numValue > data.availableBalance) {
+                            // Don't update if exceeds available balance
+                            return
+                          }
+                        }
+                        handleFormChange(field.name, value)
+                      }}
                       placeholder={field.placeholder || `Enter ${field.label.toLowerCase()}`}
                       min={field.min}
                       max={field.max !== undefined ? field.max : (data?.availableBalance && field.name === 'amount' ? data.availableBalance : undefined)}
