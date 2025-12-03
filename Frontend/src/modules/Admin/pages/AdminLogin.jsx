@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
 import { useAdminDispatch } from '../context/AdminContext'
 import * as adminApi from '../services/adminApi'
-import iraSathiLogo from '../../../assets/IRA Sathi2.png'
+import iraSathiLogo from '../../../assets/IRA Sathi.png'
 
 export function AdminLogin({ onSubmit }) {
   const dispatch = useAdminDispatch()

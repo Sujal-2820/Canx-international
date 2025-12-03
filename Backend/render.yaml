@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: ira-sathi-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          name: ira-sathi-backend
+          property: port
+      # Add your environment variables in Render dashboard:
+      # - MONGO_URI
+      # - JWT_SECRET
+      # - CORS_ORIGINS (comma-separated frontend URLs)
+      # - SMS_INDIA_HUB_API_KEY
+      # - RAZORPAY_KEY_ID
+      # - RAZORPAY_KEY_SECRET
+      # - CLOUDINARY_URL
+      # And other required env vars
+

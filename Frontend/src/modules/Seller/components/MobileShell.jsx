@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cn } from '../../../lib/cn'
 import { CloseIcon, MenuIcon, SearchIcon, BellIcon, UserIcon } from './icons'
-import iraSathiLogo from '../../../assets/IRA Sathi2.png'
+import iraSathiLogo from '../../../assets/IRA Sathi.png'
 import { MapPinIcon } from './icons'
 import { NotificationsDropdown } from './NotificationsDropdown'
 

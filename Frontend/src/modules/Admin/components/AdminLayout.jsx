@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { LayoutDashboard, LogOut, Menu } from 'lucide-react'
 import { cn } from '../../../lib/cn'
-import iraSathiLogo from '../../../assets/IRA Sathi2.png'
+import iraSathiLogo from '../../../assets/IRA Sathi.png'
 
 export function AdminLayout({ sidebar, children, onExit }) {
   const [open, setOpen] = useState(true)

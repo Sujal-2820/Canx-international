@@ -2118,8 +2118,10 @@ function InventoryView({ openPanel, onNavigate }) {
   const products = productsData?.products || []
   
   const totalProducts = products.length
-  const inStockCount = products.filter((p) => (p.adminStock ?? p.stock ?? 0) > 0).length
-  const outOfStockCount = totalProducts - inStockCount
+  // Count products where vendor has stock assigned (vendorStock > 0)
+  const inStockCount = products.filter((p) => (p.vendorStock ?? 0) > 0).length
+  // Count products where vendor has no stock (vendorStock <= 0)
+  const outOfStockCount = products.filter((p) => (p.vendorStock ?? 0) <= 0).length
 
   const getVendorStockStatus = (stock) => {
     const value = Number(stock) || 0
