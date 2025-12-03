@@ -13,6 +13,7 @@ const Product = require('../models/Product');
 const Vendor = require('../models/Vendor');
 const Seller = require('../models/Seller');
 const { PAYMENT_STATUS, ORDER_STATUS, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH } = require('../utils/constants');
+const { createVendorEarning, createCommission, createPaymentHistory } = require('../utils/createWithId');
 
 /**
  * Calculate and create vendor earnings for an order
@@ -58,7 +59,7 @@ async function calculateVendorEarnings(order) {
       const earningsPerItem = (userPrice - vendorPrice) * quantity;
 
       if (earningsPerItem > 0) {
-        const earning = new VendorEarning({
+        const earning = await createVendorEarning({
           vendorId: vendor._id,
           orderId: order._id,
           productId: product._id,
@@ -72,11 +73,10 @@ async function calculateVendorEarnings(order) {
           notes: `Earnings from order ${order.orderNumber}`,
         });
 
-        await earning.save();
         earnings.push(earning);
 
         // Log to payment history
-        await PaymentHistory.create({
+        await createPaymentHistory({
           activityType: 'vendor_earning_credited',
           vendorId: vendor._id,
           orderId: order._id,
@@ -152,7 +152,7 @@ async function calculateSellerCommission(order) {
     const commissionAmount = (order.totalAmount * commissionRate) / 100;
 
     // Create commission record
-    const commission = new Commission({
+    const commission = await createCommission({
       sellerId: seller._id,
       sellerIdCode: seller.sellerId,
       userId: order.userId,
@@ -169,14 +169,12 @@ async function calculateSellerCommission(order) {
       notes: `Commission for order ${order.orderNumber}`,
     });
 
-    await commission.save();
-
     // Update seller wallet
     seller.wallet.balance = (seller.wallet.balance || 0) + commissionAmount;
     await seller.save();
 
     // Log to payment history
-    await PaymentHistory.create({
+    await createPaymentHistory({
       activityType: 'seller_commission_credited',
       sellerId: seller._id,
       userId: order.userId,

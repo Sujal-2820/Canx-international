@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cn } from '../../../lib/cn'
 import { CloseIcon, MenuIcon, SearchIcon, BellIcon } from './icons'
-import iraSathiLogo from '../../../assets/IRA SathiNew.png'
+import iraSathiLogo from '../../../assets/IRA Sathi2.png'
 import { MapPinIcon } from './icons'
 
 export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick, onNotificationClick, notificationCount = 0, isNotificationAnimating = false }) {

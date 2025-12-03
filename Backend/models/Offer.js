@@ -2,6 +2,14 @@ const mongoose = require('mongoose');
 
 const offerSchema = new mongoose.Schema(
   {
+    offerId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      uppercase: true,
+      // Format: OFR-101, OFR-102, etc.
+    },
     type: {
       type: String,
       required: true,
@@ -85,6 +93,7 @@ const offerSchema = new mongoose.Schema(
 // Indexes for efficient queries
 offerSchema.index({ type: 1, isActive: 1 });
 offerSchema.index({ type: 1, isActive: 1, order: 1 }); // For carousel ordering
+offerSchema.index({ offerId: 1 }); // Offer ID lookup
 
 // Virtual for carousel count check
 offerSchema.statics.getCarouselCount = async function() {

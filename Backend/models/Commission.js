@@ -9,6 +9,14 @@ const { IRA_PARTNER_COMMISSION_THRESHOLD } = require('../utils/constants');
  * Tiered commission: 2% up to ₹50,000/user/month, 3% above
  */
 const commissionSchema = new mongoose.Schema({
+  commissionId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    // Format: COM-101, COM-102, etc.
+  },
   sellerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Seller',
@@ -105,6 +113,7 @@ commissionSchema.index({ userId: 1, month: 1, year: 1 }); // User's commissions 
 commissionSchema.index({ orderId: 1 }); // Order's commission
 commissionSchema.index({ sellerId: 1, createdAt: -1 }); // Seller's commission history
 commissionSchema.index({ sellerId: 1, userId: 1, month: 1, year: 1 }); // Commission per user per month
+commissionSchema.index({ commissionId: 1 }); // Commission ID lookup
 
 // Instance method: Check if commission is for threshold month
 commissionSchema.methods.isThresholdMonth = function () {

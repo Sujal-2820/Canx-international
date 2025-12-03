@@ -7,6 +7,14 @@ const mongoose = require('mongoose');
  * Admin can create, update, and manage these notifications
  */
 const notificationSchema = new mongoose.Schema({
+  notificationId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    // Format: NOT-101, NOT-102, etc.
+  },
   title: {
     type: String,
     required: [true, 'Notification title is required'],
@@ -77,6 +85,7 @@ const notificationSchema = new mongoose.Schema({
 notificationSchema.index({ targetAudience: 1, isActive: 1, createdAt: -1 }); // Get active notifications by audience
 notificationSchema.index({ isActive: 1, createdAt: -1 }); // Get all active notifications
 notificationSchema.index({ createdBy: 1, createdAt: -1 }); // Admin's notifications
+notificationSchema.index({ notificationId: 1 }); // Notification ID lookup
 
 // Virtual: Check if notification is currently active (considering dates)
 notificationSchema.virtual('isCurrentlyActive').get(function() {

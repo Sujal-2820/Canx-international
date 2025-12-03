@@ -11,6 +11,14 @@ const mongoose = require('mongoose');
  * - Bank account operations
  */
 const paymentHistorySchema = new mongoose.Schema({
+  historyId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    // Format: PH-101, PH-102, etc.
+  },
   // Activity type
   activityType: {
     type: String,
@@ -150,6 +158,7 @@ paymentHistorySchema.index({ sellerId: 1, createdAt: -1 });
 paymentHistorySchema.index({ orderId: 1 });
 paymentHistorySchema.index({ withdrawalRequestId: 1 });
 paymentHistorySchema.index({ createdAt: -1 }); // For admin history view
+paymentHistorySchema.index({ historyId: 1 }); // History ID lookup
 
 // Virtual for formatted activity description
 paymentHistorySchema.virtual('formattedDescription').get(function() {

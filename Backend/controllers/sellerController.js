@@ -17,6 +17,8 @@ const { getTestOTPInfo } = require('../services/smsIndiaHubService');
 const { generateToken } = require('../middleware/auth');
 const { OTP_EXPIRY_MINUTES, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 const { checkPhoneExists, checkPhoneInRole, isSpecialBypassNumber, SPECIAL_BYPASS_OTP } = require('../utils/phoneValidation');
+const { generateUniqueId } = require('../utils/generateUniqueId');
+const { createPaymentHistory, createBankAccount } = require('../utils/createWithId');
 
 /**
  * @desc    Seller registration
@@ -1308,8 +1310,12 @@ exports.requestWithdrawal = async (req, res, next) => {
       }
     }
 
+    // Generate unique withdrawal ID
+    const withdrawalId = await generateUniqueId(WithdrawalRequest, 'WDR', 'withdrawalId', 101);
+
     // Create withdrawal request
     const withdrawal = await WithdrawalRequest.create({
+      withdrawalId,
       userType: 'seller',
       sellerId: seller._id,
       amount,
@@ -2440,7 +2446,7 @@ exports.addBankAccount = async (req, res, next) => {
       });
     }
 
-    const bankAccount = await BankAccount.create({
+    const bankAccount = await createBankAccount({
       userId: seller._id,
       userType: 'seller',
       accountHolderName,

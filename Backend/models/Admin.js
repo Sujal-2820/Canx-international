@@ -8,6 +8,13 @@ const bcrypt = require('bcryptjs');
  * Two-step authentication: Phone/Password + OTP
  */
 const adminSchema = new mongoose.Schema({
+  adminId: {
+    type: String,
+    unique: true,
+    trim: true,
+    uppercase: true,
+    // Format: ADM-101, ADM-102, etc.
+  },
   phone: {
     type: String,
     required: [true, 'Phone number is required'],

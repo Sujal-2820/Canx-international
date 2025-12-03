@@ -7,6 +7,14 @@ const mongoose = require('mongoose');
  * Auto-deletes after 24 hours
  */
 const vendorNotificationSchema = new mongoose.Schema({
+  notificationId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    // Format: VNOT-101, VNOT-102, etc.
+  },
   vendorId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Vendor',
@@ -94,6 +102,7 @@ vendorNotificationSchema.index({ vendorId: 1, read: 1, createdAt: -1 }); // Get 
 vendorNotificationSchema.index({ vendorId: 1, createdAt: -1 }); // Get all notifications by vendor
 vendorNotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // Auto-delete expired notifications
 vendorNotificationSchema.index({ type: 1, createdAt: -1 }); // Get notifications by type
+vendorNotificationSchema.index({ notificationId: 1 }); // Notification ID lookup
 
 // Pre-save hook: Set expiresAt to 24 hours from now if not set
 vendorNotificationSchema.pre('save', function(next) {
@@ -148,5 +157,6 @@ vendorNotificationSchema.methods.markAsRead = async function() {
 const VendorNotification = mongoose.model('VendorNotification', vendorNotificationSchema);
 
 module.exports = VendorNotification;
+
 
 

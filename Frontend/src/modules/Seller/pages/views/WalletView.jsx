@@ -295,23 +295,23 @@ export function WalletView({ openPanel }) {
             <p className="seller-section__subtitle">Manage your bank accounts for withdrawals</p>
           </div>
           {bankAccounts.length === 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                openPanel('add-bank-account')
-                // Scroll to bank accounts section after a short delay to allow panel to open
-                setTimeout(() => {
-                  if (bankAccountsSectionRef.current) {
-                    bankAccountsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                  }
-                }, 300)
-              }}
+          <button
+            type="button"
+            onClick={() => {
+              openPanel('add-bank-account')
+              // Scroll to bank accounts section after a short delay to allow panel to open
+              setTimeout(() => {
+                if (bankAccountsSectionRef.current) {
+                  bankAccountsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+              }, 300)
+            }}
               className="seller-section__cta"
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <PlusIcon className="h-4 w-4" />
-              Add Account
-            </button>
+          >
+            <PlusIcon className="h-4 w-4" />
+            Add Account
+          </button>
           )}
         </div>
         {bankAccounts.length === 0 ? (
@@ -333,7 +333,7 @@ export function WalletView({ openPanel }) {
                     <span className="seller-bank-account-card__account-number">**** {account.accountNumber?.slice(-4) || 'N/A'}</span>
                     <span className="seller-bank-account-card__separator">•</span>
                     <span className="seller-bank-account-card__bank">{account.bankName}</span>
-                  </div>
+                </div>
                   <p className="seller-bank-account-card__ifsc">IFSC: {account.ifscCode}</p>
                 </div>
                 <div className="seller-bank-account-card__badge">

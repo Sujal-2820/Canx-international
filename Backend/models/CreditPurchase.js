@@ -8,6 +8,14 @@ const mongoose = require('mongoose');
  * When approved, vendor credit is updated and inventory is added
  */
 const creditPurchaseSchema = new mongoose.Schema({
+  creditPurchaseId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    // Format: CRP-101, CRP-102, etc.
+  },
   vendorId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Vendor',
@@ -118,6 +126,7 @@ const creditPurchaseSchema = new mongoose.Schema({
 // Indexes
 creditPurchaseSchema.index({ vendorId: 1, status: 1 }); // Vendor's purchases by status
 creditPurchaseSchema.index({ status: 1, createdAt: -1 }); // Pending purchases for admin
+creditPurchaseSchema.index({ creditPurchaseId: 1 }); // Credit purchase ID lookup
 
 // Virtual: Calculate total amount from items
 creditPurchaseSchema.virtual('calculatedTotal').get(function () {

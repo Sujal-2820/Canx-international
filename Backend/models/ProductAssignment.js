@@ -7,6 +7,14 @@ const mongoose = require('mongoose');
  * When Admin assigns a product to a vendor, it creates an inventory entry for that vendor
  */
 const productAssignmentSchema = new mongoose.Schema({
+  assignmentId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    // Format: PAS-101, PAS-102, etc.
+  },
   productId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
@@ -64,6 +72,7 @@ productAssignmentSchema.index({ productId: 1, vendorId: 1 }, { unique: true });
 // Indexes for queries
 productAssignmentSchema.index({ vendorId: 1, isActive: 1 }); // Vendor's active assignments
 productAssignmentSchema.index({ productId: 1, isActive: 1 }); // Product's active assignments
+productAssignmentSchema.index({ assignmentId: 1 }); // Assignment ID lookup
 
 const ProductAssignment = mongoose.model('ProductAssignment', productAssignmentSchema);
 

@@ -8,6 +8,13 @@ const mongoose = require('mongoose');
  * Can link IRA Partner ID for commission tracking
  */
 const userSchema = new mongoose.Schema({
+  userId: {
+    type: String,
+    unique: true,
+    trim: true,
+    uppercase: true,
+    // Format: USR-101, USR-102, etc.
+  },
   name: {
     type: String,
     required: [true, 'Name is required'],
@@ -86,6 +93,7 @@ const userSchema = new mongoose.Schema({
 // Index for phone-based queries
 userSchema.index({ phone: 1 });
 userSchema.index({ sellerId: 1 });
+userSchema.index({ userId: 1 }); // User ID lookup
 
 // Generate and store OTP
 userSchema.methods.generateOTP = function () {

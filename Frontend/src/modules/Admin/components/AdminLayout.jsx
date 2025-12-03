@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { LayoutDashboard, LogOut, Menu } from 'lucide-react'
 import { cn } from '../../../lib/cn'
+import iraSathiLogo from '../../../assets/IRA Sathi2.png'
 
 export function AdminLayout({ sidebar, children, onExit }) {
   const [open, setOpen] = useState(true)
@@ -22,8 +23,8 @@ export function AdminLayout({ sidebar, children, onExit }) {
           open ? 'justify-between px-4' : 'justify-center px-3'
         )}>
           <div className={cn('flex items-center gap-3 overflow-hidden transition-all', open ? 'opacity-100' : 'opacity-0 w-0')}>
-            <div className="flex h-8 w-8 items-center justify-center bg-white text-[#23282d]">
-              <span className="text-sm font-bold">A</span>
+            <div className="flex h-8 w-8 items-center justify-center bg-white rounded overflow-hidden flex-shrink-0">
+              <img src={iraSathiLogo} alt="IRA Sathi" className="h-full w-full object-contain" />
             </div>
             <div>
               <p className="text-sm font-semibold text-white">IRA Sathi</p>

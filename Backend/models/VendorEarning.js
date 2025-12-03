@@ -7,6 +7,14 @@ const mongoose = require('mongoose');
  * Earnings accumulate per order item
  */
 const vendorEarningSchema = new mongoose.Schema({
+  earningId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    // Format: VNE-101, VNE-102, etc.
+  },
   vendorId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Vendor',
@@ -82,6 +90,7 @@ vendorEarningSchema.index({ vendorId: 1, createdAt: -1 }); // Vendor's earnings 
 vendorEarningSchema.index({ orderId: 1 }); // Order's earnings
 vendorEarningSchema.index({ vendorId: 1, status: 1 }); // Vendor's earnings by status
 vendorEarningSchema.index({ vendorId: 1, processedAt: -1 }); // Vendor's earnings by processing date
+vendorEarningSchema.index({ earningId: 1 }); // Earning ID lookup
 
 const VendorEarning = mongoose.model('VendorEarning', vendorEarningSchema);
 

@@ -770,23 +770,18 @@ function InformationDisplayContent({ data, buttonId }) {
                 <div className="vendor-info-display__list">
                   {repaymentHistory.slice(0, 5).map((repayment, index) => {
                     const repaymentDate = repayment.paidAt || repayment.transactionDate || repayment.createdAt
+                    const repaymentId = repayment.repaymentId || `REP-${(repayment._id || repayment.id).toString().slice(-4)}`
                     return (
-                      <div key={repayment._id || repayment.id || index} className="vendor-info-display__item">
-                        <div className="vendor-info-display__item-content">
-                          <span className="vendor-info-display__item-label">
-                            {repayment.repaymentId || `Repayment #${(repayment._id || repayment.id).toString().slice(-6)}`}
+                      <div key={repayment._id || repayment.id || index} className="vendor-info-display__item vendor-info-display__item--repayment">
+                        <span className="vendor-info-display__item-id">{repaymentId}</span>
+                        <span className="vendor-info-display__item-amount">-₹{(repayment.amount || 0).toLocaleString('en-IN')}</span>
+                        <span className="vendor-info-display__item-status">{repayment.status === 'completed' ? 'Completed' : repayment.status}</span>
+                        <span className="vendor-info-display__item-date">{formatDate(repaymentDate)}</span>
+                        {repayment.penaltyAmount > 0 && (
+                          <span className="vendor-info-display__item-penalty">
+                            (Penalty: ₹{repayment.penaltyAmount.toLocaleString('en-IN')})
                           </span>
-                          <span className="vendor-info-display__item-value">-₹{(repayment.amount || 0).toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="vendor-info-display__item-meta">
-                          <span>{repayment.status === 'completed' ? 'Completed' : repayment.status}</span>
-                          <span>{formatDate(repaymentDate)}</span>
-                          {repayment.penaltyAmount > 0 && (
-                            <span className="text-xs text-red-600">
-                              (Penalty: ₹{repayment.penaltyAmount.toLocaleString('en-IN')})
-                            </span>
-                          )}
-                        </div>
+                        )}
                       </div>
                     )
                   })}

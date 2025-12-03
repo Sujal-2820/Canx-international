@@ -7,6 +7,14 @@ const mongoose = require('mongoose');
  * Used for vendor assignment and order delivery
  */
 const addressSchema = new mongoose.Schema({
+  addressId: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true,
+    // Format: ADD-101, ADD-102, etc.
+  },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -76,6 +84,7 @@ const addressSchema = new mongoose.Schema({
 addressSchema.index({ userId: 1, isDefault: 1 }); // User's default address
 addressSchema.index({ userId: 1, createdAt: -1 }); // User's addresses
 addressSchema.index({ 'coordinates.lat': 1, 'coordinates.lng': 1 }); // Geospatial queries
+addressSchema.index({ addressId: 1 }); // Address ID lookup
 
 // Pre-save hook: Ensure only one default address per user
 addressSchema.pre('save', async function (next) {

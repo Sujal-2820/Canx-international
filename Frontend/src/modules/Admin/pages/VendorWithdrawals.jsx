@@ -72,8 +72,8 @@ export function VendorWithdrawalsPage({ subRoute = null, navigate }) {
       navigate(`vendor-withdrawals/approve/${selectedRequest.requestId || selectedRequest.id}`)
     } else {
       // Fallback to modal if navigate not available
-      setPendingAction({ type: 'approve', requestId: selectedRequest.requestId || selectedRequest.id })
-      setConfirmationModalOpen(true)
+    setPendingAction({ type: 'approve', requestId: selectedRequest.requestId || selectedRequest.id })
+    setConfirmationModalOpen(true)
     }
   }
 

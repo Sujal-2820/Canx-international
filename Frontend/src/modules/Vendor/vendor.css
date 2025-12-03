@@ -31,7 +31,7 @@
   margin: auto;
   width: min(65%, 420px);
   height: min(65%, 420px);
-  background-image: url('../../assets/IRA SathiNew.png');
+  background-image: url('../../assets/IRA Sathi2.png');
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
@@ -101,7 +101,7 @@
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  margin-left: -1rem;
+  margin-left: -0.5rem;
 }
 
 .vendor-shell-header__badge {
@@ -4360,6 +4360,67 @@
   border-radius: 16px;
   background: rgba(240, 245, 242, 0.6);
   border: 1px solid rgba(34, 94, 65, 0.12);
+}
+
+.vendor-info-display__item--repayment {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
+  grid-template-columns: none;
+  text-overflow: ellipsis;
+}
+
+.vendor-info-display__item--repayment > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vendor-info-display__item-id {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(26, 42, 34, 0.7);
+  letter-spacing: 0.02em;
+  min-width: fit-content;
+  max-width: 140px;
+}
+
+.vendor-info-display__item-amount {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--vendor-ink);
+  min-width: fit-content;
+  flex-shrink: 0;
+}
+
+.vendor-info-display__item-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--vendor-green-600);
+  text-transform: capitalize;
+  min-width: fit-content;
+  flex-shrink: 0;
+}
+
+.vendor-info-display__item-date {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(26, 42, 34, 0.65);
+  margin-left: auto;
+  min-width: fit-content;
+  flex-shrink: 0;
+}
+
+.vendor-info-display__item-penalty {
+  font-size: 0.7rem;
+  color: rgba(220, 38, 38, 0.8);
+  font-weight: 500;
+  min-width: fit-content;
+  flex-shrink: 0;
 }
 
 .vendor-info-display__item-label {

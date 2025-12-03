@@ -38,18 +38,18 @@ export function OverviewView({ onNavigate, openPanel }) {
           const transformedActivities = activityResult.data.activities.map((activity) => {
             const isWithdrawal = activity.type === 'withdrawal'
             return {
-              id: activity.id || activity._id,
-              type: activity.type || 'commission',
-              action: activity.title || activity.message || 'Activity',
-              amount: activity.amount || 0,
-              date: activity.timestamp || activity.createdAt,
-              createdAt: activity.timestamp || activity.createdAt,
+            id: activity.id || activity._id,
+            type: activity.type || 'commission',
+            action: activity.title || activity.message || 'Activity',
+            amount: activity.amount || 0,
+            date: activity.timestamp || activity.createdAt,
+            createdAt: activity.timestamp || activity.createdAt,
               // For withdrawals, don't set userName (will show "Withdrawal" in display)
               userName: isWithdrawal ? null : (activity.userName || activity.user?.name || 'User'),
               user: isWithdrawal ? null : (activity.userName || activity.user?.name || 'User'),
-              orderId: activity.orderId,
-              orderNumber: activity.orderNumber,
-              status: activity.status,
+            orderId: activity.orderId,
+            orderNumber: activity.orderNumber,
+            status: activity.status,
               title: activity.title, // Preserve title for withdrawal display
             }
           })

@@ -8,6 +8,13 @@ const mongoose = require('mongoose');
  * Geographic Coverage Rule: Only 1 vendor allowed per 20 km radius
  */
 const vendorSchema = new mongoose.Schema({
+  vendorId: {
+    type: String,
+    unique: true,
+    trim: true,
+    uppercase: true,
+    // Format: VND-101, VND-102, etc.
+  },
   name: {
     type: String,
     required: [true, 'Name is required'],
@@ -188,6 +195,7 @@ const vendorSchema = new mongoose.Schema({
 
 // Index for location-based queries (20km radius)
 vendorSchema.index({ 'location.coordinates': '2dsphere' });
+vendorSchema.index({ vendorId: 1 }); // Vendor ID lookup
 
 // Generate and store OTP (always generates a new unique OTP)
 vendorSchema.methods.generateOTP = function () {

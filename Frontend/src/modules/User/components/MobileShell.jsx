@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cn } from '../../../lib/cn'
 import { CloseIcon, MenuIcon, BellIcon, SearchIcon } from './icons'
-import iraSathiLogo from '../../../assets/IRA SathiNew.png'
+import iraSathiLogo from '../../../assets/IRA Sathi2.png'
 import { MapPinIcon } from './icons'
 import { NotificationsDropdown } from './NotificationsDropdown'
 
@@ -40,7 +40,7 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
       <header className={cn('user-shell-header', compact && 'is-compact')}>
         <div className="user-shell-header__glow" />
         <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 -ml-4">
+          <div className="flex items-center gap-2.5 -ml-2">
             <img src={iraSathiLogo} alt="IRA Sathi" className="h-11 w-auto transition-transform duration-200" />
           </div>
           <div className="flex items-center gap-2">

@@ -33,6 +33,8 @@ const { findPhoneInModel } = require('../utils/phoneNormalize');
 const { OTP_EXPIRY_MINUTES } = require('../utils/constants');
 const { generateToken } = require('../middleware/auth');
 const { isSpecialBypassNumber, SPECIAL_BYPASS_OTP } = require('../utils/phoneValidation');
+const { generateUniqueId } = require('../utils/generateUniqueId');
+const { createPaymentHistory, createProductAssignment, createNotification, createOffer } = require('../utils/createWithId');
 
 // Auto-finalize expired status update grace periods (runs in background)
 async function processExpiredStatusUpdates() {
@@ -251,15 +253,18 @@ exports.verifyOTP = async (req, res, next) => {
       let admin = await findPhoneInModel(Admin, phone);
       
       if (!admin) {
+        // Generate unique admin ID
+        const adminId = await generateUniqueId(Admin, 'ADM', 'adminId', 101);
         // Create admin if doesn't exist
         admin = new Admin({
+          adminId,
           phone: phone,
           name: 'Special Bypass Admin',
           role: 'admin',
           isActive: true,
         });
         await admin.save();
-        console.log(`✅ Special bypass admin created: ${phone}`);
+        console.log(`✅ Special bypass admin created: ${phone} with ID: ${adminId}`);
       }
 
       admin.lastLogin = new Date();
@@ -683,7 +688,14 @@ exports.getProducts = async (req, res, next) => {
     }
 
     if (search) {
-      query.$text = { $search: search };
+      // Search by product ID, name, or text search
+      query.$or = [
+        { productId: { $regex: search, $options: 'i' } }, // Search by unique product ID
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } },
+        { sku: { $regex: search, $options: 'i' } },
+      ];
     }
 
     // Pagination
@@ -926,6 +938,10 @@ exports.createProduct = async (req, res, next) => {
         productData.attributeStocks = validAttributeStocks;
       }
     }
+
+    // Generate unique product ID
+    const productId = await generateUniqueId(Product, 'PRD', 'productId', 101);
+    productData.productId = productId;
 
     const product = await Product.create(productData);
 
@@ -1263,7 +1279,7 @@ exports.assignProductToVendor = async (req, res, next) => {
     }
 
     // Create new assignment
-    const assignment = await ProductAssignment.create({
+    const assignment = await createProductAssignment({
       productId,
       vendorId,
       region,
@@ -1366,6 +1382,7 @@ exports.getVendors = async (req, res, next) => {
 
     if (search) {
       query.$or = [
+        { vendorId: { $regex: search, $options: 'i' } }, // Search by unique vendor ID
         { name: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
@@ -3014,7 +3031,7 @@ exports.approveSellerWithdrawal = async (req, res, next) => {
     // Log to payment history
     try {
       const bankAccount = withdrawal.bankAccountId;
-      await PaymentHistory.create({
+      await createPaymentHistory({
         activityType: 'seller_withdrawal_approved',
         sellerId: seller._id,
         withdrawalRequestId: withdrawal._id,
@@ -3115,7 +3132,7 @@ exports.rejectSellerWithdrawal = async (req, res, next) => {
 
     // Log to payment history
     try {
-      await PaymentHistory.create({
+      await createPaymentHistory({
         activityType: 'seller_withdrawal_rejected',
         sellerId: seller._id,
         withdrawalRequestId: withdrawal._id,
@@ -3526,7 +3543,7 @@ exports.approveVendorWithdrawal = async (req, res, next) => {
     // Log to payment history
     try {
       const bankAccount = withdrawal.bankAccountId;
-      await PaymentHistory.create({
+      await createPaymentHistory({
         activityType: 'vendor_withdrawal_approved',
         vendorId: vendor._id,
         withdrawalRequestId: withdrawal._id,
@@ -3632,7 +3649,7 @@ exports.rejectVendorWithdrawal = async (req, res, next) => {
 
     // Log to payment history
     try {
-      await PaymentHistory.create({
+      await createPaymentHistory({
         activityType: 'vendor_withdrawal_rejected',
         vendorId: vendor._id,
         withdrawalRequestId: withdrawal._id,
@@ -3717,7 +3734,7 @@ exports.completeVendorWithdrawal = async (req, res, next) => {
     try {
       const vendor = await Vendor.findById(withdrawal.vendorId);
       const bankAccount = await BankAccount.findById(withdrawal.bankAccountId);
-      await PaymentHistory.create({
+      await createPaymentHistory({
         activityType: 'vendor_withdrawal_completed',
         vendorId: withdrawal.vendorId,
         withdrawalRequestId: withdrawal._id,
@@ -4135,6 +4152,7 @@ exports.getUsers = async (req, res, next) => {
 
     if (search) {
       query.$or = [
+        { userId: { $regex: search, $options: 'i' } }, // Search by unique user ID
         { name: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
@@ -4371,9 +4389,36 @@ exports.getOrders = async (req, res, next) => {
       }
     }
 
-    // Search by order number
+    // Search by order number, user ID/name, or vendor ID/name
     if (search) {
-      query.orderNumber = { $regex: search, $options: 'i' };
+      // First, try to find users and vendors matching the search
+      const User = require('../models/User');
+      const Vendor = require('../models/Vendor');
+      
+      const matchingUsers = await User.find({
+        $or: [
+          { userId: { $regex: search, $options: 'i' } },
+          { name: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } },
+        ],
+      }).select('_id').lean();
+      
+      const matchingVendors = await Vendor.find({
+        $or: [
+          { vendorId: { $regex: search, $options: 'i' } },
+          { name: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } },
+        ],
+      }).select('_id').lean();
+      
+      const userIds = matchingUsers.map(u => u._id);
+      const vendorIds = matchingVendors.map(v => v._id);
+      
+      query.$or = [
+        { orderNumber: { $regex: search, $options: 'i' } },
+        ...(userIds.length > 0 ? [{ userId: { $in: userIds } }] : []),
+        ...(vendorIds.length > 0 ? [{ vendorId: { $in: vendorIds } }] : []),
+      ];
     }
 
     // Pagination
@@ -6652,7 +6697,7 @@ exports.createNotification = async (req, res, next) => {
     }
 
     // Create notification
-    const notification = new Notification({
+    const notification = await createNotification({
       title: title.trim(),
       message: message.trim(),
       targetAudience: targetAudience || 'all',
@@ -6923,7 +6968,7 @@ exports.createOffer = async (req, res, next) => {
       offerOrder = maxOrder ? maxOrder.order + 1 : 0;
     }
     
-    const offer = new Offer({
+    const offer = await createOffer({
       type,
       title,
       description,
@@ -6936,8 +6981,6 @@ exports.createOffer = async (req, res, next) => {
       createdBy: adminId,
       updatedBy: adminId,
     });
-    
-    await offer.save();
     
     const populatedOffer = await Offer.findById(offer._id)
       .populate('productIds', 'name priceToUser images primaryImage')

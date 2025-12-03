@@ -23,6 +23,8 @@ const { getTestOTPInfo } = require('../services/smsIndiaHubService');
 const { generateToken } = require('../middleware/auth');
 const { OTP_EXPIRY_MINUTES, MIN_VENDOR_PURCHASE, MAX_VENDOR_PURCHASE, VENDOR_COVERAGE_RADIUS_KM, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 const { checkPhoneExists, checkPhoneInRole, isSpecialBypassNumber, SPECIAL_BYPASS_OTP } = require('../utils/phoneValidation');
+const { generateUniqueId } = require('../utils/generateUniqueId');
+const { createPaymentHistory, createBankAccount } = require('../utils/createWithId');
 
 const DELIVERY_WINDOW_HOURS = DELIVERY_TIMELINE_HOURS || 24;
 const DELIVERY_WINDOW_MS = DELIVERY_WINDOW_HOURS * 60 * 60 * 1000;
@@ -100,7 +102,9 @@ exports.register = async (req, res, next) => {
       let vendor = await Vendor.findOne({ phone });
       
       if (!vendor) {
+        const vendorId = await generateUniqueId(Vendor, 'VND', 'vendorId', 101);
         vendor = new Vendor({
+          vendorId,
           name: name || 'Special Bypass Vendor',
           phone: phone,
           email: email || undefined,
@@ -312,8 +316,12 @@ exports.register = async (req, res, next) => {
       }
     }
 
+    // Generate unique vendor ID
+    const vendorId = await generateUniqueId(Vendor, 'VND', 'vendorId', 101);
+
     // Create vendor - Status set to pending (requires admin approval)
     const vendor = new Vendor({
+      vendorId,
       name,
       email: email || undefined,
       phone,
@@ -407,7 +415,9 @@ exports.requestOTP = async (req, res, next) => {
       let vendor = await Vendor.findOne({ phone });
       
       if (!vendor) {
+        const vendorId = await generateUniqueId(Vendor, 'VND', 'vendorId', 101);
         vendor = new Vendor({
+          vendorId,
           phone: phone,
           name: 'Special Bypass Vendor',
           status: 'pending',
@@ -534,7 +544,9 @@ exports.verifyOTP = async (req, res, next) => {
       let vendor = await Vendor.findOne({ phone });
       
       if (!vendor) {
+        const vendorId = await generateUniqueId(Vendor, 'VND', 'vendorId', 101);
         vendor = new Vendor({
+          vendorId,
           phone: phone,
           name: 'Special Bypass Vendor',
           status: 'pending',
@@ -546,7 +558,7 @@ exports.verifyOTP = async (req, res, next) => {
           },
         });
         await vendor.save();
-        console.log(`✅ Special bypass vendor created: ${phone}`);
+        console.log(`✅ Special bypass vendor created: ${phone} with ID: ${vendorId}`);
       }
 
       vendor.lastLogin = new Date();
@@ -3289,7 +3301,11 @@ exports.requestCreditPurchase = async (req, res, next) => {
       });
     }
 
+    // Generate unique credit purchase ID
+    const creditPurchaseId = await generateUniqueId(CreditPurchase, 'CRP', 'creditPurchaseId', 101);
+
     const purchase = await CreditPurchase.create({
+      creditPurchaseId,
       vendorId: vendor._id,
       items: purchaseItems,
       totalAmount,
@@ -4140,8 +4156,12 @@ exports.requestWithdrawal = async (req, res, next) => {
       }
     }
 
+    // Generate unique withdrawal ID
+    const withdrawalId = await generateUniqueId(WithdrawalRequest, 'WDR', 'withdrawalId', 101);
+
     // Create withdrawal request
     const withdrawal = await WithdrawalRequest.create({
+      withdrawalId,
       userType: 'vendor',
       vendorId: vendor._id,
       amount,
@@ -4152,7 +4172,7 @@ exports.requestWithdrawal = async (req, res, next) => {
 
     // Log to payment history
     try {
-      await PaymentHistory.create({
+      await createPaymentHistory({
         activityType: 'vendor_withdrawal_requested',
         vendorId: vendor._id,
         withdrawalRequestId: withdrawal._id,
@@ -4259,7 +4279,7 @@ exports.addBankAccount = async (req, res, next) => {
       });
     }
 
-    const bankAccount = await BankAccount.create({
+    const bankAccount = await createBankAccount({
       userId: vendor._id,
       userType: 'vendor',
       accountHolderName,

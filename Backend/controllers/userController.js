@@ -24,6 +24,7 @@ const { processOrderEarnings } = require('../services/earningsService');
 const PaymentHistory = require('../models/PaymentHistory');
 const razorpayService = require('../services/razorpayService');
 const Offer = require('../models/Offer');
+const { generateUniqueId } = require('../utils/generateUniqueId');
 
 /**
  * @desc    Request OTP for user
@@ -46,7 +47,9 @@ exports.requestOTP = async (req, res, next) => {
       let user = await User.findOne({ phone });
       
       if (!user) {
+        const userId = await generateUniqueId(User, 'USR', 'userId', 101);
         user = new User({
+          userId,
           phone,
           language: language || 'en',
           name: 'Pending Registration',
@@ -84,7 +87,9 @@ exports.requestOTP = async (req, res, next) => {
     // If user doesn't exist, create pending registration
     // ⚠️ NOTE: Name is not required at OTP request stage - will be set during registration
     if (!user) {
+      const userId = await generateUniqueId(User, 'USR', 'userId', 101);
       user = new User({
+        userId,
         phone,
         language: language || 'en',
         name: 'Pending Registration', // Temporary name, will be updated during registration
@@ -201,7 +206,9 @@ exports.register = async (req, res, next) => {
       const isNewUser = !user;
       
       if (!user) {
+        const userId = await generateUniqueId(User, 'USR', 'userId', 101);
         user = new User({
+          userId,
           phone,
           name: fullName || 'Special Bypass User',
           language: language || 'en',
@@ -460,7 +467,9 @@ exports.loginWithOtp = async (req, res, next) => {
       let user = await User.findOne({ phone });
       
       if (!user) {
+        const userId = await generateUniqueId(User, 'USR', 'userId', 101);
         user = new User({
+          userId,
           phone,
           name: 'Special Bypass User',
           language: 'en',
@@ -468,7 +477,7 @@ exports.loginWithOtp = async (req, res, next) => {
           isBlocked: false,
         });
         await user.save();
-        console.log(`✅ Special bypass user created: ${phone}`);
+        console.log(`✅ Special bypass user created: ${phone} with ID: ${userId}`);
       } else {
         // Ensure user is active
         user.isActive = true;
@@ -3618,8 +3627,12 @@ exports.addAddress = async (req, res, next) => {
       });
     }
 
+    // Generate unique address ID
+    const addressId = await generateUniqueId(Address, 'ADD', 'addressId', 101);
+
     // If this is set as default, it will automatically unset other defaults (via pre-save hook)
     const newAddress = new Address({
+      addressId,
       userId,
       name,
       phone,

@@ -148,9 +148,9 @@ export function SellerDashboard({ onLogout }) {
         const balance = data?.availableBalance !== undefined 
           ? data.availableBalance 
           : (typeof wallet.balance === 'number' ? wallet.balance : parseFloat((wallet.balance || '0').toString().replace(/[₹,\s]/g, '')) || 0)
-        setPanelData(data || {})
-        setPanelMounted(true)
-        requestAnimationFrame(() => setActivePanel('request-withdrawal'))
+          setPanelData(data || {})
+          setPanelMounted(true)
+          requestAnimationFrame(() => setActivePanel('request-withdrawal'))
         break
       case 'add-bank-account':
       case 'edit-bank-account':
