@@ -1,12 +1,33 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { StarIcon, HeartIcon, TruckIcon, MapPinIcon, ChevronRightIcon, PlusIcon, MinusIcon, PackageIcon, CheckCircleIcon } from '../../components/icons'
+import { StarIcon, HeartIcon, TruckIcon, MapPinIcon, ChevronRightIcon, ChevronDownIcon, PlusIcon, MinusIcon, PackageIcon, CheckCircleIcon, TrashIcon } from '../../components/icons'
 import { cn } from '../../../../lib/cn'
 import * as userApi from '../../services/userApi'
 import { getPrimaryImageUrl } from '../../utils/productImages'
 import { TransText } from '../../../../components/TransText'
 import { Trans } from '../../../../components/Trans'
+import { useTranslation } from '../../../../context/TranslationContext'
+
+// Component for dynamic "Add X Variant(s) to Cart" text
+function AddVariantToCartText({ count, price }) {
+  const { translate, isEnglish, language } = useTranslation()
+  const [text, setText] = useState('')
+
+  useEffect(() => {
+    const template = count === 1 ? 'Add 1 Variant to Cart' : `Add ${count} Variants to Cart`
+    if (isEnglish) {
+      setText(template)
+    } else {
+      translate(template)
+        .then(setText)
+        .catch(() => setText(template))
+    }
+  }, [count, isEnglish, translate, language])
+
+  return <>{text} • ₹{price.toLocaleString('en-IN')}</>
+}
 
 export function ProductDetailView({ productId, onAddToCart, onBack, onProductClick }) {
+  const { translate } = useTranslation()
   const [product, setProduct] = useState(null)
   const [similarProducts, setSimilarProducts] = useState([])
   const [suggestedProducts, setSuggestedProducts] = useState([])
@@ -22,6 +43,34 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
   const [variantError, setVariantError] = useState('') // Error message for variant selection
   const variantSectionRef = useRef(null) // Ref for variant selection section
   const containerRef = useRef(null)
+  const imageGalleryRef = useRef(null) // Ref for image gallery
+  const productInfoRef = useRef(null) // Ref for product info section
+  const [stickyTop, setStickyTop] = useState(100) // Dynamic top value for sticky positioning
+  
+  // Initialize sticky top on mount
+  useEffect(() => {
+    setStickyTop(100)
+  }, [])
+  
+  // Review states
+  const [reviews, setReviews] = useState([])
+  const [reviewStats, setReviewStats] = useState({ averageRating: 0, totalReviews: 0, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } })
+  const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [reviewPage, setReviewPage] = useState(1)
+  const [hasMoreReviews, setHasMoreReviews] = useState(true)
+  const [myReview, setMyReview] = useState(null)
+  const [showReviewForm, setShowReviewForm] = useState(false)
+  const [reviewFormData, setReviewFormData] = useState({ rating: 0, comment: '' })
+  const [submittingReview, setSubmittingReview] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
+  const [deletingReview, setDeletingReview] = useState(false)
+
+  // Check authentication status
+  useEffect(() => {
+    const token = localStorage.getItem('user_token')
+    setIsAuthenticated(!!token)
+  }, [])
 
   // Fetch product details and related products
   useEffect(() => {
@@ -76,6 +125,159 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
       loadProduct()
     }
   }, [productId])
+
+  // Fetch reviews when product loads
+  useEffect(() => {
+    const loadReviews = async () => {
+      if (!productId || productId === 'all') return
+      
+      setReviewsLoading(true)
+      try {
+        const result = await userApi.getProductReviews(productId, { page: 1, limit: 10 })
+        if (result.success && result.data) {
+          setReviews(result.data.reviews || [])
+          setReviewStats(result.data.stats || { averageRating: 0, totalReviews: 0, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } })
+          setHasMoreReviews(result.data.pagination?.pages > 1)
+          setReviewPage(1)
+        }
+      } catch (error) {
+        console.error('Error loading reviews:', error)
+      } finally {
+        setReviewsLoading(false)
+      }
+    }
+
+    // Fetch my review if authenticated
+    const loadMyReview = async () => {
+      if (!isAuthenticated || !productId || productId === 'all') return
+      
+      try {
+        const result = await userApi.getMyReview(productId)
+        if (result.success && result.data?.review) {
+          setMyReview(result.data.review)
+          setReviewFormData({
+            rating: result.data.review.rating,
+            comment: result.data.review.comment || ''
+          })
+        }
+      } catch (error) {
+        // User hasn't reviewed yet - that's fine
+        if (error.error?.message !== 'Review not found') {
+          console.error('Error loading my review:', error)
+        }
+      }
+    }
+
+    if (productId) {
+      loadReviews()
+      if (isAuthenticated) {
+        loadMyReview()
+      }
+    }
+  }, [productId, isAuthenticated])
+
+  // Handle review submission
+  const handleSubmitReview = async () => {
+    if (!isAuthenticated) {
+      // Redirect to login or show message
+      return
+    }
+
+    if (reviewFormData.rating === 0) {
+      alert('Please select a rating') // TODO: Translate alert message
+      return
+    }
+
+    setSubmittingReview(true)
+    try {
+      if (myReview) {
+        // Update existing review
+        const result = await userApi.updateReview(productId, myReview._id, reviewFormData)
+        if (result.success) {
+          setMyReview(result.data.review)
+          setShowReviewForm(false)
+          // Reload reviews
+          const reviewsResult = await userApi.getProductReviews(productId, { page: 1, limit: 10 })
+          if (reviewsResult.success && reviewsResult.data) {
+            setReviews(reviewsResult.data.reviews || [])
+            setReviewStats(reviewsResult.data.stats || reviewStats)
+          }
+        }
+      } else {
+        // Create new review
+        const result = await userApi.createReview(productId, reviewFormData)
+        if (result.success) {
+          setMyReview(result.data.review)
+          setShowReviewForm(false)
+          // Reload reviews
+          const reviewsResult = await userApi.getProductReviews(productId, { page: 1, limit: 10 })
+          if (reviewsResult.success && reviewsResult.data) {
+            setReviews(reviewsResult.data.reviews || [])
+            setReviewStats(reviewsResult.data.stats || reviewStats)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error submitting review:', error)
+      alert(error.error?.message || 'Failed to submit review')
+    } finally {
+      setSubmittingReview(false)
+    }
+  }
+
+  // Handle delete review confirmation
+  const handleDeleteReviewClick = () => {
+    if (!myReview) return
+    setShowDeleteConfirmModal(true)
+  }
+
+  // Handle delete review
+  const handleDeleteReview = async () => {
+    if (!myReview) return
+
+    setDeletingReview(true)
+    try {
+      const result = await userApi.deleteReview(productId, myReview._id)
+      if (result.success) {
+        setMyReview(null)
+        setReviewFormData({ rating: 0, comment: '' })
+        setShowReviewForm(false)
+        setShowDeleteConfirmModal(false)
+        // Reload reviews
+        const reviewsResult = await userApi.getProductReviews(productId, { page: 1, limit: 10 })
+        if (reviewsResult.success && reviewsResult.data) {
+          setReviews(reviewsResult.data.reviews || [])
+          setReviewStats(reviewsResult.data.stats || reviewStats)
+        }
+      } else {
+        alert(result.error?.message || 'Failed to delete review')
+      }
+    } catch (error) {
+      console.error('Error deleting review:', error)
+      alert(error.error?.message || 'Failed to delete review')
+    } finally {
+      setDeletingReview(false)
+    }
+  }
+
+  // Load more reviews
+  const loadMoreReviews = async () => {
+    if (!hasMoreReviews || reviewsLoading) return
+
+    setReviewsLoading(true)
+    try {
+      const result = await userApi.getProductReviews(productId, { page: reviewPage + 1, limit: 10 })
+      if (result.success && result.data) {
+        setReviews(prev => [...prev, ...(result.data.reviews || [])])
+        setReviewPage(prev => prev + 1)
+        setHasMoreReviews(result.data.pagination?.pages > reviewPage + 1)
+      }
+    } catch (error) {
+      console.error('Error loading more reviews:', error)
+    } finally {
+      setReviewsLoading(false)
+    }
+  }
 
   // Smart attribute mapping: Group by attribute name, then show properties
   const attributeStructure = useMemo(() => {
@@ -340,6 +542,113 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
     }
   }, [selectedVariants])
 
+  // Handle sticky image gallery - stop when bottom aligns with product info bottom
+  useEffect(() => {
+    if (!product) return
+
+    const handleScroll = () => {
+      if (!imageGalleryRef.current || !productInfoRef.current) {
+        setStickyTop(100)
+        return
+      }
+
+      const imageGallery = imageGalleryRef.current
+      const productInfo = productInfoRef.current
+      
+      // Get bounding rectangles (viewport coordinates)
+      const imageGalleryRect = imageGallery.getBoundingClientRect()
+      const productInfoRect = productInfo.getBoundingClientRect()
+      
+      // Get heights
+      const imageGalleryHeight = imageGallery.offsetHeight
+      const productInfoHeight = productInfo.offsetHeight
+      
+      // Base sticky top value
+      const baseStickyTop = 100
+      
+      // If product info is shorter or equal to image gallery, use base sticky top
+      if (productInfoHeight <= imageGalleryHeight) {
+        setStickyTop(baseStickyTop)
+        return
+      }
+      
+      // Calculate the adjusted top value to keep bottoms aligned
+      // We want: imageGalleryRect.bottom = productInfoRect.bottom
+      // Since imageGalleryRect.top = stickyTop (when sticky)
+      // We need: stickyTop + imageGalleryHeight = productInfoRect.bottom
+      // So: stickyTop = productInfoRect.bottom - imageGalleryHeight
+      const adjustedTop = productInfoRect.bottom - imageGalleryHeight
+      
+      // Only adjust if we've scrolled enough that bottoms would align
+      // This happens when adjustedTop becomes less than baseStickyTop
+      if (adjustedTop < baseStickyTop && adjustedTop >= 0) {
+        setStickyTop(adjustedTop)
+      } else {
+        // Normal sticky behavior - stick at baseStickyTop
+        setStickyTop(baseStickyTop)
+      }
+    }
+
+    // Only run on laptop/bigger screens
+    const mediaQuery = window.matchMedia('(min-width: 1024px)')
+    
+    if (mediaQuery.matches) {
+      // Use requestAnimationFrame for smooth updates
+      let ticking = false
+      const optimizedHandleScroll = () => {
+        if (!ticking) {
+          window.requestAnimationFrame(() => {
+            handleScroll()
+            ticking = false
+          })
+          ticking = true
+        }
+      }
+      
+      // Initial calculation with a small delay to ensure DOM is ready
+      setTimeout(() => {
+        handleScroll()
+      }, 200)
+      
+      window.addEventListener('scroll', optimizedHandleScroll, { passive: true })
+      
+      // Also recalculate on resize and when content changes
+      window.addEventListener('resize', handleScroll, { passive: true })
+      
+      // Use MutationObserver to detect content changes
+      const observer = new MutationObserver(() => {
+        setTimeout(handleScroll, 100)
+      })
+      
+      if (productInfoRef.current) {
+        observer.observe(productInfoRef.current, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['style', 'class']
+        })
+      }
+      
+      if (imageGalleryRef.current) {
+        observer.observe(imageGalleryRef.current, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['style', 'class']
+        })
+      }
+      
+      return () => {
+        window.removeEventListener('scroll', optimizedHandleScroll)
+        window.removeEventListener('resize', handleScroll)
+        observer.disconnect()
+      }
+    } else {
+      // On mobile, don't use sticky
+      setStickyTop(100)
+    }
+  }, [product]) // Re-run when product loads
+
   const inStock = currentStock > 0
   const stockStatus = currentStock > 10 ? 'In Stock' : currentStock > 0 ? 'Low Stock' : 'Out of Stock'
   const maxQuantity = currentStock
@@ -456,10 +765,12 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
 
   // Format attribute key to readable label
   const formatAttributeLabel = (key) => {
-    return key
+    const formatted = key
       .replace(/([A-Z])/g, ' $1')
       .replace(/^./, str => str.toUpperCase())
       .trim()
+    // Return formatted key - will be translated in JSX using Trans component
+    return formatted
   }
 
   const handleAddToCart = () => {
@@ -512,34 +823,36 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
         Back
       </button>
 
-      {/* Image Gallery */}
-      <div className="space-y-3">
-        <div className="relative w-full aspect-square rounded-3xl overflow-hidden bg-gray-100">
-          <img src={images[selectedImage]} alt={product.name} className="w-full h-full object-cover" />
-        </div>
-        {images.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {images.map((img, index) => (
-              <button
-                key={index}
-                type="button"
-                className={cn(
-                  'flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all',
-                  selectedImage === index
-                    ? 'border-[#1b8f5b] scale-105'
-                    : 'border-transparent opacity-60 hover:opacity-100'
-                )}
-                onClick={() => setSelectedImage(index)}
-              >
-                <img src={img} alt={`${product.name} view ${index + 1}`} className="w-full h-full object-cover" />
-              </button>
-            ))}
+      {/* Product Content Group - Image Gallery and Product Info */}
+      <div className="user-product-detail-view__content-group">
+        {/* Image Gallery */}
+        <div ref={imageGalleryRef} className="space-y-3" style={{ '--sticky-top': `${stickyTop}px` }}>
+          <div className="relative w-full aspect-square rounded-3xl overflow-hidden bg-gray-100">
+            <img src={images[selectedImage]} alt={product.name} className="w-full h-full object-cover" />
           </div>
-        )}
-      </div>
+          {images.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {images.map((img, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  className={cn(
+                    'flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all',
+                    selectedImage === index
+                      ? 'border-[#1b8f5b] scale-105'
+                      : 'border-transparent opacity-60 hover:opacity-100'
+                  )}
+                  onClick={() => setSelectedImage(index)}
+                >
+                  <img src={img} alt={`${product.name} view ${index + 1}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
-      {/* Product Info - Redesigned Layout */}
-      <div className="user-product-info space-y-5">
+        {/* Product Info - Redesigned Layout */}
+        <div ref={productInfoRef} className="user-product-info space-y-5">
          {/* Title and Wishlist */}
          <div className="flex items-start justify-between gap-3">
            <div className="flex-1">
@@ -556,7 +869,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                  ))}
                </div>
                <span className="text-xs text-[rgba(26,42,34,0.65)]">
-                 {product.rating || 0} ({product.reviews || 0} reviews)
+                 {product.rating || 0} ({product.reviews || 0} <Trans>reviews</Trans>)
                </span>
              </div>
            </div>
@@ -605,11 +918,11 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
              <div className="flex items-center justify-between mb-2">
                <div className="flex items-center gap-2">
                  <PackageIcon className="h-4 w-4 text-blue-600" />
-                 <h3 className="text-sm font-bold text-[#172022]">Select Variant</h3>
+                 <h3 className="text-sm font-bold text-[#172022]"><Trans>Select Variant</Trans></h3>
                </div>
                {selectedVariants.length === 0 && (
                  <span className="text-xs font-bold text-red-500 animate-pulse" style={{ animationDuration: '2s' }}>
-                   Required
+                   <Trans>Required</Trans>
                  </span>
                )}
              </div>
@@ -625,7 +938,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                {/* Step 1: Select Attribute Name */}
                <div>
                  <label className="block text-xs font-semibold text-[#172022] mb-1.5">
-                   {formatAttributeLabel(attributeStructure.attributeNameKey || 'Attribute Name')}
+                   <Trans>{formatAttributeLabel(attributeStructure.attributeNameKey || 'Attribute Name')}</Trans>
                  </label>
                  <div className="flex flex-wrap gap-1.5">
                    {attributeStructure.attributeNames.map((attrName) => {
@@ -656,7 +969,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                    {Object.keys(availableProperties).map((propKey) => (
                      <div key={propKey}>
                        <label className="block text-xs font-semibold text-[#172022] mb-1.5">
-                         {formatAttributeLabel(propKey)}
+                         <Trans>{formatAttributeLabel(propKey)}</Trans>
                        </label>
                        <div className="flex flex-wrap gap-1.5">
                          {availableProperties[propKey].map((value) => {
@@ -689,7 +1002,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
              {selectedAttributes[attributeStructure.attributeNameKey] && (
                <div className="mt-3 space-y-2">
                  <p className="text-xs font-semibold text-[#172022] mb-2">
-                   Available Variants (Select one or more):
+                   <Trans>Available Variants (Select one or more):</Trans>
                  </p>
                  {product.attributeStocks
                    .filter(stock => {
@@ -714,8 +1027,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                      
                      const variantAttributes = Object.entries(stockAttrs)
                        .filter(([key]) => key !== attributeStructure.attributeNameKey)
-                       .map(([key, value]) => `${key}: ${value}`)
-                       .join(', ')
+                       .map(([key, value]) => ({ key, value, formattedKey: formatAttributeLabel(key) }))
                      
                      const variantKey = getVariantKey(variantStock)
                      const variantQty = variantQuantities[variantKey] || 1
@@ -739,16 +1051,27 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                                  {stockAttrs[attributeStructure.attributeNameKey] || `Variant ${idx + 1}`}
                                </span>
                              </div>
-                             <p className="text-xs text-[rgba(26,42,34,0.7)] mb-2">{variantAttributes || 'No additional attributes'}</p>
+                             <p className="text-xs text-[rgba(26,42,34,0.7)] mb-2">
+                               {variantAttributes && variantAttributes.length > 0 ? (
+                                 variantAttributes.map((attr, attrIdx) => (
+                                   <span key={attrIdx}>
+                                     <Trans>{attr.formattedKey}</Trans>: {attr.value}
+                                     {attrIdx < variantAttributes.length - 1 && ', '}
+                                   </span>
+                                 ))
+                               ) : (
+                                 <Trans>No additional attributes</Trans>
+                               )}
+                             </p>
                              <div className="grid grid-cols-2 gap-2 text-xs">
                                <div>
-                                 <span className="text-[rgba(26,42,34,0.6)]">Stock:</span>
+                                 <span className="text-[rgba(26,42,34,0.6)]"><Trans>Stock:</Trans></span>
                                  <span className="ml-1 font-semibold text-[#172022]">
                                    {variantStock.displayStock || 0} {variantStock.stockUnit || 'kg'}
                                  </span>
                                </div>
                                <div>
-                                 <span className="text-[rgba(26,42,34,0.6)]">Price:</span>
+                                 <span className="text-[rgba(26,42,34,0.6)]"><Trans>Price:</Trans></span>
                                  <span className="ml-1 font-bold text-[#1b8f5b]">
                                    ₹{(variantStock.userPrice || 0).toLocaleString('en-IN')}
                                  </span>
@@ -772,7 +1095,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                          {/* Variant-specific Quantity Control - Only show if selected */}
                          {isSelected && (
                            <div className="mt-3 pt-3 border-t border-[rgba(34,94,65,0.2)]">
-                             <label className="block text-xs font-semibold text-[#172022] mb-2">Quantity</label>
+                             <label className="block text-xs font-semibold text-[#172022] mb-2"><Trans>Quantity</Trans></label>
                              <div className="flex items-center justify-between gap-3">
                                <div className="flex items-center gap-2 border border-[rgba(34,94,65,0.2)] rounded-lg bg-white p-1.5">
                                  <button
@@ -856,7 +1179,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                   )}
                 >
                   <PackageIcon className="h-3.5 w-3.5" />
-                  Description
+                  <Trans>Description</Trans>
                 </button>
                 <button
                   type="button"
@@ -872,7 +1195,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                     "w-2.5 h-2.5 rounded-full",
                     inStock ? "bg-[#1b8f5b]" : "bg-red-500"
                   )} />
-                  Stock
+                  <Trans>Stock</Trans>
                 </button>
                 <button
                   type="button"
@@ -885,7 +1208,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                   )}
                 >
                   <TruckIcon className="h-3.5 w-3.5" />
-                  Delivery Time
+                  <Trans>Delivery Time</Trans>
                 </button>
               </div>
             </div>
@@ -904,7 +1227,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                    <div className="flex items-center gap-3 mb-5">
                      <div className="w-1.5 h-8 bg-gradient-to-b from-[#1b8f5b] to-[#2a9d61] rounded-full shadow-md"></div>
                      <div>
-                       <h3 className="text-lg font-bold text-[#172022] mb-1">About this Product</h3>
+                       <h3 className="text-lg font-bold text-[#172022] mb-1"><Trans>About this Product</Trans></h3>
                        <div className="h-0.5 w-16 bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] rounded-full"></div>
                      </div>
                    </div>
@@ -1100,19 +1423,338 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
              disabled={!inStock || (hasAttributes && selectedVariants.length === 0)}
            >
              {!inStock ? (
-               'Out of Stock'
+               <Trans>Out of Stock</Trans>
              ) : hasAttributes && selectedVariants.length === 0 ? (
-               'Please select at least one variant'
+               <Trans>Please select at least one variant</Trans>
              ) : hasAttributes && selectedVariants.length > 0 ? (
-               <>
-                 Add {selectedVariants.length} Variant{selectedVariants.length > 1 ? 's' : ''} to Cart • ₹{totalVariantPrice.toLocaleString('en-IN')}
-               </>
+               <AddVariantToCartText count={selectedVariants.length} price={totalVariantPrice} />
              ) : (
                <>
-                 Add to Cart • ₹{(currentPrice * quantity).toLocaleString('en-IN')}
+                 <Trans>Add to Cart</Trans> • ₹{(currentPrice * quantity).toLocaleString('en-IN')}
                </>
              )}
           </button>
+        </div>
+
+        {/* Reviews & Ratings Section */}
+        <section className="space-y-6 mt-8 p-6 rounded-2xl bg-gradient-to-br from-[rgba(240,245,242,0.4)] via-[rgba(248,250,249,0.3)] to-white border-2 border-[#1b8f5b]/20 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-[#172022] mb-1"><Trans>Reviews & Ratings</Trans></h3>
+            <p className="text-sm text-[rgba(26,42,34,0.65)]">
+              {reviewStats.totalReviews} {reviewStats.totalReviews === 1 ? <Trans>review</Trans> : <Trans>reviews</Trans>}
+            </p>
+          </div>
+          {reviewStats.averageRating > 0 && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <StarIcon
+                    key={star}
+                    className="h-4 w-4 text-yellow-400"
+                    filled={star <= Math.round(reviewStats.averageRating)}
+                  />
+                ))}
+              </div>
+              <span className="text-base font-bold text-[#172022]">
+                {reviewStats.averageRating.toFixed(1)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Rating Distribution */}
+        {reviewStats.totalReviews > 0 && (
+          <div className="p-4 rounded-xl bg-gradient-to-br from-[rgba(240,245,242,0.6)] to-[rgba(240,245,242,0.3)] border border-[#1b8f5b]/20">
+            <div className="space-y-2">
+              {[5, 4, 3, 2, 1].map((rating) => {
+                const count = reviewStats.distribution[rating] || 0
+                const percentage = reviewStats.totalReviews > 0 ? (count / reviewStats.totalReviews) * 100 : 0
+                return (
+                  <div key={rating} className="flex items-center gap-3">
+                    <div className="flex items-center gap-1 w-16">
+                      <span className="text-xs font-semibold text-[#172022]">{rating}</span>
+                      <StarIcon className="h-3 w-3 text-yellow-400" filled={true} />
+                    </div>
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] transition-all duration-300"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-[rgba(26,42,34,0.7)] w-8 text-right">
+                      {count}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Review Form (if authenticated) */}
+        {isAuthenticated && (
+          <div className="p-4 rounded-xl border-2 border-[#1b8f5b]/30 bg-gradient-to-br from-[rgba(240,245,242,0.4)] to-white">
+            {!showReviewForm && !myReview ? (
+              <button
+                type="button"
+                onClick={() => setShowReviewForm(true)}
+                className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white text-sm font-semibold hover:shadow-md transition-all"
+              >
+                <Trans>Write a Review</Trans>
+              </button>
+            ) : myReview && !showReviewForm ? (
+              // Collapsed state - show dropdown button
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setShowReviewForm(true)}
+                  className="w-full flex items-center justify-between py-3 px-4 rounded-lg bg-white border-2 border-[rgba(34,94,65,0.2)] hover:bg-[rgba(240,245,242,0.5)] transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <StarIcon
+                          key={star}
+                          className="h-4 w-4"
+                          filled={star <= myReview.rating}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-sm font-semibold text-[#172022]"><Trans>Edit Your Review</Trans></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteReviewClick()
+                      }}
+                      className="text-xs text-red-600 font-semibold hover:underline px-2 py-1"
+                    >
+                      <Trans>Delete Review</Trans>
+                    </button>
+                    <ChevronDownIcon className="h-5 w-5 text-[#172022]" />
+                  </div>
+                </button>
+              </div>
+            ) : showReviewForm ? (
+              // Expanded state - show full form
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-base font-bold text-[#172022]">
+                    {myReview ? <Trans>Edit Your Review</Trans> : <Trans>Write a Review</Trans>}
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    {myReview && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteReviewClick}
+                        className="text-xs text-red-600 font-semibold hover:underline px-2 py-1"
+                      >
+                        Delete Review
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowReviewForm(false)
+                        if (myReview) {
+                          setReviewFormData({ rating: myReview.rating, comment: myReview.comment || '' })
+                        }
+                      }}
+                      className="text-[#172022] hover:text-[#1b8f5b] transition-colors"
+                    >
+                      <ChevronDownIcon className="h-5 w-5 rotate-180" />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Star Rating Input */}
+                <div>
+                  <label className="block text-sm font-semibold text-[#172022] mb-2">
+                    <Trans>Rating</Trans> <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setReviewFormData(prev => ({ ...prev, rating: star }))}
+                        className="focus:outline-none"
+                      >
+                        <StarIcon
+                          className="h-6 w-6 transition-all hover:scale-110"
+                          filled={star <= reviewFormData.rating}
+                          style={{ color: star <= reviewFormData.rating ? '#fbbf24' : '#d1d5db' }}
+                        />
+                      </button>
+                    ))}
+                    {reviewFormData.rating > 0 && (
+                      <span className="text-sm font-semibold text-[#172022] ml-2">
+                        {reviewFormData.rating} {reviewFormData.rating === 1 ? <Trans>star</Trans> : <Trans>stars</Trans>}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Comment Input */}
+                <div>
+                  <label className="block text-sm font-semibold text-[#172022] mb-2">
+                    <Trans>Your Review</Trans>
+                  </label>
+                  <textarea
+                    value={reviewFormData.comment}
+                    onChange={(e) => setReviewFormData(prev => ({ ...prev, comment: e.target.value }))}
+                    placeholder="Share your experience with this product..."
+                    className="w-full px-4 py-3 rounded-lg border-2 border-[rgba(34,94,65,0.2)] focus:border-[#1b8f5b] focus:outline-none resize-none"
+                    rows={4}
+                    maxLength={1000}
+                  />
+                  <p className="text-xs text-[rgba(26,42,34,0.6)] mt-1">
+                    {reviewFormData.comment.length}/1000 <Trans>characters</Trans>
+                  </p>
+                </div>
+
+                {/* Submit Buttons */}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSubmitReview}
+                    disabled={submittingReview || reviewFormData.rating === 0}
+                    className={cn(
+                      'flex-1 py-3 px-4 rounded-lg text-sm font-semibold transition-all',
+                      submittingReview || reviewFormData.rating === 0
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white hover:shadow-md'
+                    )}
+                  >
+                    {submittingReview ? <Trans>Submitting...</Trans> : myReview ? <Trans>Update Review</Trans> : <Trans>Submit Review</Trans>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowReviewForm(false)
+                      if (myReview) {
+                        // Reset to original review data when canceling edit
+                        setReviewFormData({ rating: myReview.rating, comment: myReview.comment || '' })
+                      } else {
+                        // Clear form when canceling new review
+                        setReviewFormData({ rating: 0, comment: '' })
+                      }
+                    }}
+                    className="py-3 px-4 rounded-lg border-2 border-[rgba(34,94,65,0.2)] text-sm font-semibold text-[#172022] hover:bg-[rgba(240,245,242,0.5)] transition-all"
+                  >
+                    {myReview ? <Trans>Collapse</Trans> : <Trans>Cancel</Trans>}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {/* Reviews List */}
+        {reviewsLoading && reviews.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-sm text-[rgba(26,42,34,0.65)]"><Trans>Loading reviews...</Trans></p>
+          </div>
+        ) : reviews.length === 0 ? (
+          <div className="text-center py-8 p-4 rounded-xl bg-gray-50 border border-gray-200">
+            <p className="text-sm text-[rgba(26,42,34,0.65)]"><Trans>No reviews yet. Be the first to review this product!</Trans></p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((review) => (
+              <div
+                key={review._id || review.id}
+                className="p-4 rounded-xl border-2 border-[rgba(34,94,65,0.15)] bg-white hover:shadow-md transition-all"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-bold text-[#172022]">
+                        {review.userId?.name || 'Anonymous User'}
+                      </span>
+                      <div className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <StarIcon
+                            key={star}
+                            className="h-3.5 w-3.5 text-yellow-400"
+                            filled={star <= review.rating}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-xs text-[rgba(26,42,34,0.6)]">
+                      {new Date(review.createdAt).toLocaleDateString('en-IN', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
+                  </div>
+                </div>
+                
+                {review.comment && (
+                  <p className="text-sm text-[rgba(26,42,34,0.85)] leading-relaxed mb-3">
+                    <TransText>{review.comment}</TransText>
+                  </p>
+                )}
+
+                {/* Admin Response */}
+                {review.adminResponse?.response && (
+                  <div className="mt-3 pt-3 border-t border-[rgba(34,94,65,0.15)]">
+                    <div className="flex items-start gap-2">
+                      <div className="w-1 h-full bg-gradient-to-b from-[#1b8f5b] to-[#2a9d61] rounded-full mt-1" />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-[#1b8f5b]"><Trans>Admin Response</Trans></span>
+                          {review.adminResponse.respondedBy?.name && (
+                            <span className="text-xs text-[rgba(26,42,34,0.6)]">
+                              <Trans>by</Trans> {review.adminResponse.respondedBy.name}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-[rgba(26,42,34,0.85)] leading-relaxed">
+                          <TransText>{review.adminResponse.response}</TransText>
+                        </p>
+                        {review.adminResponse.respondedAt && (
+                          <p className="text-xs text-[rgba(26,42,34,0.6)] mt-1">
+                            {new Date(review.adminResponse.respondedAt).toLocaleDateString('en-IN', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Load More Reviews Button */}
+        {hasMoreReviews && reviews.length > 0 && (
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={loadMoreReviews}
+              disabled={reviewsLoading}
+              className={cn(
+                'px-6 py-3 rounded-lg text-sm font-semibold transition-all',
+                reviewsLoading
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white hover:shadow-md'
+              )}
+            >
+              {reviewsLoading ? <Trans>Loading...</Trans> : <Trans>Load More Reviews</Trans>}
+            </button>
+          </div>
+        )}
+        </section>
         </div>
       </div>
 
@@ -1120,8 +1762,8 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
       {similarProducts.length > 0 && (
         <section className="user-product-detail-view__similar-section">
           <div className="user-product-detail-view__similar-header">
-            <h3 className="user-product-detail-view__similar-title">Similar Products</h3>
-            <p className="user-product-detail-view__similar-subtitle">Products you might like</p>
+            <h3 className="user-product-detail-view__similar-title"><Trans>Similar Products</Trans></h3>
+            <p className="user-product-detail-view__similar-subtitle"><Trans>Products you might like</Trans></p>
           </div>
           <div className="user-product-detail-view__similar-rail">
             {similarProducts.map((similarProduct) => (
@@ -1153,7 +1795,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                         handleProductClick(similarProduct._id || similarProduct.id)
                       }}
                     >
-                      View Details
+                      <Trans>View Details</Trans>
                     </button>
                   </div>
                 </div>
@@ -1167,8 +1809,8 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
       {suggestedProducts.length > 0 && (
         <section className="user-product-detail-view__suggested-section">
           <div className="user-product-detail-view__suggested-header">
-            <h3 className="user-product-detail-view__suggested-title">Suggested for You</h3>
-            <p className="user-product-detail-view__suggested-subtitle">Discover more products</p>
+            <h3 className="user-product-detail-view__suggested-title"><Trans>Suggested for You</Trans></h3>
+            <p className="user-product-detail-view__suggested-subtitle"><Trans>Discover more products</Trans></p>
           </div>
           <div className="user-product-detail-view__suggested-rail">
             {suggestedProducts.map((suggestedProduct) => (
@@ -1200,7 +1842,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                         handleProductClick(suggestedProduct._id || suggestedProduct.id)
                       }}
                     >
-                      View Details
+                      <Trans>View Details</Trans>
                     </button>
                   </div>
                 </div>
@@ -1208,6 +1850,56 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
             ))}
           </div>
         </section>
+      )}
+
+      {/* Delete Review Confirmation Modal */}
+      {showDeleteConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border-2 border-[#1b8f5b]/20">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <TrashIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#172022]"><Trans>Delete Review</Trans></h3>
+                <p className="text-sm text-[rgba(26,42,34,0.7)]"><Trans>This action cannot be undone</Trans></p>
+              </div>
+            </div>
+            
+            <p className="text-sm text-[rgba(26,42,34,0.85)] mb-6 pl-15">
+              <Trans>Are you sure you want to delete your review? This will permanently remove your rating and comment for this product.</Trans>
+            </p>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleDeleteReview}
+                disabled={deletingReview}
+                className={cn(
+                  'flex-1 py-3 px-4 rounded-lg text-sm font-semibold transition-all',
+                  deletingReview
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-red-600 text-white hover:bg-red-700 hover:shadow-md'
+                )}
+              >
+                {deletingReview ? <Trans>Deleting...</Trans> : <Trans>Delete Review</Trans>}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirmModal(false)}
+                disabled={deletingReview}
+                className={cn(
+                  'py-3 px-4 rounded-lg border-2 border-[rgba(34,94,65,0.2)] text-sm font-semibold text-[#172022] transition-all',
+                  deletingReview
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-[rgba(240,245,242,0.5)]'
+                )}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -3589,3 +3589,101 @@ export async function deleteOffer(id) {
   })
 }
 
+// ============================================================================
+// REVIEW MANAGEMENT APIs
+// ============================================================================
+
+/**
+ * Get All Reviews
+ * GET /admin/reviews
+ * 
+ * @param {Object} params - { productId, userId, rating, hasResponse, isApproved, isVisible, page, limit, sort }
+ * @returns {Promise<Object>} - { reviews: Array, pagination: Object }
+ */
+export async function getReviews(params = {}) {
+  const queryParams = new URLSearchParams(params).toString()
+  return apiRequest(`/admin/reviews?${queryParams}`)
+}
+
+/**
+ * Get Review Details
+ * GET /admin/reviews/:reviewId
+ * 
+ * @param {string} reviewId - Review ID
+ * @returns {Promise<Object>} - { review: Object }
+ */
+export async function getReviewDetails(reviewId) {
+  return apiRequest(`/admin/reviews/${reviewId}`)
+}
+
+/**
+ * Respond to Review
+ * POST /admin/reviews/:reviewId/respond
+ * 
+ * @param {string} reviewId - Review ID
+ * @param {Object} data - { response: string }
+ * @returns {Promise<Object>} - { review: Object, message: string }
+ */
+export async function respondToReview(reviewId, data) {
+  return apiRequest(`/admin/reviews/${reviewId}/respond`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update Review Response
+ * PUT /admin/reviews/:reviewId/respond
+ * 
+ * @param {string} reviewId - Review ID
+ * @param {Object} data - { response: string }
+ * @returns {Promise<Object>} - { review: Object, message: string }
+ */
+export async function updateReviewResponse(reviewId, data) {
+  return apiRequest(`/admin/reviews/${reviewId}/respond`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete Review Response
+ * DELETE /admin/reviews/:reviewId/respond
+ * 
+ * @param {string} reviewId - Review ID
+ * @returns {Promise<Object>} - { review: Object, message: string }
+ */
+export async function deleteReviewResponse(reviewId) {
+  return apiRequest(`/admin/reviews/${reviewId}/respond`, {
+    method: 'DELETE',
+  })
+}
+
+/**
+ * Moderate Review
+ * PUT /admin/reviews/:reviewId/moderate
+ * 
+ * @param {string} reviewId - Review ID
+ * @param {Object} data - { isApproved: boolean, isVisible: boolean }
+ * @returns {Promise<Object>} - { review: Object, message: string }
+ */
+export async function moderateReview(reviewId, data) {
+  return apiRequest(`/admin/reviews/${reviewId}/moderate`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete Review
+ * DELETE /admin/reviews/:reviewId
+ * 
+ * @param {string} reviewId - Review ID
+ * @returns {Promise<Object>} - { message: string }
+ */
+export async function deleteReview(reviewId) {
+  return apiRequest(`/admin/reviews/${reviewId}`, {
+    method: 'DELETE',
+  })
+}
+

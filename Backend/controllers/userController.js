@@ -14,6 +14,7 @@ const Seller = require('../models/Seller');
 const ProductAssignment = require('../models/ProductAssignment');
 const Payment = require('../models/Payment');
 const Commission = require('../models/Commission');
+const Review = require('../models/Review');
 
 const { sendOTP } = require('../utils/otp');
 const { getTestOTPInfo } = require('../services/smsIndiaHubService');
@@ -1238,6 +1239,48 @@ exports.getProducts = async (req, res, next) => {
       Product.countDocuments(query),
     ]);
 
+    // Calculate review statistics for each product
+    const productIds = products.map(p => p._id);
+    const reviewStatsMap = {};
+    
+    if (productIds.length > 0) {
+      const reviewStats = await Review.aggregate([
+        { 
+          $match: { 
+            productId: { $in: productIds },
+            isVisible: true, 
+            isApproved: true 
+          } 
+        },
+        {
+          $group: {
+            _id: '$productId',
+            averageRating: { $avg: '$rating' },
+            totalReviews: { $sum: 1 },
+          },
+        },
+      ]);
+
+      // Create a map for quick lookup
+      reviewStats.forEach(stat => {
+        reviewStatsMap[stat._id.toString()] = {
+          rating: stat.averageRating ? Math.round(stat.averageRating * 10) / 10 : 0,
+          reviews: stat.totalReviews || 0,
+        };
+      });
+    }
+
+    // Add rating and review count to each product
+    const productsWithRatings = products.map(product => {
+      const stats = reviewStatsMap[product._id.toString()] || { rating: 0, reviews: 0 };
+      return {
+        ...product,
+        rating: stats.rating,
+        reviews: stats.reviews,
+        reviewCount: stats.reviews, // Also include as reviewCount for consistency
+      };
+    });
+
     // Log for debugging category filtering (remove in production)
     if (category) {
       console.log(`[getProducts] Found ${products.length} products for category "${category.toLowerCase()}" (total: ${total})`);
@@ -1251,7 +1294,7 @@ exports.getProducts = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        products,
+        products: productsWithRatings,
         pagination: {
           page: pageNum,
           limit: limitNum,
@@ -1331,6 +1374,23 @@ exports.getProductDetails = async (req, res, next) => {
       });
     }
 
+    // Calculate review statistics
+    const reviewStats = await Review.aggregate([
+      { $match: { productId: product._id, isVisible: true, isApproved: true } },
+      {
+        $group: {
+          _id: null,
+          averageRating: { $avg: '$rating' },
+          totalReviews: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const rating = reviewStats[0]?.averageRating 
+      ? Math.round(reviewStats[0].averageRating * 10) / 10 
+      : 0;
+    const reviews = reviewStats[0]?.totalReviews || 0;
+
     res.status(200).json({
       success: true,
       data: {
@@ -1354,6 +1414,8 @@ exports.getProductDetails = async (req, res, next) => {
           primaryImage: product.primaryImage,
           isInStock: product.isInStock(),
           attributeStocks: attributeStocksArray.length > 0 ? attributeStocksArray : undefined,
+          rating,
+          reviews,
         },
       },
     });
@@ -1412,10 +1474,52 @@ exports.getPopularProducts = async (req, res, next) => {
         .lean();
     }
 
+    // Calculate review statistics for each product
+    const allProductIds = products.map(p => p._id);
+    const reviewStatsMap = {};
+    
+    if (allProductIds.length > 0) {
+      const reviewStats = await Review.aggregate([
+        { 
+          $match: { 
+            productId: { $in: allProductIds },
+            isVisible: true, 
+            isApproved: true 
+          } 
+        },
+        {
+          $group: {
+            _id: '$productId',
+            averageRating: { $avg: '$rating' },
+            totalReviews: { $sum: 1 },
+          },
+        },
+      ]);
+
+      // Create a map for quick lookup
+      reviewStats.forEach(stat => {
+        reviewStatsMap[stat._id.toString()] = {
+          rating: stat.averageRating ? Math.round(stat.averageRating * 10) / 10 : 0,
+          reviews: stat.totalReviews || 0,
+        };
+      });
+    }
+
+    // Add rating and review count to each product
+    const productsWithRatings = products.map(product => {
+      const stats = reviewStatsMap[product._id.toString()] || { rating: 0, reviews: 0 };
+      return {
+        ...product,
+        rating: stats.rating,
+        reviews: stats.reviews,
+        reviewCount: stats.reviews, // Also include as reviewCount for consistency
+      };
+    });
+
     res.status(200).json({
       success: true,
       data: {
-        products: products || [],
+        products: productsWithRatings || [],
       },
     });
   } catch (error) {
@@ -4126,6 +4230,284 @@ exports.initiateSupportCall = async (req, res, next) => {
           phone: '+91-XXXXXXXXXX', // TODO: Add support phone number
           note: 'Our support team will call you shortly',
         },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// REVIEW & RATING ROUTES
+// ============================================================================
+
+/**
+ * @desc    Create or update product review
+ * @route   POST /api/users/products/:productId/reviews
+ * @access  Private (User)
+ */
+exports.createReview = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { productId } = req.params;
+    const { rating, comment, orderId } = req.body;
+
+    // Validate required fields
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating is required and must be between 1 and 5',
+      });
+    }
+
+    // Check if product exists
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    // Check if user has already reviewed this product
+    let review = await Review.findOne({ productId, userId });
+
+    if (review) {
+      // Update existing review
+      review.rating = rating;
+      review.comment = comment || review.comment;
+      if (orderId) review.orderId = orderId;
+      await review.save();
+    } else {
+      // Create new review
+      review = await Review.create({
+        productId,
+        userId,
+        rating,
+        comment: comment || '',
+        orderId: orderId || null,
+      });
+    }
+
+    // Populate user info
+    await review.populate('userId', 'name phone');
+
+    res.status(201).json({
+      success: true,
+      data: {
+        review,
+        message: review.isNew ? 'Review created successfully' : 'Review updated successfully',
+      },
+    });
+  } catch (error) {
+    // Handle duplicate review error
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already reviewed this product',
+      });
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get product reviews
+ * @route   GET /api/users/products/:productId/reviews
+ * @access  Public
+ */
+exports.getProductReviews = async (req, res, next) => {
+  try {
+    const { productId } = req.params;
+    const { page = 1, limit = 10, sort = '-createdAt' } = req.query;
+
+    // Check if product exists
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
+    }
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build sort object
+    let sortObj = {};
+    if (sort === 'rating-desc') sortObj = { rating: -1, createdAt: -1 };
+    else if (sort === 'rating-asc') sortObj = { rating: 1, createdAt: -1 };
+    else if (sort === 'date-asc') sortObj = { createdAt: 1 };
+    else sortObj = { createdAt: -1 }; // Default: newest first
+
+    // Get reviews (only visible and approved)
+    const [reviews, total] = await Promise.all([
+      Review.find({ productId, isVisible: true, isApproved: true })
+        .populate('userId', 'name')
+        .populate('adminResponse.respondedBy', 'name')
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Review.countDocuments({ productId, isVisible: true, isApproved: true }),
+    ]);
+
+    // Calculate average rating
+    const ratingStats = await Review.aggregate([
+      { $match: { productId: product._id, isVisible: true, isApproved: true } },
+      {
+        $group: {
+          _id: null,
+          averageRating: { $avg: '$rating' },
+          totalReviews: { $sum: 1 },
+          ratingDistribution: {
+            $push: '$rating',
+          },
+        },
+      },
+    ]);
+
+    const stats = ratingStats[0] || { averageRating: 0, totalReviews: 0, ratingDistribution: [] };
+    
+    // Calculate rating distribution
+    const distribution = {
+      5: stats.ratingDistribution.filter(r => r === 5).length,
+      4: stats.ratingDistribution.filter(r => r === 4).length,
+      3: stats.ratingDistribution.filter(r => r === 3).length,
+      2: stats.ratingDistribution.filter(r => r === 2).length,
+      1: stats.ratingDistribution.filter(r => r === 1).length,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: {
+        reviews,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum),
+        },
+        stats: {
+          averageRating: Math.round(stats.averageRating * 10) / 10 || 0,
+          totalReviews: stats.totalReviews,
+          distribution,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get user's review for a product
+ * @route   GET /api/users/products/:productId/reviews/my-review
+ * @access  Private (User)
+ */
+exports.getMyReview = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { productId } = req.params;
+
+    const review = await Review.findOne({ productId, userId })
+      .populate('adminResponse.respondedBy', 'name');
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        review,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update user's review
+ * @route   PUT /api/users/products/:productId/reviews/:reviewId
+ * @access  Private (User)
+ */
+exports.updateReview = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { productId, reviewId } = req.params;
+    const { rating, comment } = req.body;
+
+    const review = await Review.findOne({ _id: reviewId, productId, userId });
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    if (rating !== undefined) {
+      if (rating < 1 || rating > 5) {
+        return res.status(400).json({
+          success: false,
+          message: 'Rating must be between 1 and 5',
+        });
+      }
+      review.rating = rating;
+    }
+
+    if (comment !== undefined) {
+      review.comment = comment;
+    }
+
+    await review.save();
+
+    await review.populate('userId', 'name');
+    await review.populate('adminResponse.respondedBy', 'name');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        review,
+        message: 'Review updated successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete user's review
+ * @route   DELETE /api/users/products/:productId/reviews/:reviewId
+ * @access  Private (User)
+ */
+exports.deleteReview = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { productId, reviewId } = req.params;
+
+    const review = await Review.findOne({ _id: reviewId, productId, userId });
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    await Review.deleteOne({ _id: reviewId });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'Review deleted successfully',
       },
     });
   } catch (error) {

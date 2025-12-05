@@ -6,6 +6,7 @@ import { cn } from '../../../../lib/cn'
 import * as userApi from '../../services/userApi'
 import { getPrimaryImageUrl } from '../../utils/productImages'
 import { Trans } from '../../../../components/Trans'
+import { TransText } from '../../../../components/TransText'
 
 export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }) {
   const { cart } = useUserState()

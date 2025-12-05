@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BarChart3, Building2, Factory, Home, Layers3, ShieldCheck, Users2, Wallet, Settings, ArrowRightLeft, IndianRupee, History, ChevronDown, ChevronRight, ImageIcon } from 'lucide-react'
+import { BarChart3, Building2, Factory, Home, Layers3, ShieldCheck, Users2, Wallet, Settings, ArrowRightLeft, IndianRupee, History, ChevronDown, ChevronRight, ImageIcon, Star } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 
 const links = [
@@ -28,6 +28,14 @@ const links = [
     label: 'Offers', 
     icon: ImageIcon, 
     description: 'Manage carousels and special offers', 
+    color: 'purple',
+    suboptions: []
+  },
+  { 
+    id: 'reviews', 
+    label: 'Reviews', 
+    icon: Star, 
+    description: 'Manage product reviews and ratings', 
     color: 'purple',
     suboptions: []
   },

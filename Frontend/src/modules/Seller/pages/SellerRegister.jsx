@@ -236,6 +236,7 @@ export function SellerRegister({ onSuccess, onSubmit, onSwitchToLogin }) {
               onBack={() => setStep('register')}
               loading={loading}
               error={error}
+              userType="seller"
             />
           </div>
         </div>

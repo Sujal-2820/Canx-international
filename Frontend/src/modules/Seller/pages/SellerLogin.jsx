@@ -182,6 +182,7 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
               onBack={() => setStep('phone')}
               loading={loading}
               error={error}
+              userType="seller"
             />
           </div>
         </div>

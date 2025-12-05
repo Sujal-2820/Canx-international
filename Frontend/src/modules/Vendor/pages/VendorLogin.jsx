@@ -172,6 +172,7 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
               onBack={() => setStep('phone')}
               loading={loading}
               error={error}
+              userType="vendor"
             />
           </div>
         </div>

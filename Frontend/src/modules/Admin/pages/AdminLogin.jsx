@@ -103,6 +103,7 @@ export function AdminLogin({ onSubmit }) {
               onBack={() => setStep('credentials')}
               loading={loading}
               error={error}
+              userType="admin"
             />
           </div>
         </div>

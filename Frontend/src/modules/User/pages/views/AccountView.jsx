@@ -16,6 +16,8 @@ import {
   TrashIcon,
 } from '../../components/icons'
 import { cn } from '../../../../lib/cn'
+import { Trans } from '../../../../components/Trans'
+import { TransText } from '../../../../components/TransText'
 
 export function AccountView({ onNavigate }) {
   const { profile, orders } = useUserState()
@@ -245,7 +247,15 @@ export function AccountView({ onNavigate }) {
         },
       ],
     },
-  ]
+  ].map(section => ({
+    ...section,
+    title: section.title, // Will be translated in JSX
+    items: section.items.map(item => ({
+      ...item,
+      label: item.label, // Will be translated in JSX
+      value: item.id === 'history' ? item.value : (item.id === 'change-delivery-address' ? item.value : item.value), // Dynamic values stay as is
+    })),
+  }))
 
   return (
     <div className="user-account-view space-y-6">
@@ -264,13 +274,13 @@ export function AccountView({ onNavigate }) {
       {editingName && (
         <div className="user-account-view__edit-modal">
           <div className="user-account-view__edit-modal-content">
-            <h3 className="user-account-view__edit-modal-title">Edit Name</h3>
+            <h3 className="user-account-view__edit-modal-title"><Trans>Edit Name</Trans></h3>
             <input
               type="text"
               value={editedName}
               onChange={(e) => setEditedName(e.target.value)}
               className="user-account-view__edit-modal-input"
-              placeholder="Enter your name"
+              placeholder="Enter your name" // TODO: Translate placeholder
               autoFocus
             />
             <div className="user-account-view__edit-modal-actions">
@@ -283,7 +293,7 @@ export function AccountView({ onNavigate }) {
                 }}
               >
                 <XIcon className="h-4 w-4" />
-                Cancel
+                <Trans>Cancel</Trans>
               </button>
               <button
                 type="button"
@@ -291,7 +301,7 @@ export function AccountView({ onNavigate }) {
                 onClick={handleSaveName}
               >
                 <CheckIcon className="h-4 w-4" />
-                Save
+                <Trans>Save</Trans>
               </button>
             </div>
           </div>
@@ -313,7 +323,7 @@ export function AccountView({ onNavigate }) {
               onClick={() => setActiveSectionId(section.id)}
             >
               <section.icon className="user-account-view__nav-item-icon" />
-              <span className="user-account-view__nav-item-title">{section.title}</span>
+              <span className="user-account-view__nav-item-title"><Trans>{section.title}</Trans></span>
             </button>
           ))}
         </div>
@@ -330,7 +340,7 @@ export function AccountView({ onNavigate }) {
             >
               <div className="user-account-view__section-header">
                 <section.icon className="user-account-view__section-icon" />
-                <h3 className="user-account-view__section-title">{section.title}</h3>
+                <h3 className="user-account-view__section-title"><Trans>{section.title}</Trans></h3>
               </div>
               <div className="user-account-view__section-content">
                 {section.items.length > 0 ? (
@@ -338,12 +348,26 @@ export function AccountView({ onNavigate }) {
                     <div key={item.id} className="user-account-view__item">
                       <div className="user-account-view__item-content">
                         <div className="user-account-view__item-label-wrapper">
-                          <span className="user-account-view__item-label">{item.label}</span>
+                          <span className="user-account-view__item-label"><Trans>{item.label}</Trans></span>
                           {item.isDefault && (
                             <span className="user-account-view__item-badge">Default</span>
                           )}
                         </div>
-                        <span className="user-account-view__item-value">{item.value}</span>
+                        <span className="user-account-view__item-value">
+                          {item.id === 'history' ? (
+                            <>
+                              {orders.length} <Trans>orders</Trans>
+                            </>
+                          ) : item.id === 'change-delivery-address' ? (
+                            profile.location?.city && profile.location?.state && profile.location?.pincode
+                              ? `${profile.location.address || ''}, ${profile.location.city}, ${profile.location.state} - ${profile.location.pincode}`.replace(/^,\s*|,\s*$/g, '').trim() || <Trans>Not set</Trans>
+                              : <Trans>Not set</Trans>
+                          ) : item.value === 'Not set' ? (
+                            <Trans>Not set</Trans>
+                          ) : (
+                            <Trans>{item.value}</Trans>
+                          )}
+                        </span>
                       </div>
                       <div className="user-account-view__item-actions">
                         {item.toggle ? (
@@ -393,7 +417,7 @@ export function AccountView({ onNavigate }) {
                 ) : (
                   <div className="user-account-view__empty">
                     <section.icon className="user-account-view__empty-icon" />
-                    <p className="user-account-view__empty-text">No {section.title.toLowerCase()} yet</p>
+                    <p className="user-account-view__empty-text"><Trans>No</Trans> {section.title.toLowerCase()} <Trans>yet</Trans></p>
                   </div>
                 )}
               </div>
@@ -407,7 +431,7 @@ export function AccountView({ onNavigate }) {
             <div key={section.id} className="user-account-view__section">
               <div className="user-account-view__section-header">
                 <section.icon className="user-account-view__section-icon" />
-                <h3 className="user-account-view__section-title">{section.title}</h3>
+                <h3 className="user-account-view__section-title"><Trans>{section.title}</Trans></h3>
               </div>
               <div className="user-account-view__section-content">
                 {section.items.length > 0 ? (
@@ -415,12 +439,26 @@ export function AccountView({ onNavigate }) {
                     <div key={item.id} className="user-account-view__item">
                       <div className="user-account-view__item-content">
                         <div className="user-account-view__item-label-wrapper">
-                          <span className="user-account-view__item-label">{item.label}</span>
+                          <span className="user-account-view__item-label"><Trans>{item.label}</Trans></span>
                           {item.isDefault && (
                             <span className="user-account-view__item-badge">Default</span>
                           )}
                         </div>
-                        <span className="user-account-view__item-value">{item.value}</span>
+                        <span className="user-account-view__item-value">
+                          {item.id === 'history' ? (
+                            <>
+                              {orders.length} <Trans>orders</Trans>
+                            </>
+                          ) : item.id === 'change-delivery-address' ? (
+                            profile.location?.city && profile.location?.state && profile.location?.pincode
+                              ? `${profile.location.address || ''}, ${profile.location.city}, ${profile.location.state} - ${profile.location.pincode}`.replace(/^,\s*|,\s*$/g, '').trim() || <Trans>Not set</Trans>
+                              : <Trans>Not set</Trans>
+                          ) : item.value === 'Not set' ? (
+                            <Trans>Not set</Trans>
+                          ) : (
+                            <Trans>{item.value}</Trans>
+                          )}
+                        </span>
                       </div>
                       <div className="user-account-view__item-actions">
                         {item.toggle ? (
@@ -470,7 +508,7 @@ export function AccountView({ onNavigate }) {
                 ) : (
                   <div className="user-account-view__empty">
                     <section.icon className="user-account-view__empty-icon" />
-                    <p className="user-account-view__empty-text">No {section.title.toLowerCase()} yet</p>
+                    <p className="user-account-view__empty-text"><Trans>No</Trans> {section.title.toLowerCase()} <Trans>yet</Trans></p>
                   </div>
                 )}
               </div>
@@ -491,7 +529,7 @@ export function AccountView({ onNavigate }) {
         >
           <div className="user-account-view__panel-content">
             <div className="user-account-view__panel-header">
-              <h3 className="user-account-view__panel-title">Support & Help</h3>
+              <h3 className="user-account-view__panel-title"><Trans>Support & Help</Trans></h3>
               <button
                 type="button"
                 onClick={() => setShowSupportPanel(false)}
@@ -503,33 +541,33 @@ export function AccountView({ onNavigate }) {
             <div className="user-account-view__panel-body">
               <div className="space-y-4">
                 <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
-                  <h4 className="font-semibold text-[#172022] mb-2">Help Center</h4>
+                  <h4 className="font-semibold text-[#172022] mb-2"><Trans>Help Center</Trans></h4>
                   <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
-                    Browse FAQs and guides to find answers to common questions.
+                    <Trans>Browse FAQs and guides to find answers to common questions.</Trans>
                   </p>
                   <button
                     type="button"
                     className="text-sm text-[#1b8f5b] font-semibold hover:underline"
                   >
-                    Visit Help Center →
+                    <Trans>Visit Help Center</Trans> →
                   </button>
                 </div>
                 <div className="p-4 rounded-xl bg-[rgba(240,245,242,0.4)] border border-[rgba(34,94,65,0.1)]">
-                  <h4 className="font-semibold text-[#172022] mb-2">Contact Support</h4>
+                  <h4 className="font-semibold text-[#172022] mb-2"><Trans>Contact Support</Trans></h4>
                   <p className="text-sm text-[rgba(26,42,34,0.7)] mb-2">
-                    <strong>Phone:</strong> +91 1800-XXX-XXXX
+                    <strong><Trans>Phone</Trans>:</strong> +91 1800-XXX-XXXX
                   </p>
                   <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
-                    <strong>Email:</strong> support@irasathi.com
+                    <strong><Trans>Email</Trans>:</strong> support@irasathi.com
                   </p>
                   <p className="text-sm text-[rgba(26,42,34,0.7)] mb-3">
-                    <strong>Hours:</strong> Mon-Sat, 9 AM - 6 PM
+                    <strong><Trans>Hours</Trans>:</strong> <Trans>Mon-Sat, 9 AM - 6 PM</Trans>
                   </p>
                   <button
                     type="button"
                     className="text-sm text-[#1b8f5b] font-semibold hover:underline"
                   >
-                    Start Chat →
+                    <Trans>Start Chat</Trans> →
                   </button>
                 </div>
               </div>
@@ -551,7 +589,7 @@ export function AccountView({ onNavigate }) {
         >
           <div className="user-account-view__panel-content">
             <div className="user-account-view__panel-header">
-              <h3 className="user-account-view__panel-title">Report Issue</h3>
+              <h3 className="user-account-view__panel-title"><Trans>Report Issue</Trans></h3>
               <button
                 type="button"
                 onClick={() => {
@@ -567,41 +605,41 @@ export function AccountView({ onNavigate }) {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Category <span className="text-red-500">*</span>
+                    <Trans>Category</Trans> <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={reportForm.category}
                     onChange={(e) => setReportForm({ ...reportForm, category: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
                   >
-                    <option value="general">General Issue</option>
-                    <option value="payment">Payment Issue</option>
-                    <option value="delivery">Delivery Issue</option>
-                    <option value="product">Product Issue</option>
-                    <option value="account">Account Issue</option>
-                    <option value="other">Other</option>
+                    <option value="general"><Trans>General Issue</Trans></option>
+                    <option value="payment"><Trans>Payment Issue</Trans></option>
+                    <option value="delivery"><Trans>Delivery Issue</Trans></option>
+                    <option value="product"><Trans>Product Issue</Trans></option>
+                    <option value="account"><Trans>Account Issue</Trans></option>
+                    <option value="other"><Trans>Other</Trans></option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Subject <span className="text-red-500">*</span>
+                    <Trans>Subject</Trans> <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={reportForm.subject}
                     onChange={(e) => setReportForm({ ...reportForm, subject: e.target.value })}
-                    placeholder="Brief description of the issue"
+                    placeholder="Brief description of the issue" // TODO: Translate placeholder
                     className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Description <span className="text-red-500">*</span>
+                    <Trans>Description</Trans> <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     value={reportForm.description}
                     onChange={(e) => setReportForm({ ...reportForm, description: e.target.value })}
-                    placeholder="Please provide detailed information about the issue"
+                    placeholder="Please provide detailed information about the issue" // TODO: Translate placeholder
                     rows={5}
                     className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b] resize-none"
                   />
@@ -613,7 +651,7 @@ export function AccountView({ onNavigate }) {
                   onClick={handleSubmitReport}
                   className="w-full py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors"
                 >
-                  Submit Report
+                  <Trans>Submit Report</Trans>
                 </button>
               </div>
             </div>
@@ -637,7 +675,7 @@ export function AccountView({ onNavigate }) {
         >
           <div className="user-account-view__panel-content">
             <div className="user-account-view__panel-header">
-              <h3 className="user-account-view__panel-title">Update Phone Number</h3>
+              <h3 className="user-account-view__panel-title"><Trans>Update Phone Number</Trans></h3>
               <button
                 type="button"
                 onClick={() => {
@@ -683,7 +721,7 @@ export function AccountView({ onNavigate }) {
                     disabled={phoneUpdateLoading}
                     className="w-full py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {phoneUpdateLoading ? 'Sending...' : 'Send OTP to Current Phone'}
+                    {phoneUpdateLoading ? <Trans>Sending...</Trans> : <Trans>Send OTP to Current Phone</Trans>}
                   </button>
                 </div>
               )}
@@ -704,7 +742,7 @@ export function AccountView({ onNavigate }) {
                       type="text"
                       value={currentPhoneOTP}
                       onChange={(e) => setCurrentPhoneOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="Enter 6-digit OTP"
+                      placeholder="Enter 6-digit OTP" // TODO: Translate placeholder
                       maxLength={6}
                       className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
                   />
@@ -715,7 +753,7 @@ export function AccountView({ onNavigate }) {
                       onClick={() => setPhoneUpdateStep(1)}
                       className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
                     >
-                      Back
+                      <Trans>Back</Trans>
                     </button>
                     <button
                       type="button"
@@ -743,7 +781,7 @@ export function AccountView({ onNavigate }) {
                       disabled={phoneUpdateLoading || !currentPhoneOTP || currentPhoneOTP.length !== 6}
                       className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {phoneUpdateLoading ? 'Verifying...' : 'Verify OTP'}
+                      {phoneUpdateLoading ? <Trans>Verifying...</Trans> : <Trans>Verify OTP</Trans>}
                     </button>
                   </div>
                 </div>
@@ -759,7 +797,7 @@ export function AccountView({ onNavigate }) {
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                      New Phone Number <span className="text-red-500">*</span>
+                      <Trans>New Phone Number</Trans> <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="tel"
@@ -778,7 +816,7 @@ export function AccountView({ onNavigate }) {
                       }}
                       className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
                     >
-                      Back
+                      <Trans>Back</Trans>
                     </button>
                     <button
                       type="button"
@@ -810,7 +848,7 @@ export function AccountView({ onNavigate }) {
                       disabled={phoneUpdateLoading || !newPhone || newPhone.length < 10}
                       className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {phoneUpdateLoading ? 'Sending...' : 'Send OTP to New Phone'}
+                      {phoneUpdateLoading ? <Trans>Sending...</Trans> : <Trans>Send OTP to New Phone</Trans>}
                     </button>
                   </div>
                 </div>
@@ -832,7 +870,7 @@ export function AccountView({ onNavigate }) {
                       type="text"
                       value={newPhoneOTP}
                       onChange={(e) => setNewPhoneOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="Enter 6-digit OTP"
+                      placeholder="Enter 6-digit OTP" // TODO: Translate placeholder
                       maxLength={6}
                       className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
                     />
@@ -846,7 +884,7 @@ export function AccountView({ onNavigate }) {
                       }}
                       className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
                     >
-                      Back
+                      <Trans>Back</Trans>
                     </button>
                     <button
                       type="button"
@@ -882,7 +920,7 @@ export function AccountView({ onNavigate }) {
                       disabled={phoneUpdateLoading || !newPhoneOTP || newPhoneOTP.length !== 6}
                       className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {phoneUpdateLoading ? 'Updating...' : 'Update Phone Number'}
+                      {phoneUpdateLoading ? <Trans>Updating...</Trans> : <Trans>Update Phone Number</Trans>}
                     </button>
                 </div>
                 </div>
@@ -907,7 +945,7 @@ export function AccountView({ onNavigate }) {
         >
           <div className="user-account-view__panel-content">
             <div className="user-account-view__panel-header">
-              <h3 className="user-account-view__panel-title">Change Delivery Address</h3>
+              <h3 className="user-account-view__panel-title"><Trans>Change Delivery Address</Trans></h3>
               <button
                 type="button"
                 onClick={() => {
@@ -952,7 +990,7 @@ export function AccountView({ onNavigate }) {
                     disabled={deliveryAddressOTPLoading}
                     className="w-full py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {deliveryAddressOTPLoading ? 'Sending...' : 'Send OTP'}
+                    {deliveryAddressOTPLoading ? <Trans>Sending...</Trans> : <Trans>Send OTP</Trans>}
                   </button>
                 </div>
               )}
@@ -973,7 +1011,7 @@ export function AccountView({ onNavigate }) {
                     type="text"
                       value={deliveryAddressOTP}
                       onChange={(e) => setDeliveryAddressOTP(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="Enter 6-digit OTP"
+                      placeholder="Enter 6-digit OTP" // TODO: Translate placeholder
                     maxLength={6}
                     className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
                   />
@@ -984,7 +1022,7 @@ export function AccountView({ onNavigate }) {
                       onClick={() => setDeliveryAddressOTPStep(1)}
                       className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
                     >
-                      Back
+                      <Trans>Back</Trans>
                     </button>
                     <button
                       type="button"
@@ -1012,7 +1050,7 @@ export function AccountView({ onNavigate }) {
                       disabled={deliveryAddressOTPLoading || !deliveryAddressOTP || deliveryAddressOTP.length !== 6}
                       className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {deliveryAddressOTPLoading ? 'Verifying...' : 'Verify OTP'}
+                      {deliveryAddressOTPLoading ? <Trans>Verifying...</Trans> : <Trans>Verify OTP</Trans>}
                     </button>
               </div>
                 </div>
@@ -1063,7 +1101,7 @@ export function AccountView({ onNavigate }) {
                       }}
                   className="flex-1 py-2.5 px-4 rounded-xl border border-[rgba(34,94,65,0.2)] bg-white text-[#1b8f5b] text-sm font-semibold hover:bg-[rgba(240,245,242,0.5)] transition-colors"
                 >
-                      Back
+                      <Trans>Back</Trans>
                 </button>
                 <button
                   type="button"
@@ -1071,7 +1109,7 @@ export function AccountView({ onNavigate }) {
                       disabled={loading || !selectedDeliveryLocation}
                   className="flex-1 py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Saving...' : 'Save Address'}
+                  {loading ? <Trans>Saving...</Trans> : <Trans>Save Address</Trans>}
                 </button>
               </div>
                 </div>

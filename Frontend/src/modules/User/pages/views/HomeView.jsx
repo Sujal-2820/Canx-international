@@ -425,6 +425,9 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
                   description: product.description,
                   shortDescription: product.shortDescription || product.description,
                   isWishlisted: favourites.includes(product._id || product.id),
+                  rating: product.rating ?? product.averageRating,
+                  reviews: product.reviews ?? product.reviewCount,
+                  reviewCount: product.reviewCount ?? product.reviews,
                 }}
                 onNavigate={onProductClick}
                 onAddToCart={onAddToCart}
@@ -467,6 +470,9 @@ export function HomeView({ onProductClick, onCategoryClick, onAddToCart, onSearc
                   description: product.description,
                   shortDescription: product.shortDescription || product.description,
                   isWishlisted: favourites.includes(product._id || product.id),
+                  rating: product.rating ?? product.averageRating,
+                  reviews: product.reviews ?? product.reviewCount,
+                  reviewCount: product.reviewCount ?? product.reviews,
                 }}
                 onNavigate={onProductClick}
                 onAddToCart={onAddToCart}

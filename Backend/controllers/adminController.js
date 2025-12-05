@@ -24,6 +24,7 @@ const Settings = require('../models/Settings');
 const Notification = require('../models/Notification');
 const Offer = require('../models/Offer');
 const CreditRepayment = require('../models/CreditRepayment');
+const Review = require('../models/Review');
 const razorpayService = require('../services/razorpayService');
 const { VENDOR_COVERAGE_RADIUS_KM, MIN_VENDOR_PURCHASE, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 
@@ -7415,6 +7416,341 @@ exports.getVendorRepayments = async (req, res, next) => {
           totalItems: total,
           itemsPerPage: limitNum,
         },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// REVIEW MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * @desc    Get all product reviews with filtering
+ * @route   GET /api/admin/reviews
+ * @access  Private (Admin)
+ */
+exports.getReviews = async (req, res, next) => {
+  try {
+    const {
+      productId,
+      userId,
+      rating,
+      hasResponse,
+      isApproved,
+      isVisible,
+      page = 1,
+      limit = 20,
+      sort = '-createdAt',
+    } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build query
+    const query = {};
+    if (productId) {
+      // Mongoose will automatically convert string IDs to ObjectId
+      query.productId = productId;
+    }
+    if (userId) {
+      // Mongoose will automatically convert string IDs to ObjectId
+      query.userId = userId;
+    }
+    if (rating) query.rating = parseInt(rating);
+    if (hasResponse === 'true') query['adminResponse.response'] = { $exists: true, $ne: '' };
+    if (hasResponse === 'false') query.$or = [{ 'adminResponse.response': { $exists: false } }, { 'adminResponse.response': '' }];
+    // Only add isApproved filter if explicitly set (don't filter by default)
+    if (isApproved !== undefined && isApproved !== '') {
+      query.isApproved = isApproved === 'true';
+    }
+    // Only add isVisible filter if explicitly set (don't filter by default)
+    if (isVisible !== undefined && isVisible !== '') {
+      query.isVisible = isVisible === 'true';
+    }
+
+    // Build sort object
+    let sortObj = {};
+    if (sort === 'rating-desc') sortObj = { rating: -1, createdAt: -1 };
+    else if (sort === 'rating-asc') sortObj = { rating: 1, createdAt: -1 };
+    else if (sort === 'date-asc') sortObj = { createdAt: 1 };
+    else sortObj = { createdAt: -1 }; // Default: newest first
+
+    // Get reviews
+    const [reviews, total] = await Promise.all([
+      Review.find(query)
+        .populate('productId', 'name')
+        .populate('userId', 'name phone')
+        .populate('adminResponse.respondedBy', 'name')
+        .sort(sortObj)
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Review.countDocuments(query),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        reviews,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get review details
+ * @route   GET /api/admin/reviews/:reviewId
+ * @access  Private (Admin)
+ */
+exports.getReviewDetails = async (req, res, next) => {
+  try {
+    const { reviewId } = req.params;
+
+    const review = await Review.findById(reviewId)
+      .populate('productId', 'name')
+      .populate('userId', 'name phone')
+      .populate('adminResponse.respondedBy', 'name');
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        review,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Respond to a review
+ * @route   POST /api/admin/reviews/:reviewId/respond
+ * @access  Private (Admin)
+ */
+exports.respondToReview = async (req, res, next) => {
+  try {
+    const { reviewId } = req.params;
+    const { response } = req.body;
+    const adminId = req.admin._id;
+
+    if (!response || response.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Response text is required',
+      });
+    }
+
+    const review = await Review.findById(reviewId);
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    // Update admin response
+    review.adminResponse = {
+      response: response.trim(),
+      respondedBy: adminId,
+      respondedAt: new Date(),
+    };
+
+    await review.save();
+
+    await review.populate('productId', 'name');
+    await review.populate('userId', 'name phone');
+    await review.populate('adminResponse.respondedBy', 'name');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        review,
+        message: 'Response added successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update admin response to a review
+ * @route   PUT /api/admin/reviews/:reviewId/respond
+ * @access  Private (Admin)
+ */
+exports.updateReviewResponse = async (req, res, next) => {
+  try {
+    const { reviewId } = req.params;
+    const { response } = req.body;
+    const adminId = req.admin._id;
+
+    if (!response || response.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Response text is required',
+      });
+    }
+
+    const review = await Review.findById(reviewId);
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    // Update admin response
+    review.adminResponse = {
+      response: response.trim(),
+      respondedBy: adminId,
+      respondedAt: new Date(),
+    };
+
+    await review.save();
+
+    await review.populate('productId', 'name');
+    await review.populate('userId', 'name phone');
+    await review.populate('adminResponse.respondedBy', 'name');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        review,
+        message: 'Response updated successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete admin response
+ * @route   DELETE /api/admin/reviews/:reviewId/respond
+ * @access  Private (Admin)
+ */
+exports.deleteReviewResponse = async (req, res, next) => {
+  try {
+    const { reviewId } = req.params;
+
+    const review = await Review.findById(reviewId);
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    // Remove admin response
+    review.adminResponse = undefined;
+    await review.save();
+
+    await review.populate('productId', 'name');
+    await review.populate('userId', 'name phone');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        review,
+        message: 'Response deleted successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Moderate review (approve/reject, hide/show)
+ * @route   PUT /api/admin/reviews/:reviewId/moderate
+ * @access  Private (Admin)
+ */
+exports.moderateReview = async (req, res, next) => {
+  try {
+    const { reviewId } = req.params;
+    const { isApproved, isVisible } = req.body;
+
+    const review = await Review.findById(reviewId);
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    if (isApproved !== undefined) {
+      review.isApproved = isApproved;
+    }
+
+    if (isVisible !== undefined) {
+      review.isVisible = isVisible;
+    }
+
+    await review.save();
+
+    await review.populate('productId', 'name');
+    await review.populate('userId', 'name phone');
+    await review.populate('adminResponse.respondedBy', 'name');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        review,
+        message: 'Review moderated successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete review
+ * @route   DELETE /api/admin/reviews/:reviewId
+ * @access  Private (Admin)
+ */
+exports.deleteReview = async (req, res, next) => {
+  try {
+    const { reviewId } = req.params;
+
+    const review = await Review.findById(reviewId);
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found',
+      });
+    }
+
+    await Review.deleteOne({ _id: reviewId });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'Review deleted successfully',
       },
     });
   } catch (error) {

@@ -162,6 +162,7 @@ export function UserRegister({ onSuccess, onSwitchToLogin }) {
               onBack={() => setStep('register')}
               loading={loading}
               error={error}
+              userType="user"
             />
           </div>
         </div>

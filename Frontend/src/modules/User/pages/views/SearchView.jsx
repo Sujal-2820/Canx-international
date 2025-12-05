@@ -268,7 +268,10 @@ export function SearchView({ query = '', onProductClick, onAddToCart, onToggleFa
                 id: product._id || product.id,
                 price: product.priceToUser || product.price || 0,
                 image: product.images?.[0]?.url || product.primaryImage || product.image,
-                isWishlisted: favourites.includes(product._id || product.id) 
+                isWishlisted: favourites.includes(product._id || product.id),
+                rating: product.rating ?? product.averageRating,
+                reviews: product.reviews ?? product.reviewCount,
+                reviewCount: product.reviewCount ?? product.reviews,
               }}
               onNavigate={onProductClick}
               onAddToCart={onAddToCart}

@@ -134,6 +134,46 @@ router.get('/products/popular', userController.getPopularProducts);
 router.get('/products/search', userController.searchProducts);
 
 /**
+ * IMPORTANT: Review routes must come BEFORE the generic :productId route
+ * Otherwise Express will match the generic route first
+ */
+
+/**
+ * @route   GET /api/users/products/:productId/reviews
+ * @desc    Get product reviews
+ * @access  Public
+ */
+router.get('/products/:productId/reviews', userController.getProductReviews);
+
+/**
+ * @route   GET /api/users/products/:productId/reviews/my-review
+ * @desc    Get user's review for a product
+ * @access  Private (User)
+ */
+router.get('/products/:productId/reviews/my-review', authorizeUser, userController.getMyReview);
+
+/**
+ * @route   POST /api/users/products/:productId/reviews
+ * @desc    Create or update product review
+ * @access  Private (User)
+ */
+router.post('/products/:productId/reviews', authorizeUser, userController.createReview);
+
+/**
+ * @route   PUT /api/users/products/:productId/reviews/:reviewId
+ * @desc    Update user's review
+ * @access  Private (User)
+ */
+router.put('/products/:productId/reviews/:reviewId', authorizeUser, userController.updateReview);
+
+/**
+ * @route   DELETE /api/users/products/:productId/reviews/:reviewId
+ * @desc    Delete user's review
+ * @access  Private (User)
+ */
+router.delete('/products/:productId/reviews/:reviewId', authorizeUser, userController.deleteReview);
+
+/**
  * @route   GET /api/users/products/:productId
  * @desc    Get product details
  * @access  Public

@@ -214,6 +214,9 @@ productSchema.virtual('primaryImage').get(function () {
   return null;
 });
 
+// Note: Rating and review count are calculated using aggregation in controllers
+// (see userController.getProductDetails and userController.getProducts)
+
 // Ensure virtual fields are serialized
 productSchema.set('toJSON', { virtuals: true });
 productSchema.set('toObject', { virtuals: true });

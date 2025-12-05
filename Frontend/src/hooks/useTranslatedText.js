@@ -41,3 +41,4 @@ export function useTranslatedText(text, forceRefresh = false) {
   return translatedText
 }
 
+

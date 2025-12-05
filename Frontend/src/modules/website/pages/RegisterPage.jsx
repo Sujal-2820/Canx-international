@@ -162,6 +162,7 @@ export function RegisterPage() {
               onBack={() => setStep('register')}
               loading={loading}
               error={error}
+              userType="user"
             />
           </div>
         </div>

@@ -571,6 +571,9 @@ export function CategoryProductsView({ categoryId, onProductClick, onAddToCart, 
                     stock: product.stock,
                     description: product.description,
                     isWishlisted: favourites.includes(product._id || product.id),
+                    rating: product.rating ?? product.averageRating,
+                    reviews: product.reviews ?? product.reviewCount,
+                    reviewCount: product.reviewCount ?? product.reviews,
                   }}
                   onNavigate={onProductClick}
                   onAddToCart={onAddToCart}

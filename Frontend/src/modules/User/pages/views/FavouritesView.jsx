@@ -87,7 +87,10 @@ export function FavouritesView({ onProductClick, onAddToCart, onRemoveFromFavour
                 id: product._id || product.id,
                 price: product.priceToUser || product.price,
                 image: product.images?.[0]?.url || product.primaryImage || product.image,
-                isWishlisted: true 
+                isWishlisted: true,
+                rating: product.rating ?? product.averageRating,
+                reviews: product.reviews ?? product.reviewCount,
+                reviewCount: product.reviewCount ?? product.reviews,
               }}
               onNavigate={onProductClick}
               onAddToCart={onAddToCart}

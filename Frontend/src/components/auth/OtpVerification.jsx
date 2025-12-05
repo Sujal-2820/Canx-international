@@ -1,6 +1,85 @@
 import { useState, useRef, useEffect } from 'react'
+import { ShieldCheckIcon, UserIcon, StoreIcon, ShoppingBagIcon } from 'lucide-react'
+import iraSathiLogo from '../../assets/IRA Sathi.png'
 
-export function OtpVerification({ phone, email, onVerify, onResend, onBack, loading = false, error = null }) {
+// Theme configurations for different user types
+const themes = {
+  user: {
+    bgGradient: 'from-green-50 via-white to-green-50',
+    borderColor: 'border-green-200/60',
+    primaryColor: '#1b8f5b',
+    primaryBg: 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61]',
+    focusBorder: 'focus:border-[#1b8f5b]',
+    focusRing: 'focus:ring-[#1b8f5b]/40',
+    textColor: 'text-[#172022]',
+    mutedColor: 'text-gray-600',
+    iconBg: 'bg-green-100',
+    iconColor: 'text-green-600',
+    title: 'User Verification',
+    subtitle: 'IRA Sathi User Account'
+  },
+  vendor: {
+    bgGradient: 'from-green-50 via-white to-green-50',
+    borderColor: 'border-green-200/60',
+    primaryColor: '#1b8f5b',
+    primaryBg: 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61]',
+    focusBorder: 'focus:border-[#1b8f5b]',
+    focusRing: 'focus:ring-[#1b8f5b]/40',
+    textColor: 'text-[#172022]',
+    mutedColor: 'text-gray-600',
+    iconBg: 'bg-green-100',
+    iconColor: 'text-green-600',
+    title: 'Vendor Verification',
+    subtitle: 'IRA Sathi Vendor Portal'
+  },
+  seller: {
+    bgGradient: 'from-green-50 via-white to-green-50',
+    borderColor: 'border-green-200/60',
+    primaryColor: '#1b8f5b',
+    primaryBg: 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61]',
+    focusBorder: 'focus:border-[#1b8f5b]',
+    focusRing: 'focus:ring-[#1b8f5b]/40',
+    textColor: 'text-[#172022]',
+    mutedColor: 'text-gray-600',
+    iconBg: 'bg-green-100',
+    iconColor: 'text-green-600',
+    title: 'Seller Verification',
+    subtitle: 'IRA Sathi Seller Portal'
+  },
+  admin: {
+    bgGradient: 'from-gray-50 via-white to-gray-50',
+    borderColor: 'border-gray-200/60',
+    primaryColor: '#374151',
+    primaryBg: 'bg-gradient-to-r from-gray-700 to-gray-800',
+    focusBorder: 'focus:border-gray-600',
+    focusRing: 'focus:ring-gray-600/40',
+    textColor: 'text-gray-900',
+    mutedColor: 'text-gray-600',
+    iconBg: 'bg-gray-100',
+    iconColor: 'text-gray-700',
+    title: 'Admin Verification',
+    subtitle: 'IRA Sathi Admin Dashboard'
+  }
+}
+
+// Icon components for each user type
+const UserTypeIcon = ({ userType }) => {
+  const iconClass = `w-6 h-6 ${themes[userType]?.iconColor || 'text-gray-600'}`
+  
+  switch (userType) {
+    case 'admin':
+      return <ShieldCheckIcon className={iconClass} />
+    case 'vendor':
+      return <StoreIcon className={iconClass} />
+    case 'seller':
+      return <ShoppingBagIcon className={iconClass} />
+    case 'user':
+    default:
+      return <UserIcon className={iconClass} />
+  }
+}
+
+export function OtpVerification({ phone, email, onVerify, onResend, onBack, loading = false, error = null, userType = 'user' }) {
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const inputRefs = useRef([])
 
@@ -62,67 +141,112 @@ export function OtpVerification({ phone, email, onVerify, onResend, onBack, load
     onResend?.()
   }
 
+  const theme = themes[userType] || themes.user
+
   return (
     <div className="w-full space-y-6">
-      <div className="text-center space-y-2">
-        <h2 className="text-2xl font-semibold text-surface-foreground">Enter Verification Code</h2>
-        <p className="text-sm text-muted-foreground">
-          We've sent a 6-digit code to{' '}
-          <span className="font-semibold text-surface-foreground">
-            {phone || email}
-          </span>
-        </p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="flex justify-center gap-3">
-          {otp.map((digit, index) => (
-            <input
-              key={index}
-              ref={(el) => (inputRefs.current[index] = el)}
-              type="text"
-              inputMode="numeric"
-              maxLength={1}
-              value={digit}
-              onChange={(e) => handleChange(index, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(index, e)}
-              className="w-12 h-14 text-center text-xl font-semibold rounded-2xl border-2 border-muted/60 bg-surface focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40 transition-all"
-            />
-          ))}
+      {/* Header with Logo and User Type Badge */}
+      <div className="text-center space-y-4">
+        <div className="flex flex-col items-center gap-3">
+          {/* Logo */}
+          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full ${theme.iconBg} mb-2 overflow-hidden border-2 ${theme.borderColor}`}>
+            <img src={iraSathiLogo} alt="IRA Sathi" className="h-full w-full object-contain p-2" />
+          </div>
+          
+          {/* User Type Badge */}
+          <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full ${theme.iconBg} border ${theme.borderColor}`}>
+            <UserTypeIcon userType={userType} />
+            <span className={`text-xs font-semibold uppercase tracking-wide ${theme.iconColor}`}>
+              {theme.title}
+            </span>
+          </div>
         </div>
 
+        <div className="space-y-2">
+          <h2 className={`text-2xl font-bold ${theme.textColor}`}>Enter Verification Code</h2>
+          <p className={`text-sm ${theme.mutedColor}`}>
+            We've sent a 6-digit code to{' '}
+            <span className={`font-semibold ${theme.textColor}`}>
+              {phone || email}
+            </span>
+          </p>
+          <p className={`text-xs ${theme.mutedColor} mt-1`}>
+            {theme.subtitle}
+          </p>
+        </div>
+      </div>
+
+       <form onSubmit={handleSubmit} className="space-y-6">
+         {/* OTP Input Boxes */}
+         <div className="w-full flex justify-center items-center gap-2 px-2">
+           {otp.map((digit, index) => (
+             <input
+               key={index}
+               ref={(el) => (inputRefs.current[index] = el)}
+               type="text"
+               inputMode="numeric"
+               maxLength={1}
+               value={digit}
+               onChange={(e) => handleChange(index, e.target.value)}
+               onKeyDown={(e) => handleKeyDown(index, e)}
+               className={`flex-1 max-w-[48px] h-14 text-center text-xl font-bold rounded-xl border-2 ${theme.borderColor} bg-white ${theme.focusBorder} focus:outline-none focus:ring-2 ${theme.focusRing} transition-all shadow-sm hover:shadow-md`}
+               style={{ 
+                 borderColor: digit ? theme.primaryColor : undefined,
+                 color: theme.textColor
+               }}
+             />
+           ))}
+         </div>
+
+        {/* Error Message */}
         {error && (
           <div className="text-center">
-            <p className="text-sm text-red-600">{error}</p>
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-50 border border-red-200`}>
+              <p className="text-sm text-red-600 font-medium">{error}</p>
+            </div>
           </div>
         )}
 
         <div className="space-y-3">
+          {/* Verify Button */}
           <button
             type="submit"
             disabled={otp.join('').length !== 6 || loading}
-            className="w-full rounded-full bg-brand px-5 py-3 text-sm font-semibold text-brand-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:shadow-lg"
+            className={`w-full rounded-2xl ${theme.primaryBg} px-5 py-4 text-base font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]`}
           >
-            {loading ? 'Verifying...' : 'Verify OTP'}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Verifying...
+              </span>
+            ) : (
+              'Verify OTP'
+            )}
           </button>
 
+          {/* Resend Code */}
           <div className="flex items-center justify-center gap-2 text-sm">
-            <span className="text-muted-foreground">Didn't receive code?</span>
+            <span className={theme.mutedColor}>Didn't receive code?</span>
             <button
               type="button"
               onClick={handleResend}
               disabled={loading}
-              className="text-brand font-semibold hover:underline disabled:opacity-50"
+              className={`font-semibold hover:underline disabled:opacity-50 transition-colors`}
+              style={{ color: theme.primaryColor }}
             >
               Resend
             </button>
           </div>
 
+          {/* Back Button */}
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="w-full text-sm text-muted-foreground hover:text-surface-foreground transition-colors"
+              className={`w-full text-sm ${theme.mutedColor} hover:${theme.textColor} transition-colors py-2`}
             >
               ← Change {phone ? 'phone number' : 'email'}
             </button>

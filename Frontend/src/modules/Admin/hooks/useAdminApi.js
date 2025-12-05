@@ -686,6 +686,71 @@ export function useAdminApi() {
 
   const exportReports = useCallback((exportData) => callApi(adminApi.exportReports, exportData), [callApi])
 
+  // Review Management APIs
+  const getReviews = useCallback((params) => callApi(adminApi.getReviews, params), [callApi])
+  
+  const getReviewDetails = useCallback((reviewId) => callApi(adminApi.getReviewDetails, reviewId), [callApi])
+  
+  const respondToReview = useCallback(
+    (reviewId, data) => {
+      return callApi(adminApi.respondToReview, reviewId, data).then((result) => {
+        if (result.data) {
+          // Could dispatch a review update action if needed
+        }
+        return result
+      })
+    },
+    [callApi],
+  )
+  
+  const updateReviewResponse = useCallback(
+    (reviewId, data) => {
+      return callApi(adminApi.updateReviewResponse, reviewId, data).then((result) => {
+        if (result.data) {
+          // Could dispatch a review update action if needed
+        }
+        return result
+      })
+    },
+    [callApi],
+  )
+  
+  const deleteReviewResponse = useCallback(
+    (reviewId) => {
+      return callApi(adminApi.deleteReviewResponse, reviewId).then((result) => {
+        if (result.data) {
+          // Could dispatch a review update action if needed
+        }
+        return result
+      })
+    },
+    [callApi],
+  )
+  
+  const moderateReview = useCallback(
+    (reviewId, data) => {
+      return callApi(adminApi.moderateReview, reviewId, data).then((result) => {
+        if (result.data) {
+          // Could dispatch a review update action if needed
+        }
+        return result
+      })
+    },
+    [callApi],
+  )
+  
+  const deleteReview = useCallback(
+    (reviewId) => {
+      return callApi(adminApi.deleteReview, reviewId).then((result) => {
+        if (result.data) {
+          // Could dispatch a review update action if needed
+        }
+        return result
+      })
+    },
+    [callApi],
+  )
+
   return {
     loading,
     error,
@@ -777,6 +842,14 @@ export function useAdminApi() {
     // Analytics
     getAnalyticsData,
     exportReports,
+    // Reviews
+    getReviews,
+    getReviewDetails,
+    respondToReview,
+    updateReviewResponse,
+    deleteReviewResponse,
+    moderateReview,
+    deleteReview,
   }
 }
 

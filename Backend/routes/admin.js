@@ -677,5 +677,62 @@ router.put('/offers/:id', authorizeAdmin, adminController.updateOffer);
  */
 router.delete('/offers/:id', authorizeAdmin, adminController.deleteOffer);
 
+// ============================================================================
+// REVIEW MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * @route   GET /api/admin/reviews
+ * @desc    Get all product reviews with filtering
+ * @access  Private (Admin)
+ */
+router.get('/reviews', authorizeAdmin, adminController.getReviews);
+
+/**
+ * IMPORTANT: Specific routes with sub-paths must come BEFORE generic :reviewId routes
+ */
+
+/**
+ * @route   POST /api/admin/reviews/:reviewId/respond
+ * @desc    Respond to a review
+ * @access  Private (Admin)
+ */
+router.post('/reviews/:reviewId/respond', authorizeAdmin, adminController.respondToReview);
+
+/**
+ * @route   PUT /api/admin/reviews/:reviewId/respond
+ * @desc    Update admin response to a review
+ * @access  Private (Admin)
+ */
+router.put('/reviews/:reviewId/respond', authorizeAdmin, adminController.updateReviewResponse);
+
+/**
+ * @route   DELETE /api/admin/reviews/:reviewId/respond
+ * @desc    Delete admin response
+ * @access  Private (Admin)
+ */
+router.delete('/reviews/:reviewId/respond', authorizeAdmin, adminController.deleteReviewResponse);
+
+/**
+ * @route   PUT /api/admin/reviews/:reviewId/moderate
+ * @desc    Moderate review (approve/reject, hide/show)
+ * @access  Private (Admin)
+ */
+router.put('/reviews/:reviewId/moderate', authorizeAdmin, adminController.moderateReview);
+
+/**
+ * @route   GET /api/admin/reviews/:reviewId
+ * @desc    Get review details
+ * @access  Private (Admin)
+ */
+router.get('/reviews/:reviewId', authorizeAdmin, adminController.getReviewDetails);
+
+/**
+ * @route   DELETE /api/admin/reviews/:reviewId
+ * @desc    Delete review
+ * @access  Private (Admin)
+ */
+router.delete('/reviews/:reviewId', authorizeAdmin, adminController.deleteReview);
+
 module.exports = router;
 

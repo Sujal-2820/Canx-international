@@ -35,3 +35,4 @@ export function useTranslatedArray(texts, forceRefresh = false) {
   return translatedTexts
 }
 
+

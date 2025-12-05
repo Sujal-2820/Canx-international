@@ -127,6 +127,7 @@ export function UserLogin({ onSuccess, onSwitchToRegister }) {
               onBack={() => setStep('phone')}
               loading={loading}
               error={error}
+              userType="user"
             />
           </div>
         </div>

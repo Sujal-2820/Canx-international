@@ -275,6 +275,79 @@ export async function searchProducts(params = {}) {
 }
 
 // ============================================================================
+// REVIEW & RATING APIs
+// ============================================================================
+
+/**
+ * Get Product Reviews
+ * GET /users/products/:productId/reviews
+ * 
+ * @param {string} productId - Product ID
+ * @param {Object} params - { page, limit, sort }
+ * @returns {Promise<Object>} - { reviews: Array, stats: Object, pagination: Object }
+ */
+export async function getProductReviews(productId, params = {}) {
+  const queryParams = new URLSearchParams(params).toString()
+  return apiRequest(`/users/products/${productId}/reviews?${queryParams}`)
+}
+
+/**
+ * Get My Review for a Product
+ * GET /users/products/:productId/reviews/my-review
+ * 
+ * @param {string} productId - Product ID
+ * @returns {Promise<Object>} - { review: Object }
+ */
+export async function getMyReview(productId) {
+  return apiRequest(`/users/products/${productId}/reviews/my-review`)
+}
+
+/**
+ * Create or Update Review
+ * POST /users/products/:productId/reviews
+ * 
+ * @param {string} productId - Product ID
+ * @param {Object} data - { rating, comment, orderId }
+ * @returns {Promise<Object>} - { review: Object }
+ */
+export async function createReview(productId, data) {
+  return apiRequest(`/users/products/${productId}/reviews`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update Review
+ * PUT /users/products/:productId/reviews/:reviewId
+ * 
+ * @param {string} productId - Product ID
+ * @param {string} reviewId - Review ID
+ * @param {Object} data - { rating, comment }
+ * @returns {Promise<Object>} - { review: Object }
+ */
+export async function updateReview(productId, reviewId, data) {
+  return apiRequest(`/users/products/${productId}/reviews/${reviewId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete Review
+ * DELETE /users/products/:productId/reviews/:reviewId
+ * 
+ * @param {string} productId - Product ID
+ * @param {string} reviewId - Review ID
+ * @returns {Promise<Object>} - { message: string }
+ */
+export async function deleteReview(productId, reviewId) {
+  return apiRequest(`/users/products/${productId}/reviews/${reviewId}`, {
+    method: 'DELETE',
+  })
+}
+
+// ============================================================================
 // CART APIs
 // ============================================================================
 

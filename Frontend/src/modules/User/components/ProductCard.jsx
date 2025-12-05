@@ -49,15 +49,34 @@ export function ProductCard({ product, onAddToCart, onWishlist, onNavigate, clas
         </div>
         <div className="product-card-wrapper__rating">
           <div className="product-card-wrapper__stars">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <StarIcon
-                  key={star}
-                  className="h-3 w-3 text-yellow-400"
-                  filled={star <= Math.round(product.rating || 0)}
-                />
-              ))}
+              {[1, 2, 3, 4, 5].map((star) => {
+                // Get rating from product.rating or product.averageRating
+                const rating = product.rating ?? product.averageRating ?? 0
+                return (
+                  <StarIcon
+                    key={star}
+                    className="h-3 w-3 text-yellow-400"
+                    filled={star <= Math.round(rating)}
+                  />
+                )
+              })}
             </div>
-          <span className="product-card-wrapper__reviews">({product.reviews || 0})</span>
+          <span className="product-card-wrapper__rating-value">
+            {(() => {
+              // Get rating from product.rating or product.averageRating
+              const rating = product.rating ?? product.averageRating ?? 0
+              return typeof rating === 'number' 
+                ? rating.toFixed(1) 
+                : parseFloat(rating || 0).toFixed(1)
+            })()}
+          </span>
+          <span className="product-card-wrapper__reviews">
+            ({(() => {
+              // Get review count from product.reviews or product.reviewCount
+              const reviewCount = product.reviews ?? product.reviewCount ?? 0
+              return `${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'}`
+            })()})
+          </span>
           </div>
         <div className="product-card-wrapper__price-section">
           <span className="product-card-wrapper__price">₹{(product.priceToUser || product.price || 0).toLocaleString('en-IN')}</span>
