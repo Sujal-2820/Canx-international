@@ -134,9 +134,9 @@ export function LanguageToggle({ className, variant = 'default', onLanguageChang
     const isEnglishSelected = currentLang.code === 'en'
     
     return (
-      <div ref={dropdownRef} className={cn('relative flex flex-col items-center', className)}>
+      <div ref={dropdownRef} className={cn('relative', className)}>
         {/* Toggle Switch */}
-        <div className="relative flex items-center w-[200px] h-12 rounded-full bg-gray-200 overflow-hidden cursor-pointer">
+        <div className="relative flex items-center w-[160px] h-12 rounded-full bg-gray-200 overflow-hidden cursor-pointer">
           {/* English Section */}
           <button
             type="button"
@@ -175,13 +175,10 @@ export function LanguageToggle({ className, variant = 'default', onLanguageChang
           <div
             className={cn(
               'absolute top-1 left-1 w-10 h-10 bg-white rounded-full shadow-lg transition-transform duration-300 z-20',
-              isEnglishSelected ? 'translate-x-0' : 'translate-x-[100px]'
+              isEnglishSelected ? 'translate-x-0' : 'translate-x-[80px]'
             )}
           />
         </div>
-        
-        {/* Switch language text */}
-        <span className="text-xs text-gray-600 mt-1">Switch language</span>
       </div>
     )
   }

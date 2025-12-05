@@ -73,6 +73,7 @@ export function MobileShell({ title, subtitle, children, navigation, bottomNavig
   const [open, setOpen] = useState(false)
   const [compact, setCompact] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [hideSecondRow, setHideSecondRow] = useState(false)
 
   useEffect(() => {
     let ticking = false
@@ -83,9 +84,13 @@ export function MobileShell({ title, subtitle, children, navigation, bottomNavig
         window.requestAnimationFrame(() => {
           const currentScrollY = window.scrollY
           if (currentScrollY > lastScrollY) {
+            // Scrolling down
             setCompact(currentScrollY > 30)
+            setHideSecondRow(currentScrollY > 50) // Hide second row when scrolling down
           } else {
+            // Scrolling up
             setCompact(currentScrollY > 20)
+            setHideSecondRow(false) // Show second row when scrolling up
           }
           lastScrollY = currentScrollY
           ticking = false
@@ -104,12 +109,12 @@ export function MobileShell({ title, subtitle, children, navigation, bottomNavig
       <header className={cn('user-shell-header', compact && 'is-compact')}>
         <div className="user-shell-header__glow" />
         <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 -ml-4">
+          <div className="flex items-center gap-2.5">
             <img src={iraSathiLogo} alt="IRA Sathi" className="h-11 w-auto transition-transform duration-200" />
             <span className="user-shell-header__logo-text">IRA SATHI</span>
           </div>
           {/* Search Bar - Between Logo and Navigation (Laptop Only) */}
-          <div className="user-shell-header__search-bar">
+          <div className="user-shell-header__search-bar ml-8">
             <div className="home-search-bar__input-wrapper">
               <SearchIcon className="home-search-bar__icon" />
               <TranslatedSearchInput onSearchClick={onSearchClick} />
@@ -174,7 +179,7 @@ export function MobileShell({ title, subtitle, children, navigation, bottomNavig
           </div>
         )}
         {/* Second Row - Title/Subtitle and Navigation Links (Laptop Only) */}
-        <div className="user-shell-header__second-row">
+        <div className={cn('user-shell-header__second-row', hideSecondRow && 'user-shell-header__second-row--hidden')}>
           {title && (
             <div className="user-shell-header__info">
               <span className="user-shell-header__title-text"><TransText>{title}</TransText></span>
