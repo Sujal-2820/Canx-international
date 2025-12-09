@@ -294,27 +294,61 @@ export function OrdersView() {
         <h2 className="user-orders-view__title"><Trans>My Orders</Trans></h2>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="user-orders-view__filters">
-        <div className="user-orders-view__filters-rail">
-          {translatedFilterTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={cn(
-                'user-orders-view__filter-tab',
-                activeFilter === tab.id && 'user-orders-view__filter-tab--active'
-              )}
-              onClick={() => setActiveFilter(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {/* Main Content - 2 Column Layout for Laptop */}
+      <div className="user-orders-view__main-content">
+        {/* Left Column - Filter Sidebar */}
+        <div className="user-orders-view__filters-sidebar">
+          <div className="user-orders-view__filter-panel-desktop">
+            <div className="user-orders-view__filter-header-desktop">
+              <h3 className="user-orders-view__filter-title-desktop"><Trans>Filter Orders</Trans></h3>
+            </div>
+            <div className="user-orders-view__filter-content-desktop">
+              {translatedFilterTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={cn(
+                    'user-orders-view__filter-option',
+                    activeFilter === tab.id && 'user-orders-view__filter-option--active'
+                  )}
+                  onClick={() => setActiveFilter(tab.id)}
+                >
+                  <input
+                    type="radio"
+                    checked={activeFilter === tab.id}
+                    onChange={() => {}}
+                    className="user-orders-view__filter-option-input"
+                  />
+                  <span className="user-orders-view__filter-option-label">{tab.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Orders List */}
-      <div className="user-orders-view__list">
+        {/* Right Column - Orders List */}
+        <div className="user-orders-view__orders-column">
+          {/* Filter Tabs - Mobile View Only */}
+          <div className="user-orders-view__filters">
+            <div className="user-orders-view__filters-rail">
+              {translatedFilterTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={cn(
+                    'user-orders-view__filter-tab',
+                    activeFilter === tab.id && 'user-orders-view__filter-tab--active'
+                  )}
+                  onClick={() => setActiveFilter(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Orders List */}
+          <div className="user-orders-view__list">
         {filteredItems.length === 0 ? (
           <div className="user-orders-view__empty">
             <PackageIcon className="user-orders-view__empty-icon" />
@@ -476,6 +510,8 @@ export function OrdersView() {
             </div>
           ))
         )}
+          </div>
+        </div>
       </div>
     </div>
   )

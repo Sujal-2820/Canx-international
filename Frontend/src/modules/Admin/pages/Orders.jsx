@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CalendarRange, Recycle, Truck, Eye, FileText, RefreshCw, AlertCircle, Warehouse, ArrowLeft, CheckCircle, CreditCard, Package, IndianRupee, Calendar, Download, Building2, MapPin } from 'lucide-react'
+import { CalendarRange, Recycle, Truck, Eye, FileText, RefreshCw, AlertCircle, Warehouse, ArrowLeft, CheckCircle, CreditCard, Package, IndianRupee, Calendar, Download, Building2, MapPin, MoreVertical } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { FilterBar } from '../components/FilterBar'
@@ -80,6 +80,9 @@ export function OrdersPage({ subRoute = null, navigate }) {
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('')
   const [statusUpdateNotes, setStatusUpdateNotes] = useState('')
   const [isRevert, setIsRevert] = useState(false)
+  
+  // Dropdown state for actions menu
+  const [openActionsDropdown, setOpenActionsDropdown] = useState(null)
 
   // Format order data for display
   const formatOrderForDisplay = (order) => {
@@ -105,6 +108,22 @@ export function OrdersPage({ subRoute = null, navigate }) {
       statusUpdateGracePeriod: order.statusUpdateGracePeriod || null,
     }
   }
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (openActionsDropdown && !event.target.closest('.relative')) {
+        setOpenActionsDropdown(null)
+      }
+    }
+    
+    if (openActionsDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+      }
+    }
+  }, [openActionsDropdown])
 
   // Fetch orders
   const fetchOrders = useCallback(async () => {
@@ -404,6 +423,16 @@ export function OrdersPage({ subRoute = null, navigate }) {
     return normalized
   }
 
+  // Helper function to format status for display (replace underscores with spaces)
+  const formatStatusForDisplay = (status) => {
+    if (!status) return 'Unknown'
+    // Replace underscores with spaces and capitalize each word
+    return status
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
+  }
+
   const getNextStatus = (order) => {
     const currentStatus = normalizeOrderStatus(order?.status)
     const paymentPreference = order?.paymentPreference || 'partial'
@@ -464,7 +493,7 @@ export function OrdersPage({ subRoute = null, navigate }) {
             return (
               <div className="flex flex-col gap-1">
                 <StatusBadge tone="warning">Escalated</StatusBadge>
-                <span className="text-xs text-gray-500">{status}</span>
+                <span className="text-xs text-gray-500">{formatStatusForDisplay(status)}</span>
                 {isPaid && (
                   <StatusBadge tone="success" className="mt-1">Paid</StatusBadge>
                 )}
@@ -475,7 +504,7 @@ export function OrdersPage({ subRoute = null, navigate }) {
           const tone = status === 'Processing' || status === 'processing' ? 'warning' : status === 'Completed' || status === 'completed' ? 'success' : 'neutral'
           return (
             <div className="flex flex-col gap-1">
-              <StatusBadge tone={tone}>{status}</StatusBadge>
+              <StatusBadge tone={tone}>{formatStatusForDisplay(status)}</StatusBadge>
               {isPaid && (
                 <StatusBadge tone="success" className="mt-1">Paid</StatusBadge>
               )}
@@ -545,85 +574,170 @@ export function OrdersPage({ subRoute = null, navigate }) {
           const previousStatus = row.statusUpdateGracePeriod?.previousStatus || originalOrder.statusUpdateGracePeriod?.previousStatus
           const hideUpdateButton = workflowCompleted && !isInStatusUpdateGracePeriod
           const statusButtonConfig = hideUpdateButton ? null : getStatusButtonConfig(originalOrder)
+          const isDropdownOpen = openActionsDropdown === row.id
+          
+          // Build action items list
+          const actionItems = []
+          
+          // Always show View Details
+          actionItems.push({
+            label: 'View Details',
+            icon: Eye,
+            onClick: () => {
+              handleViewOrderDetails(originalOrder)
+              setOpenActionsDropdown(null)
+            },
+            className: 'text-gray-700 hover:bg-gray-50'
+          })
+          
+          // Confirm Status Update - shown during grace period
+          if (isInStatusUpdateGracePeriod && !workflowCompleted) {
+            actionItems.push({
+              label: 'Confirm Status Update',
+              icon: CheckCircle,
+              onClick: async () => {
+                setOpenActionsDropdown(null)
+                const result = await updateOrderStatus(originalOrder.id, { finalizeGracePeriod: true })
+                if (result.data) {
+                  fetchOrders()
+                  success(result.data.message || 'Status update confirmed successfully!', 3000)
+                } else if (result.error) {
+                  showError(result.error.message || 'Failed to confirm status update', 5000)
+                }
+              },
+              className: 'text-green-700 hover:bg-green-50'
+            })
+          }
+          
+          // Revert button - shown during grace period
+          if (isInStatusUpdateGracePeriod && previousStatus && !workflowCompleted) {
+            actionItems.push({
+              label: `Revert to ${formatStatusForDisplay(previousStatus)}`,
+              icon: ArrowLeft,
+              onClick: () => {
+                handleOpenStatusUpdateModal(originalOrder)
+                setOpenActionsDropdown(null)
+              },
+              className: 'text-orange-700 hover:bg-orange-50'
+            })
+          }
+          
+          // Update Status button - hidden when workflow completed or during grace period
+          if (!hideUpdateButton && !isInStatusUpdateGracePeriod) {
+            actionItems.push({
+              label: 'Update Status',
+              icon: RefreshCw,
+              onClick: () => {
+                handleOpenStatusUpdateModal(originalOrder)
+                setOpenActionsDropdown(null)
+              },
+              disabled: !statusButtonConfig,
+              className: 'text-blue-700 hover:bg-blue-50'
+            })
+          }
+          
+          // Escalation actions - Show for escalated orders that are not fulfilled
+          if (isEscalated && !isFulfilled) {
+            actionItems.push({
+              label: 'Fulfill from Warehouse',
+              icon: Warehouse,
+              onClick: () => {
+                setSelectedOrderForEscalation(originalOrder)
+                setFulfillmentNote('')
+                setCurrentView('escalation')
+                setOpenActionsDropdown(null)
+              },
+              className: 'text-green-700 hover:bg-green-50'
+            })
+            actionItems.push({
+              label: 'Revert to Vendor',
+              icon: ArrowLeft,
+              onClick: () => {
+                setSelectedOrderForRevert(originalOrder)
+                setRevertReason('')
+                setCurrentView('revertEscalation')
+                setOpenActionsDropdown(null)
+              },
+              className: 'text-orange-700 hover:bg-orange-50'
+            })
+          }
+          
+          // Reassign button - Only show if escalated AND status is awaiting/pending
+          if (isEscalated && (normalizedStatus === 'awaiting' || normalizedStatus === 'pending')) {
+            actionItems.push({
+              label: 'Reassign Order',
+              icon: Recycle,
+              onClick: () => {
+                handleReassignOrder(originalOrder)
+                setOpenActionsDropdown(null)
+              },
+              className: 'text-gray-700 hover:bg-gray-50'
+            })
+          }
           
           return (
-            <div className="flex flex-col gap-1">
+            <div className="relative">
               {isInStatusUpdateGracePeriod && (
-                <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200 mb-1">
                   ⏰ {statusUpdateTimeRemaining}m to revert
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleViewOrderDetails(originalOrder)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-red-500 hover:bg-red-50 hover:text-red-700"
-                  title="View details"
-                >
-                  <Eye className="h-4 w-4" />
-                </button>
-                {/* Update Status button - hidden when workflow completed */}
-                {!hideUpdateButton && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenStatusUpdateModal(originalOrder)}
-                    disabled={(isInStatusUpdateGracePeriod && !previousStatus) || !statusButtonConfig}
-                    className={cn(
-                      'flex h-8 items-center justify-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-100',
-                      ((isInStatusUpdateGracePeriod && !previousStatus) || !statusButtonConfig) && 'opacity-50 cursor-not-allowed'
-                    )}
-                    title={isInStatusUpdateGracePeriod && !previousStatus ? 'Status update in progress' : 'Update order status'}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    <span>Update Status</span>
-                  </button>
-                )}
-                {/* Paid badge - Show if order is paid */}
-                {isPaid && (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-2.5 py-1.5 text-xs font-semibold text-green-700">
+              {isPaid && (
+                <div className="mb-1">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
                     <CheckCircle className="h-3.5 w-3.5" />
                     Paid
                   </span>
-                )}
-                {/* Escalation buttons - Show for escalated orders that are not fulfilled */}
-                {isEscalated && !isFulfilled && (
+                </div>
+              )}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setOpenActionsDropdown(isDropdownOpen ? null : row.id)
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700"
+                  title="Actions"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+                
+                {isDropdownOpen && (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedOrderForEscalation(originalOrder)
-                        setFulfillmentNote('')
-                        setCurrentView('escalation')
-                      }}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-green-300 bg-green-50 text-green-700 transition-all hover:border-green-500 hover:bg-green-100"
-                      title="Fulfill from warehouse"
-                    >
-                      <Warehouse className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedOrderForRevert(originalOrder)
-                        setRevertReason('')
-                        setCurrentView('revertEscalation')
-                      }}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-300 bg-orange-50 text-orange-700 transition-all hover:border-orange-500 hover:bg-orange-100"
-                      title="Revert to vendor"
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                    </button>
+                    {/* Backdrop to close dropdown */}
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setOpenActionsDropdown(null)}
+                    />
+                    {/* Dropdown menu */}
+                    <div className="absolute right-0 top-full mt-1 z-20 w-56 rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+                      {actionItems.map((item, index) => {
+                        const Icon = item.icon
+                        return (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!item.disabled) {
+                                item.onClick()
+                              }
+                            }}
+                            disabled={item.disabled}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors',
+                              item.className,
+                              item.disabled && 'opacity-50 cursor-not-allowed'
+                            )}
+                          >
+                            <Icon className="h-4 w-4" />
+                            <span>{item.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
                   </>
-                )}
-                {/* Reassign button - Only show if escalated AND status is awaiting/pending */}
-                {isEscalated && (normalizedStatus === 'awaiting' || normalizedStatus === 'pending') && (
-                  <button
-                    type="button"
-                    onClick={() => handleReassignOrder(originalOrder)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-orange-500 hover:bg-orange-50 hover:text-orange-700"
-                    title="Reassign order"
-                  >
-                    <Recycle className="h-4 w-4" />
-                  </button>
                 )}
               </div>
             </div>
@@ -751,7 +865,7 @@ export function OrdersPage({ subRoute = null, navigate }) {
                 </div>
               </div>
               <StatusBadge tone={order.status === 'Processing' || order.status === 'processing' ? 'warning' : order.status === 'Completed' || order.status === 'completed' ? 'success' : 'neutral'}>
-                {order.status || 'Unknown'}
+                {formatStatusForDisplay(order.status)}
               </StatusBadge>
             </div>
           </div>
@@ -1393,6 +1507,24 @@ export function OrdersPage({ subRoute = null, navigate }) {
                     <span className="text-gray-600">Current Status:</span>
                     <span className="font-bold text-gray-900 capitalize">{availableStatusOptions.find(opt => opt.value === normalizedCurrentStatus)?.label || normalizedCurrentStatus || 'Unknown'}</span>
                   </div>
+                  {!isInStatusUpdateGracePeriod && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Next Status:</span>
+                      <span className="font-bold text-blue-600 capitalize">
+                        {(() => {
+                          const nextStatus = getNextStatus(order)
+                          if (nextStatus) {
+                            const nextOption = ORDER_STATUS_OPTIONS.find(opt => opt.value === nextStatus)
+                            return nextOption?.label || nextStatus
+                          }
+                          if (normalizedCurrentStatus === 'delivered' && !isPaid && !isFullPayment) {
+                            return 'Fully Paid'
+                          }
+                          return 'N/A'
+                        })()}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">Payment Status:</span>
                     <span className="font-bold text-gray-900 capitalize">
@@ -1526,10 +1658,27 @@ export function OrdersPage({ subRoute = null, navigate }) {
                 type="button"
                 onClick={handleStatusUpdateSubmit}
                 disabled={loading || !canUpdate()}
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-3 text-sm font-bold text-white shadow-[0_4px_15px_rgba(59,130,246,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all hover:shadow-[0_6px_20px_rgba(59,130,246,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50"
+                className={cn(
+                  'flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-[0_4px_15px_rgba(59,130,246,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all hover:shadow-[0_6px_20px_rgba(59,130,246,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50',
+                  isRevert ? 'bg-gradient-to-r from-orange-500 to-orange-600 shadow-[0_4px_15px_rgba(249,115,22,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] hover:shadow-[0_6px_20px_rgba(249,115,22,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]' : 'bg-gradient-to-r from-blue-500 to-blue-600'
+                )}
               >
-                <RefreshCw className="h-4 w-4" />
-                {loading ? 'Updating...' : 'Update Status'}
+                {loading ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : isRevert ? (
+                  <>
+                    <ArrowLeft className="h-4 w-4" />
+                    Confirm Revert
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Update Status
+                  </>
+                )}
               </button>
             </div>
           </div>

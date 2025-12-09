@@ -19,15 +19,15 @@ export function useAdminApi() {
       try {
         const result = await apiFunction(...args)
         if (result.success) {
-          return { data: result.data, error: null }
+          return { success: true, data: result.data, error: null }
         } else {
           setError(result.error)
-          return { data: null, error: result.error }
+          return { success: false, data: null, error: result.error }
         }
       } catch (err) {
         const errorMsg = { message: err.message || 'An unexpected error occurred' }
         setError(errorMsg)
-        return { data: null, error: errorMsg }
+        return { success: false, data: null, error: errorMsg }
       } finally {
         setLoading(false)
       }
@@ -684,6 +684,34 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
+  const getSalesAnalytics = useCallback(
+    (params) => {
+      return callApi(adminApi.getSalesAnalytics, params)
+    },
+    [callApi],
+  )
+
+  const getUserAnalytics = useCallback(
+    (params) => {
+      return callApi(adminApi.getUserAnalytics, params)
+    },
+    [callApi],
+  )
+
+  const getVendorAnalytics = useCallback(
+    (params) => {
+      return callApi(adminApi.getVendorAnalytics, params)
+    },
+    [callApi],
+  )
+
+  const getOrderAnalytics = useCallback(
+    (params) => {
+      return callApi(adminApi.getOrderAnalytics, params)
+    },
+    [callApi],
+  )
+
   const exportReports = useCallback((exportData) => callApi(adminApi.exportReports, exportData), [callApi])
 
   // Review Management APIs
@@ -841,6 +869,10 @@ export function useAdminApi() {
     deleteNotification,
     // Analytics
     getAnalyticsData,
+    getSalesAnalytics,
+    getUserAnalytics,
+    getVendorAnalytics,
+    getOrderAnalytics,
     exportReports,
     // Reviews
     getReviews,

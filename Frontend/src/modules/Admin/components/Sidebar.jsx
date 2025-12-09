@@ -140,7 +140,6 @@ const links = [
     description: 'Area & group patterns', 
     color: 'indigo',
     suboptions: [
-      { id: 'analytics/overview', label: 'Overview' },
       { id: 'analytics/sales', label: 'Sales Analytics' },
       { id: 'analytics/users', label: 'User Analytics' },
       { id: 'analytics/vendors', label: 'Vendor Analytics' },

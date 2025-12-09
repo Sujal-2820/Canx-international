@@ -216,7 +216,8 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
     ? 'After Delivery'
     : `Remaining (${REMAINING_PAYMENT_PERCENTAGE}%)`
 
-  const modalOrderTotal = pendingOrder?.total ?? totals.total
+  // Use actual order total if order exists, otherwise use calculated totals (for preview)
+  const modalOrderTotal = pendingOrder?.total ?? (pendingOrder?.preview ? totals.total : totals.total)
   const pendingPaymentPreference = pendingOrder?.uiPayment?.paymentPreference || paymentPreference
   const modalAmountDueNow = pendingOrder?.uiPayment?.amountDueNow ?? amountDueNow
   const modalAmountDueLater = pendingOrder?.uiPayment?.amountDueLater ?? amountDueLater
@@ -244,7 +245,7 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
     }
   }
 
-  const handlePlaceOrder = async () => {
+  const handlePlaceOrder = () => {
     // Block order placement if no vendor available (beyond 20.3km)
     // Allow if in buffer zone (20km to 20.3km)
     if (!vendorAvailability?.canPlaceOrder && !vendorAvailability?.isInBufferZone) {
@@ -256,41 +257,42 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
       return
     }
 
-    // Create order via API
-    // Note: Backend reads from cart, so we only need to send payment preference and notes
-    // The backend will automatically use cart items with variant attributes
-    const orderData = {
-      paymentPreference, // 'partial' or 'full'
-      notes: `Shipping method: ${selectedShipping.label}`,
-      // Backend will calculate amounts from cart items
+    // Show payment confirmation modal WITHOUT creating order
+    // Order will only be created when user confirms payment
+    const uiPayment = {
+      paymentPreference,
+      amountDueNow,
+      amountDueLater,
+      deliveryWaived: isFullPayment && totals.deliveryBeforeBenefit > 0,
     }
     
-    console.log('📦 Order Data being sent:', orderData)
-
-    try {
-      const orderResult = await createOrder(orderData)
-      if (orderResult.error) {
-        showError(orderResult.error.message || 'Failed to create order')
-        return
-      }
-
-      const order = orderResult.data.order
-      const uiPayment = {
-        paymentPreference,
-        amountDueNow,
-        amountDueLater,
-        deliveryWaived: isFullPayment && totals.deliveryBeforeBenefit > 0,
-      }
-      setPendingOrder({ ...order, uiPayment })
-      setShowPaymentConfirm(true)
-    } catch (err) {
-      showError('Failed to create order. Please try again.')
-    }
+    // Store preview data (not actual order) - order will be created on confirmation
+    setPendingOrder({
+      preview: true, // Flag to indicate this is preview, not actual order
+      uiPayment,
+      total: totals.total,
+    })
+    setShowPaymentConfirm(true)
   }
 
   const handleConfirmPayment = async () => {
-    if (!pendingOrder || !pendingOrder.id) {
+    if (!pendingOrder) {
       showError('Order information is missing')
+      return
+    }
+
+    // Block order placement if no vendor available (beyond 20.3km)
+    // Allow if in buffer zone (20km to 20.3km)
+    if (!vendorAvailability?.canPlaceOrder && !vendorAvailability?.isInBufferZone) {
+      showError('No vendor available in your region. You cannot place orders at this location.')
+      setShowPaymentConfirm(false)
+      setPendingOrder(null)
+      return
+    }
+    if (!deliveryAddress) {
+      showError('Please update your delivery address in settings before placing an order')
+      setShowPaymentConfirm(false)
+      setPendingOrder(null)
       return
     }
 
@@ -298,9 +300,36 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
       const paymentAmount = pendingOrder.uiPayment?.amountDueNow ?? amountDueNow
       const paymentPlan = pendingOrder.uiPayment?.paymentPreference ?? paymentPreference
 
+      // Create order via API FIRST (only when user confirms payment)
+      // Note: Backend reads from cart, so we only need to send payment preference and notes
+      const orderData = {
+        paymentPreference, // 'partial' or 'full'
+        notes: `Shipping method: ${selectedShipping.label}`,
+        // Backend will calculate amounts from cart items
+      }
+      
+      console.log('📦 Order Data being sent:', orderData)
+
+      const orderResult = await createOrder(orderData)
+      if (orderResult.error) {
+        showError(orderResult.error.message || 'Failed to create order')
+        setShowPaymentConfirm(false)
+        setPendingOrder(null)
+        return
+      }
+
+      const order = orderResult.data.order
+      
+      // Update pendingOrder with actual order data
+      const updatedPendingOrder = {
+        ...order,
+        uiPayment: pendingOrder.uiPayment,
+      }
+      setPendingOrder(updatedPendingOrder)
+
       // Create payment intent (backend calculates amount from order)
       const paymentIntentResult = await createPaymentIntent({
-        orderId: pendingOrder.id,
+        orderId: order.id,
         paymentMethod: paymentMethod,
       })
 
@@ -352,7 +381,7 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
 
         // Confirm payment with Razorpay response
         const confirmResult = await confirmPayment({
-          orderId: pendingOrder.id,
+          orderId: order.id,
           paymentIntentId: paymentIntent.id,
           gatewayPaymentId: razorpayResponse.paymentId,
           gatewayOrderId: razorpayResponse.orderId,
@@ -362,6 +391,8 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
 
         if (confirmResult.error) {
           showError(confirmResult.error.message || 'Payment failed')
+          setShowPaymentConfirm(false)
+          setPendingOrder(null)
           return
         }
 
@@ -370,7 +401,7 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
             ? 'Order fully paid and confirmed!'
             : 'Order placed successfully! Advance payment confirmed.'
         )
-        onOrderPlaced?.(pendingOrder)
+        onOrderPlaced?.(updatedPendingOrder)
         setShowPaymentConfirm(false)
         setPendingOrder(null)
       } catch (razorpayError) {
@@ -380,11 +411,15 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
         } else {
           showError(razorpayError.message || 'Payment processing failed. Please try again.')
         }
+        setShowPaymentConfirm(false)
+        setPendingOrder(null)
         return
       }
     } catch (err) {
       console.error('Payment processing error:', err)
       showError(err.message || 'Payment processing failed. Please try again.')
+      setShowPaymentConfirm(false)
+      setPendingOrder(null)
     }
   }
 

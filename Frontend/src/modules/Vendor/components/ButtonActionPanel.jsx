@@ -198,6 +198,11 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
       if (data?.currentStock !== undefined) {
         submissionData.currentStock = data.currentStock
       }
+      // For revert action, ensure status is set to previous status
+      if (data?.revert === true && buttonId === 'update-order-status' && data?.status) {
+        submissionData.status = data.status
+        submissionData.isRevert = true
+      }
       // For withdrawal requests, include bankAccounts and availableBalance
       if (buttonId === 'request-withdrawal') {
         submissionData.availableBalance = data.availableBalance
@@ -285,6 +290,91 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
 
     switch (intent) {
       case BUTTON_INTENT.UPDATION:
+        // Check if this is a revert action
+        const isRevert = data?.revert === true && buttonId === 'update-order-status'
+        const previousStatus = isRevert ? (orderInfo?.statusUpdateGracePeriod?.previousStatus || data?.status || '') : null
+        
+        // If it's a revert, show special revert confirmation UI
+        if (isRevert && previousStatus) {
+          const formatStatusLabel = (status) => {
+            if (!status) return ''
+            const normalized = status.toLowerCase()
+            if (normalized === 'fully_paid') return 'Fully Paid'
+            if (normalized === 'delivered') return 'Delivered'
+            if (normalized === 'dispatched' || normalized === 'out_for_delivery') return 'Dispatched'
+            if (normalized === 'accepted' || normalized === 'processing') return 'Accepted'
+            if (normalized === 'awaiting' || normalized === 'pending') return 'Awaiting'
+            return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
+          }
+          
+          return (
+            <div className="vendor-action-panel__form">
+              {renderOrderInfo()}
+              
+              {/* Previous Status Display */}
+              <div className="vendor-action-panel__field">
+                <label className="vendor-action-panel__label">
+                  Previous Status
+                  <span className="vendor-action-panel__required">*</span>
+                </label>
+                <div style={{
+                  padding: '12px',
+                  backgroundColor: '#F3F4F6',
+                  border: '1px solid #D1D5DB',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: '#1F2937'
+                }}>
+                  {formatStatusLabel(previousStatus)}
+                </div>
+              </div>
+              
+              {/* Warning Message */}
+              <div style={{
+                padding: '12px',
+                backgroundColor: '#FEF3C7',
+                border: '1px solid #FCD34D',
+                borderRadius: '8px',
+                marginBottom: '16px'
+              }}>
+                <p style={{ fontSize: '14px', color: '#92400E', margin: 0, fontWeight: '500' }}>
+                  ⚠️ Do you confirm to shift the order status to <strong>{formatStatusLabel(previousStatus)}</strong>?
+                </p>
+              </div>
+              
+              {/* Notes field (optional) */}
+              {data.fields?.find(f => f.name === 'notes') && (
+                <div className="vendor-action-panel__field">
+                  <label className="vendor-action-panel__label">
+                    {data.fields.find(f => f.name === 'notes').label}
+                  </label>
+                  <textarea
+                    className={cn(
+                      'vendor-action-panel__input',
+                      formErrors.notes && 'is-error',
+                    )}
+                    value={formData.notes || ''}
+                    onChange={(e) => handleFormChange('notes', e.target.value)}
+                    placeholder="Enter notes (optional)"
+                    rows={4}
+                  />
+                </div>
+              )}
+              
+              <div className="vendor-action-panel__actions">
+                <button type="button" onClick={onClose} className="vendor-action-panel__button is-secondary">
+                  Cancel
+                </button>
+                <button type="button" onClick={handleSubmit} className="vendor-action-panel__button is-primary">
+                  Confirm
+                </button>
+              </div>
+            </div>
+          )
+        }
+        
+        // Normal update UI (existing logic)
         return (
           <div className="vendor-action-panel__form">
             {renderOrderInfo()}
@@ -629,7 +719,7 @@ export function ButtonActionPanel({ action, isOpen, onClose, onAction, onShowNot
       <div className={cn('vendor-activity-sheet__overlay', isOpen && 'is-open')} onClick={onClose} />
       <div className={cn('vendor-activity-sheet__panel', isOpen && 'is-open')}>
         <div className="vendor-activity-sheet__header">
-          <h4>{title}</h4>
+          <h4>{data?.revert === true && buttonId === 'update-order-status' ? 'Revert Current Status' : title}</h4>
           <button type="button" onClick={onClose}>
             Close
           </button>

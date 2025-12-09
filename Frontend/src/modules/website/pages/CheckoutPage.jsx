@@ -208,7 +208,7 @@ export function CheckoutPage() {
     }
   }
 
-  const handlePlaceOrder = async () => {
+  const handlePlaceOrder = () => {
     if (!vendorAvailability?.canPlaceOrder && !vendorAvailability?.isInBufferZone) {
       setError('No vendor available in your region. You cannot place orders at this location.')
       return
@@ -218,41 +218,42 @@ export function CheckoutPage() {
       return
     }
 
-    setLoading(true)
-    setError(null)
-
-    const orderData = {
+    // Show payment confirmation modal WITHOUT creating order
+    // Order will only be created when user confirms payment
+    const uiPayment = {
       paymentPreference,
-      notes: `Shipping method: ${selectedShipping.label}`,
+      amountDueNow,
+      amountDueLater,
+      deliveryWaived: isFullPayment && totals.deliveryBeforeBenefit > 0,
     }
-
-    try {
-      const orderResult = await createOrder(orderData)
-      if (orderResult.error) {
-        setError(orderResult.error.message || 'Failed to create order')
-        setLoading(false)
-        return
-      }
-
-      const order = orderResult.data.order
-      const uiPayment = {
-        paymentPreference,
-        amountDueNow,
-        amountDueLater,
-        deliveryWaived: isFullPayment && totals.deliveryBeforeBenefit > 0,
-      }
-      setPendingOrder({ ...order, uiPayment })
-      setShowPaymentConfirm(true)
-      setLoading(false)
-    } catch (err) {
-      setError('Failed to create order. Please try again.')
-      setLoading(false)
-    }
+    
+    // Store preview data (not actual order) - order will be created on confirmation
+    setPendingOrder({
+      preview: true, // Flag to indicate this is preview, not actual order
+      uiPayment,
+      total: totals.total,
+    })
+    setShowPaymentConfirm(true)
   }
 
   const handleConfirmPayment = async () => {
-    if (!pendingOrder || !pendingOrder.id) {
+    if (!pendingOrder) {
       setError('Order information is missing')
+      return
+    }
+
+    // Block order placement if no vendor available (beyond 20.3km)
+    // Allow if in buffer zone (20km to 20.3km)
+    if (!vendorAvailability?.canPlaceOrder && !vendorAvailability?.isInBufferZone) {
+      setError('No vendor available in your region. You cannot place orders at this location.')
+      setShowPaymentConfirm(false)
+      setPendingOrder(null)
+      return
+    }
+    if (!deliveryAddress) {
+      setError('Please update your delivery address in settings before placing an order')
+      setShowPaymentConfirm(false)
+      setPendingOrder(null)
       return
     }
 
@@ -262,8 +263,32 @@ export function CheckoutPage() {
     try {
       const paymentAmount = pendingOrder.uiPayment?.amountDueNow ?? amountDueNow
 
+      // Create order via API FIRST (only when user confirms payment)
+      const orderData = {
+        paymentPreference,
+        notes: `Shipping method: ${selectedShipping.label}`,
+      }
+
+      const orderResult = await createOrder(orderData)
+      if (orderResult.error) {
+        setError(orderResult.error.message || 'Failed to create order')
+        setLoading(false)
+        setShowPaymentConfirm(false)
+        setPendingOrder(null)
+        return
+      }
+
+      const order = orderResult.data.order
+      
+      // Update pendingOrder with actual order data
+      const updatedPendingOrder = {
+        ...order,
+        uiPayment: pendingOrder.uiPayment,
+      }
+      setPendingOrder(updatedPendingOrder)
+
       const paymentIntentResult = await createPaymentIntent({
-        orderId: pendingOrder.id,
+        orderId: order.id,
         paymentMethod: paymentMethod,
       })
 
@@ -298,7 +323,7 @@ export function CheckoutPage() {
         })
 
         const confirmResult = await confirmPayment({
-          orderId: pendingOrder.id,
+          orderId: order.id,
           paymentIntentId: paymentIntent.id,
           gatewayPaymentId: razorpayResponse.paymentId,
           gatewayOrderId: razorpayResponse.orderId,
@@ -309,6 +334,8 @@ export function CheckoutPage() {
         if (confirmResult.error) {
           setError(confirmResult.error.message || 'Payment failed')
           setLoading(false)
+          setShowPaymentConfirm(false)
+          setPendingOrder(null)
           return
         }
 
@@ -317,7 +344,7 @@ export function CheckoutPage() {
         
         // Navigate to order confirmation
         navigate('/order-confirmation', { 
-          state: { orderId: pendingOrder.id, orderNumber: pendingOrder.orderNumber }
+          state: { orderId: order.id, orderNumber: order.orderNumber }
         })
       } catch (razorpayError) {
         if (razorpayError.error) {
@@ -326,11 +353,15 @@ export function CheckoutPage() {
           setError('Payment was cancelled')
         }
         setLoading(false)
+        setShowPaymentConfirm(false)
+        setPendingOrder(null)
       }
     } catch (err) {
       console.error('Payment processing error:', err)
       setError(err.message || 'Payment processing failed. Please try again.')
       setLoading(false)
+      setShowPaymentConfirm(false)
+      setPendingOrder(null)
     }
   }
 
@@ -671,37 +702,65 @@ export function CheckoutPage() {
 
         {/* Payment Confirmation Modal */}
         {showPaymentConfirm && pendingOrder && (
-          <div className="checkout-page__modal">
+          <div 
+            className="checkout-page__modal"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowPaymentConfirm(false)
+                setPendingOrder(null)
+              }
+            }}
+          >
             <div className="checkout-page__modal-content">
               <div className="checkout-page__modal-header">
                 <h3>Confirm Payment</h3>
-                <button onClick={() => setShowPaymentConfirm(false)}>×</button>
+                <button onClick={() => {
+                  setShowPaymentConfirm(false)
+                  setPendingOrder(null)
+                }}>×</button>
               </div>
               <div className="checkout-page__modal-body">
-                <p>Order #{pendingOrder.orderNumber || pendingOrder.id}</p>
+                <p>Order Preview</p>
                 <div className="checkout-page__modal-summary">
                   <div>
                     <span>Total Amount</span>
-                    <span>₹{totals.total.toLocaleString('en-IN')}</span>
+                    <span>₹{modalOrderTotal.toLocaleString('en-IN')}</span>
                   </div>
                   <div>
-                    <span>{paymentDueNowLabel}</span>
-                    <span>₹{amountDueNow.toLocaleString('en-IN')}</span>
+                    <span>{modalDueNowLabel}</span>
+                    <span>₹{modalAmountDueNow.toLocaleString('en-IN')}</span>
                   </div>
-                  {amountDueLater > 0 && (
+                  {modalAmountDueLater > 0 && (
                     <div>
-                      <span>{paymentDueLaterLabel}</span>
-                      <span>₹{amountDueLater.toLocaleString('en-IN')}</span>
+                      <span>{modalDueLaterLabel}</span>
+                      <span>₹{modalAmountDueLater.toLocaleString('en-IN')}</span>
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={handleConfirmPayment}
-                  disabled={loading}
-                  className="checkout-page__modal-button"
-                >
-                  {loading ? 'Processing...' : `Pay ₹${amountDueNow.toLocaleString('en-IN')}`}
-                </button>
+                <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                  <button
+                    onClick={() => {
+                      setShowPaymentConfirm(false)
+                      setPendingOrder(null)
+                    }}
+                    className="checkout-page__modal-button"
+                    style={{ 
+                      background: '#f3f4f6', 
+                      color: '#172022',
+                      flex: 1
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmPayment}
+                    disabled={loading}
+                    className="checkout-page__modal-button"
+                    style={{ flex: 1 }}
+                  >
+                    {loading ? 'Processing...' : `Pay ₹${modalAmountDueNow.toLocaleString('en-IN')}`}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -129,8 +129,11 @@ export function OrderStatusUpdateModal({ isOpen, onClose, order, onUpdate, loadi
       ? 'fully_paid' 
       : mapStatusToBackend(selectedStatus)
     
+    // For revert, ensure we use the previous status from grace period
+    const finalStatus = isRevert && previousStatus ? previousStatus : backendStatus
+    
     const updateData = {
-      status: backendStatus,
+      status: finalStatus,
       notes: notes.trim() || undefined,
       isRevert: isRevert,
     }
@@ -150,9 +153,26 @@ export function OrderStatusUpdateModal({ isOpen, onClose, order, onUpdate, loadi
 
   const availableStatusOptions = getAvailableStatusOptions()
   const showPaymentOption = currentStatus === 'delivered' && !isPaid
+  const paymentPreference = order?.paymentPreference || 'partial'
+  const isFullPayment = paymentPreference === 'full'
+  
+  // Format status label for display
+  const formatStatusLabel = (status) => {
+    if (!status) return ''
+    const normalized = status.toLowerCase()
+    if (normalized === 'fully_paid') return 'Fully Paid'
+    if (normalized === 'delivered') return 'Delivered'
+    if (normalized === 'dispatched' || normalized === 'out_for_delivery') return 'Dispatched'
+    if (normalized === 'accepted' || normalized === 'processing') return 'Accepted'
+    if (normalized === 'awaiting' || normalized === 'pending') return 'Awaiting'
+    return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')
+  }
+
+  // Check if this is a revert action
+  const isRevertAction = isInStatusUpdateGracePeriod && previousStatus && isRevert
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Update Order Status" size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={isRevertAction ? "Revert Current Status" : "Update Order Status"} size="md">
       <div className="space-y-6">
         {/* Order Info */}
         {order && (
@@ -163,9 +183,35 @@ export function OrderStatusUpdateModal({ isOpen, onClose, order, onUpdate, loadi
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between">
+                <span className="text-gray-600">Customer:</span>
+                <span className="font-bold text-gray-900">{order.userName || 'Unknown'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">Contact:</span>
+                <span className="font-bold text-gray-900">{order.userPhone || 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="text-gray-600">Current Status:</span>
                 <span className="font-bold text-gray-900 capitalize">{ORDER_STATUS_OPTIONS.find(opt => opt.value === normalizedCurrentStatus)?.label || normalizedCurrentStatus || 'Unknown'}</span>
               </div>
+              {!isRevertAction && !isInStatusUpdateGracePeriod && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">Next Status:</span>
+                  <span className="font-bold text-blue-600 capitalize">
+                    {(() => {
+                      const nextStatus = getNextStatus(normalizedCurrentStatus, isPaid)
+                      if (nextStatus) {
+                        const nextOption = ORDER_STATUS_OPTIONS.find(opt => opt.value === nextStatus)
+                        return nextOption?.label || nextStatus
+                      }
+                      if (normalizedCurrentStatus === 'delivered' && !isPaid && !isFullPayment) {
+                        return 'Fully Paid'
+                      }
+                      return 'N/A'
+                    })()}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-gray-600">Payment Status:</span>
                 <span className="font-bold text-gray-900 capitalize">
@@ -186,54 +232,78 @@ export function OrderStatusUpdateModal({ isOpen, onClose, order, onUpdate, loadi
           </div>
         )}
 
-        {/* Grace Period Notice */}
-        {isInStatusUpdateGracePeriod && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 flex-shrink-0 text-blue-600" />
-              <div className="text-sm text-blue-900">
-                <p className="font-bold">Status Update Grace Period Active</p>
-                <p className="mt-1">
-                  You have {statusUpdateTimeRemaining} minutes remaining to revert to "{previousStatus}" status.
-                  After this period, the current status will be finalized.
-                </p>
+        {/* Revert Confirmation UI */}
+        {isRevertAction ? (
+          <>
+            {/* Previous Status Display (Read-only) */}
+            <div>
+              <label className="mb-2 block text-sm font-bold text-gray-900">
+                Previous Status <span className="text-red-500">*</span>
+              </label>
+              <div className="rounded-xl border border-gray-300 bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-900">
+                {formatStatusLabel(previousStatus)}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Status Selection - Only show if order is not already fully paid */}
-        {!isPaid && (
-          <div>
-            <label htmlFor="status" className="mb-2 block text-sm font-bold text-gray-900">
-              Order Status <span className="text-red-500">*</span>
-            </label>
-            <select
-              id="status"
-              value={selectedStatus}
-              onChange={(e) => {
-                setSelectedStatus(e.target.value)
-                setIsRevert(false)
-              }}
-              disabled={isInStatusUpdateGracePeriod && previousStatus}
-              className={cn(
-                'w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50',
-                isInStatusUpdateGracePeriod && previousStatus && 'bg-gray-100 cursor-not-allowed'
-              )}
-            >
-              <option value="">Select status...</option>
-              {availableStatusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {selectedStatus && (
-              <p className="mt-2 text-xs text-gray-600">
-                {availableStatusOptions.find(opt => opt.value === selectedStatus)?.description}
+            {/* Warning Message */}
+            <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+              <p className="text-sm font-semibold text-yellow-900">
+                ⚠️ Do you confirm to shift the order status to <strong>{formatStatusLabel(previousStatus)}</strong>?
               </p>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Grace Period Notice */}
+            {isInStatusUpdateGracePeriod && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 flex-shrink-0 text-blue-600" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-bold">Status Update Grace Period Active</p>
+                    <p className="mt-1">
+                      You have {statusUpdateTimeRemaining} minutes remaining to revert to "{formatStatusLabel(previousStatus)}" status.
+                      After this period, the current status will be finalized.
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
-          </div>
+
+            {/* Status Selection - Only show if order is not already fully paid */}
+            {!isPaid && (
+              <div>
+                <label htmlFor="status" className="mb-2 block text-sm font-bold text-gray-900">
+                  Order Status <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="status"
+                  value={selectedStatus}
+                  onChange={(e) => {
+                    setSelectedStatus(e.target.value)
+                    setIsRevert(false)
+                  }}
+                  disabled={isInStatusUpdateGracePeriod && previousStatus}
+                  className={cn(
+                    'w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50',
+                    isInStatusUpdateGracePeriod && previousStatus && 'bg-gray-100 cursor-not-allowed'
+                  )}
+                >
+                  <option value="">Select status...</option>
+                  {availableStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedStatus && (
+                  <p className="mt-2 text-xs text-gray-600">
+                    {availableStatusOptions.find(opt => opt.value === selectedStatus)?.description}
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         )}
 
         {/* Payment Status Selection (for delivered orders that are NOT already fully paid) */}
@@ -279,26 +349,13 @@ export function OrderStatusUpdateModal({ isOpen, onClose, order, onUpdate, loadi
         </div>
 
         {/* Info Message */}
-        {isPaid && (
+        {isPaid && !isRevertAction && (
           <div className="rounded-xl border border-green-200 bg-green-50 p-4">
             <div className="flex items-start gap-3">
               <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-600" />
               <div className="text-sm text-green-900">
                 <p className="font-bold">Order is Fully Paid</p>
                 <p className="mt-1">This order has been fully paid. Status updates are not required.</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Grace Period Notice */}
-        {isInStatusUpdateGracePeriod && (
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 flex-shrink-0 text-blue-600" />
-              <div className="text-sm text-blue-900">
-                <p className="font-bold">Status Update in Grace Period</p>
-                <p className="mt-1">You can confirm this status update now or revert to the previous status.</p>
               </div>
             </div>
           </div>
@@ -356,7 +413,7 @@ export function OrderStatusUpdateModal({ isOpen, onClose, order, onUpdate, loadi
             ) : isRevert ? (
               <>
                 <ArrowLeft className="h-4 w-4" />
-                Revert Status
+                Confirm Revert
               </>
             ) : (
               <>

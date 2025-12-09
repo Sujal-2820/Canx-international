@@ -3886,6 +3886,20 @@ exports.getPaymentHistory = async (req, res, next) => {
       search,
     } = req.query;
 
+    console.log('🔍 [PaymentHistory] Request params:', {
+      activityType,
+      userId,
+      vendorId,
+      sellerId,
+      orderId,
+      startDate,
+      endDate,
+      status,
+      page,
+      limit,
+      search,
+    });
+
     const query = {};
 
     // Filter by activity type
@@ -4018,10 +4032,233 @@ exports.getPaymentHistory = async (req, res, next) => {
       }
     );
 
+    // Get PaymentHistory records
+    console.log('📊 [PaymentHistory] Query:', JSON.stringify(query, null, 2));
     const [history, totalResult] = await Promise.all([
       PaymentHistory.aggregate(pipeline),
       PaymentHistory.countDocuments(query),
     ]);
+
+    console.log(`📊 [PaymentHistory] Found ${history.length} PaymentHistory records, total: ${totalResult}`);
+
+    // Also include Payment records that might not be in PaymentHistory
+    // This ensures we show all payments even if PaymentHistory logging failed
+    const shouldIncludePayments = !activityType || activityType === 'all' || 
+      activityType === 'user_payment_advance' || activityType === 'user_payment_remaining';
+    
+    // Also include CreditRepayment records for credit repayments
+    const shouldIncludeCreditRepayments = !activityType || activityType === 'all' || 
+      activityType === 'vendor_credit_repayment';
+    
+    let combinedHistory = history;
+    let totalCount = totalResult;
+
+    if (shouldIncludePayments) {
+      const paymentQuery = {};
+      
+      // Apply date filter to payments
+      if (startDate || endDate) {
+        paymentQuery.createdAt = {};
+        if (startDate) paymentQuery.createdAt.$gte = new Date(startDate);
+        if (endDate) paymentQuery.createdAt.$lte = new Date(endDate);
+      }
+      
+      // Apply status filter - map PaymentHistory status to Payment status
+      if (status && status !== 'all') {
+        if (status === 'completed') {
+          paymentQuery.status = PAYMENT_STATUS.FULLY_PAID;
+        } else if (status === 'pending') {
+          paymentQuery.status = PAYMENT_STATUS.PARTIAL_PAID;
+        } else {
+          paymentQuery.status = status;
+        }
+      }
+      
+      // Apply user filter
+      if (userId) {
+        paymentQuery.userId = userId;
+      }
+      
+      // Apply order filter
+      if (orderId) {
+        paymentQuery.orderId = orderId;
+      }
+
+      // Filter by payment type if specific activity type is requested
+      if (activityType === 'user_payment_advance') {
+        paymentQuery.paymentType = { $in: ['advance', 'full'] };
+      } else if (activityType === 'user_payment_remaining') {
+        paymentQuery.paymentType = 'remaining';
+      }
+
+      // Get all payments (we'll merge and paginate after)
+      console.log('💳 [PaymentHistory] Payment query:', JSON.stringify(paymentQuery, null, 2));
+      const allPayments = await Payment.find(paymentQuery)
+        .sort({ createdAt: -1 })
+        .populate('userId', 'name phone userId')
+        .populate('orderId', 'orderNumber totalAmount')
+        .select('-__v');
+
+      console.log(`💳 [PaymentHistory] Found ${allPayments.length} Payment records`);
+
+      // Convert Payment records to PaymentHistory format for consistency
+      const paymentHistoryEntries = allPayments.map(payment => {
+        // Determine activity type based on payment type
+        let activityTypeFromPayment = 'user_payment_advance';
+        if (payment.paymentType === 'remaining') {
+          activityTypeFromPayment = 'user_payment_remaining';
+        } else if (payment.paymentType === 'full') {
+          activityTypeFromPayment = 'user_payment_advance';
+        }
+
+        return {
+          _id: payment._id,
+          historyId: payment.paymentId,
+          activityType: activityTypeFromPayment,
+          userId: payment.userId?._id,
+          orderId: payment.orderId?._id,
+          paymentId: payment._id,
+          amount: payment.amount,
+          currency: 'INR',
+          status: payment.status === PAYMENT_STATUS.FULLY_PAID ? 'completed' : 
+                 payment.status === PAYMENT_STATUS.PARTIAL_PAID ? 'pending' : 
+                 payment.status,
+          paymentMethod: payment.paymentMethod,
+          description: `User ${payment.paymentType} payment of ₹${payment.amount}${payment.orderId?.orderNumber ? ` for order ${payment.orderId.orderNumber}` : ''}`,
+          metadata: {
+            orderNumber: payment.orderId?.orderNumber,
+            paymentId: payment.paymentId,
+            paymentType: payment.paymentType,
+          },
+          createdAt: payment.createdAt,
+          updatedAt: payment.updatedAt,
+          processedAt: payment.paidAt || payment.createdAt,
+          user: payment.userId ? {
+            _id: payment.userId._id,
+            name: payment.userId.name,
+            phone: payment.userId.phone,
+            userId: payment.userId.userId,
+          } : null,
+          order: payment.orderId ? {
+            _id: payment.orderId._id,
+            orderNumber: payment.orderId.orderNumber,
+            totalAmount: payment.orderId.totalAmount,
+          } : null,
+        };
+      });
+
+      // Merge PaymentHistory and Payment records, removing duplicates
+      // A payment is a duplicate if it has the same paymentId in metadata
+      const existingPaymentIds = new Set(
+        history
+          .filter(h => h.metadata?.paymentId)
+          .map(h => h.metadata.paymentId)
+      );
+
+      const uniquePaymentEntries = paymentHistoryEntries.filter(
+        entry => !existingPaymentIds.has(entry.metadata?.paymentId)
+      );
+
+      console.log(`💳 [PaymentHistory] Unique Payment entries after deduplication: ${uniquePaymentEntries.length}`);
+
+      // Combine and sort by date
+      combinedHistory = [...history, ...uniquePaymentEntries]
+        .sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.processedAt || 0);
+          const dateB = new Date(b.createdAt || b.processedAt || 0);
+          return dateB - dateA;
+        });
+
+      // Apply pagination after merging
+      const skip = (pageNum - 1) * limitNum;
+      combinedHistory = combinedHistory.slice(skip, skip + limitNum);
+      
+      // Update total count
+      totalCount = history.length + uniquePaymentEntries.length;
+    }
+
+    // Include CreditRepayment records
+    if (shouldIncludeCreditRepayments) {
+      const creditRepaymentQuery = {};
+      
+      // Apply date filter
+      if (startDate || endDate) {
+        creditRepaymentQuery.createdAt = {};
+        if (startDate) creditRepaymentQuery.createdAt.$gte = new Date(startDate);
+        if (endDate) creditRepaymentQuery.createdAt.$lte = new Date(endDate);
+      }
+      
+      // Apply status filter
+      if (status && status !== 'all') {
+        if (status === 'completed') {
+          creditRepaymentQuery.status = 'completed';
+        } else {
+          creditRepaymentQuery.status = status;
+        }
+      } else {
+        // Only show completed repayments by default
+        creditRepaymentQuery.status = 'completed';
+      }
+      
+      // Apply vendor filter
+      if (vendorId) {
+        creditRepaymentQuery.vendorId = vendorId;
+      }
+
+      console.log('💰 [PaymentHistory] CreditRepayment query:', JSON.stringify(creditRepaymentQuery, null, 2));
+      const allCreditRepayments = await CreditRepayment.find(creditRepaymentQuery)
+        .sort({ createdAt: -1 })
+        .populate('vendorId', 'name phone vendorId')
+        .select('-__v');
+
+      console.log(`💰 [PaymentHistory] Found ${allCreditRepayments.length} CreditRepayment records`);
+
+      // Convert CreditRepayment records to PaymentHistory format
+      const creditRepaymentEntries = allCreditRepayments.map(repayment => {
+        return {
+          _id: repayment._id,
+          historyId: repayment.repaymentId,
+          activityType: 'vendor_credit_repayment',
+          vendorId: repayment.vendorId?._id,
+          amount: repayment.amount,
+          currency: 'INR',
+          status: repayment.status === 'completed' ? 'completed' : repayment.status,
+          paymentMethod: 'razorpay',
+          description: `Vendor credit repayment of ₹${repayment.amount}${repayment.penaltyAmount > 0 ? ` (including ₹${repayment.penaltyAmount} penalty)` : ''}`,
+          metadata: {
+            repaymentId: repayment.repaymentId,
+            creditUsedBefore: repayment.creditUsedBefore,
+            creditUsedAfter: repayment.creditUsedAfter,
+            penaltyAmount: repayment.penaltyAmount,
+            razorpayPaymentId: repayment.razorpayPaymentId,
+          },
+          createdAt: repayment.createdAt,
+          updatedAt: repayment.updatedAt,
+          processedAt: repayment.paidAt || repayment.createdAt,
+          vendor: repayment.vendorId ? {
+            _id: repayment.vendorId._id,
+            name: repayment.vendorId.name,
+            phone: repayment.vendorId.phone,
+            vendorId: repayment.vendorId.vendorId,
+          } : null,
+        };
+      });
+
+      // Merge with existing history
+      combinedHistory = [...combinedHistory, ...creditRepaymentEntries]
+        .sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.processedAt || 0);
+          const dateB = new Date(b.createdAt || b.processedAt || 0);
+          return dateB - dateA;
+        });
+
+      // Apply pagination after merging
+      const skip = (pageNum - 1) * limitNum;
+      combinedHistory = combinedHistory.slice(skip, skip + limitNum);
+      
+      // Update total count
+      totalCount = combinedHistory.length;
+    }
 
     // Calculate summary statistics
     const summaryPipeline = [
@@ -4037,15 +4274,17 @@ exports.getPaymentHistory = async (req, res, next) => {
 
     const summary = await PaymentHistory.aggregate(summaryPipeline);
 
+    console.log(`✅ [PaymentHistory] Returning ${combinedHistory.length} records, total: ${totalCount}, page: ${pageNum}/${Math.ceil(totalCount / limitNum)}`);
+
     res.status(200).json({
       success: true,
       data: {
-        history,
+        history: combinedHistory,
         pagination: {
           page: pageNum,
           limit: limitNum,
-          total: totalResult,
-          totalPages: Math.ceil(totalResult / limitNum),
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limitNum),
         },
         summary,
       },
@@ -4062,7 +4301,9 @@ exports.getPaymentHistory = async (req, res, next) => {
  */
 exports.getPaymentHistoryStats = async (req, res, next) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, status } = req.query;
+
+    console.log('📊 [PaymentHistoryStats] Calculating stats with params:', { startDate, endDate, status });
 
     const query = {};
     if (startDate || endDate) {
@@ -4071,8 +4312,28 @@ exports.getPaymentHistoryStats = async (req, res, next) => {
       if (endDate) query.createdAt.$lte = new Date(endDate);
     }
 
-    const stats = await PaymentHistory.aggregate([
-      { $match: query },
+    // Determine status filter - default to completed/credited/approved if not specified
+    let statusFilter = { $in: ['completed', 'credited', 'approved'] };
+    if (status && status !== 'all') {
+      if (status === 'completed') {
+        statusFilter = { $in: ['completed', 'credited', 'approved'] };
+      } else if (status === 'pending') {
+        statusFilter = { $in: ['pending', 'requested'] };
+      } else if (status === 'rejected') {
+        statusFilter = 'rejected';
+      } else {
+        statusFilter = status;
+      }
+    }
+
+    // Get stats from PaymentHistory - filter by status
+    const historyStatsCompleted = await PaymentHistory.aggregate([
+      { 
+        $match: { 
+          ...query,
+          status: statusFilter
+        } 
+      },
       {
         $group: {
           _id: null,
@@ -4087,18 +4348,27 @@ exports.getPaymentHistoryStats = async (req, res, next) => {
           },
           totalVendorEarnings: {
             $sum: {
-              $cond: [{ $eq: ['$activityType', 'vendor_earning'] }, '$amount', 0],
+              $cond: [{ $eq: ['$activityType', 'vendor_earning_credited'] }, '$amount', 0],
             },
           },
           totalSellerCommissions: {
             $sum: {
-              $cond: [{ $eq: ['$activityType', 'seller_commission'] }, '$amount', 0],
+              $cond: [
+                { 
+                  $and: [
+                    { $eq: ['$activityType', 'seller_commission_credited'] },
+                    { $in: ['$status', ['completed', 'credited', 'approved']] }
+                  ]
+                },
+                '$amount',
+                0,
+              ],
             },
           },
           totalVendorWithdrawals: {
             $sum: {
               $cond: [
-                { $in: ['$activityType', ['vendor_withdrawal_requested', 'vendor_withdrawal_approved', 'vendor_withdrawal_completed']] },
+                { $in: ['$activityType', ['vendor_withdrawal_approved', 'vendor_withdrawal_completed']] },
                 '$amount',
                 0,
               ],
@@ -4107,29 +4377,219 @@ exports.getPaymentHistoryStats = async (req, res, next) => {
           totalSellerWithdrawals: {
             $sum: {
               $cond: [
-                { $in: ['$activityType', ['seller_withdrawal_requested', 'seller_withdrawal_approved', 'seller_withdrawal_completed']] },
+                { $in: ['$activityType', ['seller_withdrawal_approved', 'seller_withdrawal_completed']] },
                 '$amount',
                 0,
               ],
             },
           },
+        },
+      },
+    ]);
+
+    // Get total activities count (all statuses)
+    const totalActivitiesResult = await PaymentHistory.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
           totalActivities: { $sum: 1 },
         },
       },
     ]);
 
+    // Get Payment records stats - filter by status
+    const paymentQuery = {};
+    if (startDate || endDate) {
+      paymentQuery.createdAt = {};
+      if (startDate) paymentQuery.createdAt.$gte = new Date(startDate);
+      if (endDate) paymentQuery.createdAt.$lte = new Date(endDate);
+    }
+    
+    // Map PaymentHistory status to Payment status
+    if (status && status !== 'all') {
+      if (status === 'completed') {
+        paymentQuery.status = PAYMENT_STATUS.FULLY_PAID;
+      } else if (status === 'pending') {
+        paymentQuery.status = PAYMENT_STATUS.PARTIAL_PAID;
+      } else if (status === 'rejected') {
+        paymentQuery.status = PAYMENT_STATUS.FAILED;
+      }
+    } else {
+      // Default: only count fully paid payments
+      paymentQuery.status = PAYMENT_STATUS.FULLY_PAID;
+    }
+
+    // Get Payment IDs that are already in PaymentHistory to avoid double counting
+    const existingPaymentIds = await PaymentHistory.distinct('metadata.paymentId', {
+      ...query,
+      'metadata.paymentId': { $exists: true, $ne: null }
+    });
+
+    console.log(`📊 [PaymentHistoryStats] Found ${existingPaymentIds.length} Payment IDs already in PaymentHistory`);
+
+    // Get Payment records that are NOT in PaymentHistory
+    // Note: We match by paymentId field (string) against metadata.paymentId from PaymentHistory
+    const paymentQueryUnique = {
+      ...paymentQuery,
+    };
+    
+    // Only filter out existing payments if we have any
+    if (existingPaymentIds.length > 0) {
+      paymentQueryUnique.paymentId = { $nin: existingPaymentIds };
+    }
+
+    const paymentStats = await Payment.aggregate([
+      { $match: paymentQueryUnique },
+      {
+        $group: {
+          _id: null,
+          totalUserPayments: { $sum: '$amount' },
+          totalPayments: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Get CreditRepayment stats - filter by status
+    const creditRepaymentQuery = {};
+    if (startDate || endDate) {
+      creditRepaymentQuery.createdAt = {};
+      if (startDate) creditRepaymentQuery.createdAt.$gte = new Date(startDate);
+      if (endDate) creditRepaymentQuery.createdAt.$lte = new Date(endDate);
+    }
+    
+    if (status && status !== 'all') {
+      creditRepaymentQuery.status = status === 'completed' ? 'completed' : status;
+    } else {
+      // Default: only count completed repayments
+      creditRepaymentQuery.status = 'completed';
+    }
+
+    const creditRepaymentStats = await CreditRepayment.aggregate([
+      { $match: creditRepaymentQuery },
+      {
+        $group: {
+          _id: null,
+          totalCreditRepayments: { $sum: '$amount' },
+          totalRepayments: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // Get Commission records stats - calculate total commissions earned (not withdrawals)
+    const commissionQuery = {};
+    if (startDate || endDate) {
+      commissionQuery.creditedAt = {};
+      if (startDate) commissionQuery.creditedAt.$gte = new Date(startDate);
+      if (endDate) commissionQuery.creditedAt.$lte = new Date(endDate);
+    }
+    
+    // Only count credited commissions
+    commissionQuery.status = 'credited';
+
+    const commissionStats = await Commission.aggregate([
+      { $match: commissionQuery },
+      {
+        $group: {
+          _id: null,
+          totalSellerCommissions: { $sum: '$commissionAmount' },
+          totalCommissions: { $sum: 1 },
+        },
+      },
+    ]);
+
+    console.log(`💰 [PaymentHistoryStats] Commission query:`, JSON.stringify(commissionQuery, null, 2));
+    console.log(`💰 [PaymentHistoryStats] Found ${commissionStats[0]?.totalCommissions || 0} Commission records`);
+
+    const historyResult = historyStatsCompleted[0] || {
+      totalUserPayments: 0,
+      totalVendorEarnings: 0,
+      totalSellerCommissions: 0,
+      totalVendorWithdrawals: 0,
+      totalSellerWithdrawals: 0,
+    };
+
+    const paymentResult = paymentStats[0] || {
+      totalUserPayments: 0,
+      totalPayments: 0,
+    };
+
+    const creditRepaymentResult = creditRepaymentStats[0] || {
+      totalCreditRepayments: 0,
+      totalRepayments: 0,
+    };
+
+    const commissionResult = commissionStats[0] || {
+      totalSellerCommissions: 0,
+      totalCommissions: 0,
+    };
+
+    // Get total activities count including all sources
+    // Count PaymentHistory records (already includes most activities)
+    const totalActivities = totalActivitiesResult[0]?.totalActivities || 0;
+    
+    // Count Payment records that are NOT in PaymentHistory (to avoid double counting)
+    const paymentCountQuery = { ...paymentQueryUnique };
+    const paymentCount = await Payment.countDocuments(paymentCountQuery);
+    
+    // Count Commission records that are NOT in PaymentHistory
+    // Check which commission IDs are already in PaymentHistory
+    const existingCommissionIds = await PaymentHistory.distinct('commissionId', {
+      ...query,
+      commissionId: { $exists: true, $ne: null }
+    });
+    
+    const commissionCountQuery = { ...commissionQuery };
+    if (existingCommissionIds.length > 0) {
+      commissionCountQuery._id = { $nin: existingCommissionIds };
+    }
+    const commissionCount = await Commission.countDocuments(commissionCountQuery);
+    
+    // Count CreditRepayment records that are NOT in PaymentHistory
+    // Check which repayment IDs are already in PaymentHistory
+    const existingRepaymentIds = await PaymentHistory.distinct('metadata.repaymentId', {
+      ...query,
+      'metadata.repaymentId': { $exists: true, $ne: null }
+    });
+    
+    const creditRepaymentCountQuery = { ...creditRepaymentQuery };
+    if (existingRepaymentIds.length > 0) {
+      creditRepaymentCountQuery.repaymentId = { $nin: existingRepaymentIds };
+    }
+    const creditRepaymentCount = await CreditRepayment.countDocuments(creditRepaymentCountQuery);
+    
+    console.log(`📊 [PaymentHistoryStats] Activity counts:`, {
+      paymentHistory: totalActivities,
+      payments: paymentCount,
+      commissions: commissionCount,
+      creditRepayments: creditRepaymentCount,
+      total: totalActivities + paymentCount + commissionCount + creditRepaymentCount,
+    });
+
+    // Combine stats - use Commission records directly for seller commissions (more accurate)
+    const combinedStats = {
+      totalUserPayments: historyResult.totalUserPayments + paymentResult.totalUserPayments,
+      totalVendorEarnings: historyResult.totalVendorEarnings,
+      totalSellerCommissions: commissionResult.totalSellerCommissions, // Use Commission records directly
+      totalVendorWithdrawals: historyResult.totalVendorWithdrawals,
+      totalSellerWithdrawals: historyResult.totalSellerWithdrawals,
+      totalActivities: totalActivities + paymentCount + commissionCount + creditRepaymentCount,
+    };
+
+    console.log('📊 [PaymentHistoryStats] Calculated stats:', {
+      historyResult,
+      paymentResult,
+      creditRepaymentResult,
+      totalActivities,
+      combinedStats,
+    });
+
     res.status(200).json({
       success: true,
-      data: stats[0] || {
-        totalUserPayments: 0,
-        totalVendorEarnings: 0,
-        totalSellerCommissions: 0,
-        totalVendorWithdrawals: 0,
-        totalSellerWithdrawals: 0,
-        totalActivities: 0,
-      },
+      data: combinedStats,
     });
   } catch (error) {
+    console.error('❌ [PaymentHistoryStats] Error:', error);
     next(error);
   }
 };
@@ -5502,20 +5962,23 @@ exports.updateOrderStatus = async (req, res, next) => {
     const { orderId } = req.params;
     const { status, notes, isRevert, finalizeGracePeriod } = req.body;
 
-    if (!status) {
+    // If finalizing grace period, status is not required
+    if (!finalizeGracePeriod && !status) {
       return res.status(400).json({
         success: false,
         message: 'Status is required',
       });
     }
 
-    // Valid status transitions for admin (Awaiting -> Accepted -> Dispatched -> Delivered -> Fully paid)
-    const validStatuses = ['awaiting', 'accepted', 'processing', 'dispatched', 'delivered', 'fully_paid'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status. Allowed: ${validStatuses.join(', ')}`,
-      });
+    // Valid status transitions for admin (only validate if status is provided)
+    if (status) {
+      const validStatuses = ['awaiting', 'accepted', 'processing', 'dispatched', 'delivered', 'fully_paid'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid status. Allowed: ${validStatuses.join(', ')}`,
+        });
+      }
     }
 
     const order = await Order.findById(orderId);
@@ -5677,16 +6140,22 @@ exports.updateOrderStatus = async (req, res, next) => {
       order.paymentStatus = PAYMENT_STATUS.FULLY_PAID;
       order.remainingAmount = 0;
 
+      // For fully_paid status, no grace period - finalize immediately
       if (!isReverting && isStatusChange) {
-        startGracePeriod({
-          previousPaymentStatus,
-          previousRemainingAmount,
-        });
+        // Finalize any existing grace period if present
+        if (order.statusUpdateGracePeriod?.isActive) {
+          finalizeStatusUpdateGracePeriod();
+        }
+        // Don't start a new grace period for fully_paid
+        // Status is immediately finalized
       } else if (isReverting && order.statusUpdateGracePeriod?.isActive) {
         order.paymentStatus = order.statusUpdateGracePeriod.previousPaymentStatus || previousPaymentStatus;
         if (typeof order.statusUpdateGracePeriod.previousRemainingAmount === 'number') {
           order.remainingAmount = order.statusUpdateGracePeriod.previousRemainingAmount;
         }
+        finalizeStatusUpdateGracePeriod();
+      } else if (order.statusUpdateGracePeriod?.isActive) {
+        // If there's an active grace period, finalize it
         finalizeStatusUpdateGracePeriod();
       }
     } else {
@@ -5729,13 +6198,18 @@ exports.updateOrderStatus = async (req, res, next) => {
 
     await order.save();
 
+    // For fully_paid status, no grace period message
+    const hasGracePeriod = isStatusChange && normalizedNewStatus !== ORDER_STATUS.FULLY_PAID && order.statusUpdateGracePeriod?.isActive;
+    
     const message = isReverting 
       ? `Order status reverted to ${timelineStatus}`
-      : isStatusChange
-        ? `Order status updated to ${timelineStatus}. You have 1 hour to revert this change.`
-        : `Order status updated to ${timelineStatus} successfully`;
+      : normalizedNewStatus === ORDER_STATUS.FULLY_PAID
+        ? `Order status updated to ${timelineStatus}. Payment completed.`
+        : isStatusChange
+          ? `Order status updated to ${timelineStatus}. You have 1 hour to revert this change.`
+          : `Order status updated to ${timelineStatus} successfully`;
 
-    console.log(`✅ Order ${order.orderNumber} status updated to ${status} by admin${isStatusChange ? ' (grace period active)' : ''}`);
+    console.log(`✅ Order ${order.orderNumber} status updated to ${status} by admin${hasGracePeriod ? ' (grace period active)' : normalizedNewStatus === ORDER_STATUS.FULLY_PAID ? ' (no grace period - immediately finalized)' : ''}`);
 
     res.status(200).json({
       success: true,
@@ -5748,7 +6222,7 @@ exports.updateOrderStatus = async (req, res, next) => {
           statusUpdateGracePeriod: order.statusUpdateGracePeriod,
         },
         message,
-        gracePeriod: isStatusChange ? {
+        gracePeriod: hasGracePeriod ? {
           isActive: true,
           expiresAt: order.statusUpdateGracePeriod.expiresAt,
           previousStatus: order.statusUpdateGracePeriod.previousStatus,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Settings, Truck, Package, Bell, Plus, Edit2, Trash2, AlertCircle, Recycle, ArrowLeft, Eye } from 'lucide-react'
+import { Settings, Truck, Package, Bell, Plus, Edit2, Trash2, AlertCircle, Recycle, ArrowLeft, Eye, RefreshCw, CheckCircle } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { LogisticsSettingsForm } from '../components/LogisticsSettingsForm'
@@ -39,6 +39,8 @@ export function OperationsPage({ subRoute = null, navigate }) {
     createNotification,
     updateNotification,
     deleteNotification,
+    updateOrderStatus,
+    getOrderDetails,
     loading,
   } = useAdminApi()
   const { success, error: showError, warning: showWarning } = useToast()
@@ -48,12 +50,19 @@ export function OperationsPage({ subRoute = null, navigate }) {
   const [escalatedOrders, setEscalatedOrders] = useState([])
   
   // View states (replacing modals with full-screen views)
-  const [currentView, setCurrentView] = useState(null) // 'logistics', 'notification', 'escalation', 'revertEscalation'
+  const [currentView, setCurrentView] = useState(null) // 'logistics', 'notification', 'escalation', 'revertEscalation', 'statusUpdate'
   const [selectedNotification, setSelectedNotification] = useState(null)
   const [selectedOrderForEscalation, setSelectedOrderForEscalation] = useState(null)
   const [selectedOrderForRevert, setSelectedOrderForRevert] = useState(null)
+  const [selectedOrderForStatusUpdate, setSelectedOrderForStatusUpdate] = useState(null)
   const [revertReason, setRevertReason] = useState('')
   const [fulfillmentNote, setFulfillmentNote] = useState('')
+  
+  // Status update form states
+  const [selectedStatus, setSelectedStatus] = useState('')
+  const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('')
+  const [statusUpdateNotes, setStatusUpdateNotes] = useState('')
+  const [isRevert, setIsRevert] = useState(false)
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -198,8 +207,117 @@ export function OperationsPage({ subRoute = null, navigate }) {
     setSelectedNotification(null)
     setSelectedOrderForEscalation(null)
     setSelectedOrderForRevert(null)
+    setSelectedOrderForStatusUpdate(null)
     setRevertReason('')
+    setSelectedStatus('')
+    setSelectedPaymentStatus('')
+    setStatusUpdateNotes('')
+    setIsRevert(false)
     if (navigate) navigate('operations')
+  }
+
+  const handleUpdateOrderStatus = async (orderId, updateData) => {
+    try {
+      const result = await updateOrderStatus(orderId, updateData)
+      if (result.data) {
+        setCurrentView(null)
+        setSelectedOrderForStatusUpdate(null)
+        setSelectedStatus('')
+        setSelectedPaymentStatus('')
+        setStatusUpdateNotes('')
+        setIsRevert(false)
+        fetchData()
+        success(result.data.message || 'Order status updated successfully!', 3000)
+        if (navigate) navigate('operations')
+      } else if (result.error) {
+        showError(result.error.message || 'Failed to update order status', 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to update order status', 5000)
+    }
+  }
+
+  // Helper function to normalize order status
+  const normalizeOrderStatus = (status) => {
+    if (!status) return 'awaiting'
+    const normalized = status.toLowerCase()
+    if (normalized === 'fully_paid') return 'fully_paid'
+    if (normalized === 'accepted' || normalized === 'processing') return 'accepted'
+    if (normalized === 'dispatched' || normalized === 'out_for_delivery' || normalized === 'ready_for_delivery') return 'dispatched'
+    if (normalized === 'delivered') return 'delivered'
+    if (normalized === 'pending' || normalized === 'awaiting') return 'awaiting'
+    return normalized
+  }
+
+  // Helper function to get next status
+  const getNextStatus = (order) => {
+    const currentStatus = normalizeOrderStatus(order?.status)
+    const paymentPreference = order?.paymentPreference || 'partial'
+    const isAlreadyPaid = order?.paymentStatus === 'fully_paid'
+
+    if (currentStatus === 'awaiting') return 'accepted'
+    if (currentStatus === 'accepted') return 'dispatched'
+    if (currentStatus === 'dispatched') return 'delivered'
+    if (currentStatus === 'delivered' && paymentPreference !== 'full' && !isAlreadyPaid) return 'fully_paid'
+    return null
+  }
+
+  // Helper function to get status button config
+  const getStatusButtonConfig = (order) => {
+    const nextStatus = getNextStatus(order)
+    if (!nextStatus) return null
+
+    const configs = {
+      dispatched: {
+        label: 'Mark Dispatched',
+        icon: Truck,
+        className: 'border-blue-300 bg-blue-50 text-blue-700 hover:border-blue-500 hover:bg-blue-100',
+        title: 'Mark as Dispatched',
+      },
+      delivered: {
+        label: 'Mark Delivered',
+        icon: CheckCircle,
+        className: 'border-green-300 bg-green-50 text-green-700 hover:border-green-500 hover:bg-green-100',
+        title: 'Mark as Delivered',
+      },
+      fully_paid: {
+        label: 'Payment Done',
+        icon: Package,
+        className: 'border-purple-300 bg-purple-50 text-purple-700 hover:border-purple-500 hover:bg-purple-100',
+        title: 'Mark Payment as Done',
+      },
+      accepted: {
+        label: 'Mark Accepted',
+        icon: CheckCircle,
+        className: 'border-blue-300 bg-blue-50 text-blue-700 hover:border-blue-500 hover:bg-blue-100',
+        title: 'Mark as Accepted',
+      },
+    }
+
+    return configs[nextStatus]
+  }
+
+  // Handler for opening status update modal (similar to Orders screen)
+  const handleOpenStatusUpdateModal = (order) => {
+    setSelectedOrderForStatusUpdate(order)
+    // Initialize status update form state
+    const currentStatus = (order?.status || '').toLowerCase()
+    const normalizedCurrentStatus = normalizeOrderStatus(currentStatus)
+    const isInStatusUpdateGracePeriod = order?.statusUpdateGracePeriod?.isActive
+    const previousStatus = order?.statusUpdateGracePeriod?.previousStatus
+    
+    if (isInStatusUpdateGracePeriod && previousStatus) {
+      const normalizedPrevious = normalizeOrderStatus(previousStatus)
+      setSelectedStatus(normalizedPrevious)
+      setIsRevert(true)
+    } else {
+      const nextStatus = getNextStatus(order)
+      setSelectedStatus(nextStatus || normalizedCurrentStatus)
+      setIsRevert(false)
+    }
+    setSelectedPaymentStatus('')
+    setStatusUpdateNotes('')
+    setCurrentView('statusUpdate')
   }
 
   const formatCurrency = (value) => {
@@ -210,6 +328,16 @@ export function OperationsPage({ subRoute = null, navigate }) {
       return `₹${(value / 100000).toFixed(1)} L`
     }
     return `₹${value.toLocaleString('en-IN')}`
+  }
+
+  // Helper function to format status for display (replace underscores with spaces)
+  const formatStatusForDisplay = (status) => {
+    if (!status) return 'Unknown'
+    // Replace underscores with spaces and capitalize each word
+    return status
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
   }
 
   const notificationTableColumns = notificationColumns.map((column) => {
@@ -289,7 +417,46 @@ export function OperationsPage({ subRoute = null, navigate }) {
       return {
         ...column,
         Cell: (row) => {
-          return <StatusBadge tone="warning">Escalated</StatusBadge>
+          // Get the raw status value
+          const rawStatus = row.status || ''
+          const currentStatus = rawStatus.toLowerCase()
+          const normalizedStatus = normalizeOrderStatus(currentStatus)
+          
+          // Explicitly check for 'rejected' status - always show as "Awaiting" for escalated orders
+          if (currentStatus === 'rejected' || rawStatus.toLowerCase() === 'rejected') {
+            return (
+              <div className="flex flex-col gap-1">
+                <StatusBadge tone="warning">Escalated</StatusBadge>
+                <span className="text-xs text-gray-500">Awaiting</span>
+              </div>
+            )
+          }
+          
+          // Check if order is fulfilled (accepted or beyond)
+          const isFulfilled = normalizedStatus === 'accepted' || normalizedStatus === 'dispatched' || normalizedStatus === 'delivered' || normalizedStatus === 'fully_paid'
+          
+          if (isFulfilled) {
+            // Show the actual status for fulfilled orders
+            const displayStatus = normalizedStatus === 'accepted' ? 'Accepted' : 
+                                 normalizedStatus === 'dispatched' ? 'Dispatched' :
+                                 normalizedStatus === 'delivered' ? 'Delivered' :
+                                 normalizedStatus === 'fully_paid' ? 'Fully Paid' : 'Accepted'
+            return (
+              <div className="flex flex-col gap-1">
+                <StatusBadge tone="success">Accepted</StatusBadge>
+                <span className="text-xs text-gray-500">{displayStatus}</span>
+              </div>
+            )
+          }
+          
+          // For escalated orders not yet fulfilled (including 'awaiting', 'pending', etc.),
+          // ALWAYS show "Awaiting" regardless of actual status value
+          return (
+            <div className="flex flex-col gap-1">
+              <StatusBadge tone="warning">Escalated</StatusBadge>
+              <span className="text-xs text-gray-500">Awaiting</span>
+            </div>
+          )
         },
       }
     }
@@ -305,18 +472,111 @@ export function OperationsPage({ subRoute = null, navigate }) {
       return {
         ...column,
         Cell: (row) => {
+          const currentStatus = (row.status || '').toLowerCase()
+          const normalizedStatus = normalizeOrderStatus(currentStatus)
+          const isFulfilled = normalizedStatus === 'accepted' || normalizedStatus === 'dispatched' || normalizedStatus === 'delivered' || normalizedStatus === 'fully_paid'
+          const paymentPreference = row.paymentPreference || 'partial'
+          const workflowCompleted = paymentPreference === 'partial'
+            ? normalizedStatus === 'fully_paid'
+            : normalizedStatus === 'delivered'
+          const isInStatusUpdateGracePeriod = row.statusUpdateGracePeriod?.isActive
+          const statusUpdateGracePeriodExpiresAt = row.statusUpdateGracePeriod?.expiresAt
+          const statusUpdateTimeRemaining = statusUpdateGracePeriodExpiresAt ? Math.max(0, Math.floor((new Date(statusUpdateGracePeriodExpiresAt) - new Date()) / 1000 / 60)) : 0
+          const previousStatus = row.statusUpdateGracePeriod?.previousStatus
+          const hideUpdateButton = workflowCompleted && !isInStatusUpdateGracePeriod
+          const statusButtonConfig = hideUpdateButton ? null : getStatusButtonConfig(row)
+          
           return (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedOrderForEscalation(row)
-                setCurrentView('escalation')
-              }}
-              className="flex items-center gap-2 rounded-lg border border-green-300 bg-white px-3 py-2 text-sm font-bold text-green-600 transition-all hover:bg-green-50"
-            >
-              <Package className="h-4 w-4" />
-              Fulfill
-            </button>
+            <div className="flex flex-col gap-1">
+              {isInStatusUpdateGracePeriod && (
+                <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                  ⏰ {statusUpdateTimeRemaining}m to revert
+                </div>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Navigate to Orders screen to view details
+                    if (navigate) {
+                      navigate(`orders/escalated?viewOrder=${row.id}`)
+                    }
+                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-red-500 hover:bg-red-50 hover:text-red-700"
+                  title="View details"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+                {/* Show Fulfill button only if not fulfilled */}
+                {!isFulfilled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedOrderForEscalation(row)
+                      setFulfillmentNote('')
+                      setCurrentView('escalation')
+                    }}
+                    className="flex items-center gap-2 rounded-lg border border-green-300 bg-white px-3 py-2 text-sm font-bold text-green-600 transition-all hover:bg-green-50"
+                  >
+                    <Package className="h-4 w-4" />
+                    Fulfill
+                  </button>
+                )}
+                {/* Show operation buttons if fulfilled */}
+                {isFulfilled && (
+                  <>
+                    {/* Confirm Status Update button - shown during grace period */}
+                    {isInStatusUpdateGracePeriod && !workflowCompleted && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const result = await updateOrderStatus(row.id, { finalizeGracePeriod: true })
+                          if (result.data) {
+                            fetchData()
+                            success(result.data.message || 'Status update confirmed successfully!', 3000)
+                          } else if (result.error) {
+                            showError(result.error.message || 'Failed to confirm status update', 5000)
+                          }
+                        }}
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-2.5 text-xs font-semibold text-green-700 transition-all hover:border-green-500 hover:bg-green-100"
+                        title="Confirm status update"
+                      >
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        <span>Confirm</span>
+                      </button>
+                    )}
+                    {/* Revert button - shown during grace period */}
+                    {isInStatusUpdateGracePeriod && previousStatus && !workflowCompleted && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenStatusUpdateModal(row)}
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-orange-300 bg-orange-50 px-2.5 text-xs font-semibold text-orange-700 transition-all hover:border-orange-500 hover:bg-orange-100"
+                        title={`Revert to ${previousStatus}`}
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        <span>Revert</span>
+                      </button>
+                    )}
+                    {/* Update Status button - hidden when workflow completed or during grace period */}
+                    {!hideUpdateButton && !isInStatusUpdateGracePeriod && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenStatusUpdateModal(row)}
+                        disabled={!statusButtonConfig}
+                        className={cn(
+                          'flex h-8 items-center justify-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-500 hover:bg-blue-100',
+                          !statusButtonConfig && 'opacity-50 cursor-not-allowed'
+                        )}
+                        title="Update order status"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        <span>Update Status</span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
           )
         },
       }
@@ -589,6 +849,301 @@ export function OperationsPage({ subRoute = null, navigate }) {
                   <>
                     <Recycle className="h-4 w-4" />
                     Revert to Vendor
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Status Update View
+  if (currentView === 'statusUpdate' && selectedOrderForStatusUpdate) {
+    const order = selectedOrderForStatusUpdate
+    const currentStatus = (order?.status || '').toLowerCase()
+    const currentPaymentStatus = order?.paymentStatus || 'pending'
+    const isPaid = currentPaymentStatus === 'fully_paid'
+    const isInStatusUpdateGracePeriod = order?.statusUpdateGracePeriod?.isActive
+    const statusUpdateGracePeriodExpiresAt = order?.statusUpdateGracePeriod?.expiresAt
+    const statusUpdateTimeRemaining = statusUpdateGracePeriodExpiresAt 
+      ? Math.max(0, Math.floor((new Date(statusUpdateGracePeriodExpiresAt) - new Date()) / 1000 / 60)) 
+      : 0
+    const previousStatus = order?.statusUpdateGracePeriod?.previousStatus
+    const normalizedCurrentStatus = normalizeOrderStatus(currentStatus)
+
+    const ORDER_STATUS_OPTIONS = [
+      { value: 'accepted', label: 'Accepted', description: 'Order has been accepted and is ready for dispatch' },
+      { value: 'dispatched', label: 'Dispatched', description: 'Order has been dispatched for delivery' },
+      { value: 'delivered', label: 'Delivered', description: 'Order has been delivered' },
+    ]
+
+    const PAYMENT_STATUS_OPTIONS = [
+      { value: 'fully_paid', label: 'Mark Payment as Done', description: 'Mark order payment as fully paid' },
+    ]
+
+    // Get payment preference from order
+    const paymentPreference = order?.paymentPreference || 'partial'
+    const isFullPayment = paymentPreference === 'full'
+
+    const normalizeStatusForDisplay = (status) => {
+      const normalized = (status || '').toLowerCase()
+      if (normalized === 'fully_paid') return 'delivered'
+      if (normalized === 'accepted' || normalized === 'processing') return 'accepted'
+      if (normalized === 'dispatched' || normalized === 'out_for_delivery' || normalized === 'ready_for_delivery') return 'dispatched'
+      if (normalized === 'delivered') return 'delivered'
+      return 'accepted'
+    }
+
+    const getAvailableStatusOptions = () => {
+      const options = []
+      if (isInStatusUpdateGracePeriod && previousStatus) {
+        const normalizedPrevious = normalizeStatusForDisplay(previousStatus)
+        const option = ORDER_STATUS_OPTIONS.find(opt => opt.value === normalizedPrevious)
+        if (option) {
+          return [{ value: normalizedPrevious, label: `Revert to ${option.label}`, description: 'Revert to previous status' }]
+        }
+      }
+      const statusFlow = ['accepted', 'dispatched', 'delivered']
+      const currentIndex = statusFlow.indexOf(normalizedCurrentStatus)
+      if (currentIndex >= 0) {
+        const currentOption = ORDER_STATUS_OPTIONS.find(opt => opt.value === statusFlow[currentIndex])
+        if (currentOption) options.push(currentOption)
+        const nextIndex = currentIndex + 1
+        if (nextIndex < statusFlow.length) {
+          const nextOption = ORDER_STATUS_OPTIONS.find(opt => opt.value === statusFlow[nextIndex])
+          if (nextOption) options.push(nextOption)
+        }
+      } else {
+        options.push(...ORDER_STATUS_OPTIONS)
+      }
+      return options
+    }
+
+    const handleStatusUpdateSubmit = () => {
+      if (!selectedStatus && !selectedPaymentStatus) return
+      const backendStatus = selectedPaymentStatus === 'fully_paid' 
+        ? 'fully_paid' 
+        : selectedStatus
+      const updateData = {
+        status: backendStatus,
+        notes: statusUpdateNotes.trim() || undefined,
+        isRevert: isRevert,
+      }
+      handleUpdateOrderStatus(order.id, updateData)
+    }
+
+    const canUpdate = () => {
+      if (isInStatusUpdateGracePeriod && previousStatus) {
+        const normalizedPrevious = normalizeStatusForDisplay(previousStatus)
+        return selectedStatus === normalizedPrevious
+      }
+      return selectedStatus || selectedPaymentStatus
+    }
+
+    const availableStatusOptions = getAvailableStatusOptions()
+    // Show payment option only if:
+    // 1. Order is delivered
+    // 2. Payment is not already fully paid
+    // 3. Payment preference is partial (not full payment)
+    const showPaymentOption = currentStatus === 'delivered' && !isPaid && !isFullPayment
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleBackToList}
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700"
+            title="Back to Operations"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h2 className="text-2xl font-bold text-gray-900">{isRevert ? 'Revert Current Status' : 'Update Order Status'}</h2>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-6">
+          <div className="space-y-6">
+            {/* Order Info */}
+            {order && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-blue-600" />
+                  <p className="text-sm font-bold text-gray-900">Order #{order.orderNumber || order.id}</p>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Current Status:</span>
+                    <span className="font-bold text-gray-900 capitalize">{availableStatusOptions.find(opt => opt.value === normalizedCurrentStatus)?.label || normalizedCurrentStatus || 'Unknown'}</span>
+                  </div>
+                  {!isInStatusUpdateGracePeriod && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Next Status:</span>
+                      <span className="font-bold text-blue-600 capitalize">
+                        {(() => {
+                          const nextStatus = getNextStatus(order)
+                          if (nextStatus) {
+                            const nextOption = ORDER_STATUS_OPTIONS.find(opt => opt.value === nextStatus)
+                            return nextOption?.label || nextStatus
+                          }
+                          if (normalizedCurrentStatus === 'delivered' && !isPaid && !isFullPayment) {
+                            return 'Fully Paid'
+                          }
+                          return 'N/A'
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Payment Status:</span>
+                    <span className="font-bold text-gray-900 capitalize">
+                      {isPaid ? 'Paid' : currentPaymentStatus === 'partial_paid' ? 'Partial Paid' : 'Pending'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Payment Type:</span>
+                    <span className="font-bold text-gray-900 capitalize">
+                      {isFullPayment ? 'Full Payment (100%)' : 'Partial Payment (30% advance, 70% after delivery)'}
+                    </span>
+                  </div>
+                  {order.value && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Order Value:</span>
+                      <span className="font-bold text-gray-900">
+                        {typeof order.value === 'number'
+                          ? formatCurrency(order.value)
+                          : order.value || 'N/A'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Grace Period Notice */}
+            {isInStatusUpdateGracePeriod && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 flex-shrink-0 text-blue-600" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-bold">Status Update Grace Period Active</p>
+                    <p className="mt-1">
+                      You have {statusUpdateTimeRemaining} minutes remaining to revert to "{formatStatusForDisplay(previousStatus)}" status.
+                      After this period, the current status will be finalized.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Status Selection */}
+            {(!isPaid || isInStatusUpdateGracePeriod) && (
+              <div>
+                <label htmlFor="status" className="mb-2 block text-sm font-bold text-gray-900">
+                  Order Status <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="status"
+                  value={selectedStatus}
+                  onChange={(e) => {
+                    setSelectedStatus(e.target.value)
+                    setIsRevert(false)
+                  }}
+                  disabled={isInStatusUpdateGracePeriod && previousStatus}
+                  className={cn(
+                    'w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50',
+                    isInStatusUpdateGracePeriod && previousStatus && 'bg-gray-100 cursor-not-allowed'
+                  )}
+                >
+                  <option value="">Select status...</option>
+                  {availableStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedStatus && (
+                  <p className="mt-2 text-xs text-gray-600">
+                    {availableStatusOptions.find(opt => opt.value === selectedStatus)?.description}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Payment Status Selection */}
+            {showPaymentOption && !isPaid && (
+              <div>
+                <label htmlFor="paymentStatus" className="mb-2 block text-sm font-bold text-gray-900">
+                  Payment Status
+                </label>
+                <select
+                  id="paymentStatus"
+                  value={selectedPaymentStatus}
+                  onChange={(e) => setSelectedPaymentStatus(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm transition-all focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                >
+                  <option value="">Select payment status...</option>
+                  {PAYMENT_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedPaymentStatus && (
+                  <p className="mt-2 text-xs text-gray-600">
+                    {PAYMENT_STATUS_OPTIONS.find(opt => opt.value === selectedPaymentStatus)?.description}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <label htmlFor="notes" className="mb-2 block text-sm font-bold text-gray-900">
+                Notes (Optional)
+              </label>
+              <textarea
+                id="notes"
+                value={statusUpdateNotes}
+                onChange={(e) => setStatusUpdateNotes(e.target.value)}
+                placeholder="Add any notes about this status update..."
+                rows={3}
+                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleBackToList}
+                disabled={loading}
+                className="rounded-xl border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleStatusUpdateSubmit}
+                disabled={loading || !canUpdate()}
+                className={cn(
+                  'flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-[0_4px_15px_rgba(59,130,246,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all hover:shadow-[0_6px_20px_rgba(59,130,246,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50',
+                  isRevert ? 'bg-gradient-to-r from-orange-500 to-orange-600 shadow-[0_4px_15px_rgba(249,115,22,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] hover:shadow-[0_6px_20px_rgba(249,115,22,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]' : 'bg-gradient-to-r from-blue-500 to-blue-600'
+                )}
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : isRevert ? (
+                  <>
+                    <ArrowLeft className="h-4 w-4" />
+                    Confirm Revert
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Update Status
                   </>
                 )}
               </button>

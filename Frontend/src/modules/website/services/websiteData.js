@@ -13,3 +13,7 @@ export const REMAINING_PAYMENT_PERCENTAGE = 70
 
 
 
+
+
+
+

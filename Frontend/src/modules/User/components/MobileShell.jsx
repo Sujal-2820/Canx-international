@@ -12,31 +12,66 @@ import { TransText } from '../../../components/TransText'
 // Component for translated search input placeholder
 function TranslatedSearchInput({ onSearchClick }) {
   const { translate, isEnglish, language } = useTranslation()
-  const [placeholder, setPlaceholder] = useState('Search Products, Seeds, Fertilizers, etc')
+  const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0)
+  const [suggestions, setSuggestions] = useState(['Products', 'Seeds', 'Fertilizers'])
+  const [isAnimating, setIsAnimating] = useState(false)
+
+  // Get base text for translation
+  const baseText = isEnglish ? 'Search' : 'Search'
 
   useEffect(() => {
+    // Cycle through suggestions - each visible for 2 seconds
+    const interval = setInterval(() => {
+      setIsAnimating(true)
+      setTimeout(() => {
+        setCurrentSuggestionIndex((prev) => (prev + 1) % suggestions.length)
+        setIsAnimating(false)
+      }, 300) // Quick transition: 300ms fade out, then change, then fade in
+    }, 2000) // Change every 2 seconds
+
+    return () => clearInterval(interval)
+  }, [suggestions.length])
+
+  // Translate suggestions when language changes
+  useEffect(() => {
     if (isEnglish) {
-      setPlaceholder('Search Products, Seeds, Fertilizers, etc')
+      setSuggestions(['Products', 'Seeds', 'Fertilizers'])
       return
     }
 
-    translate('Search Products, Seeds, Fertilizers, etc')
+    // Translate each suggestion
+    Promise.all([
+      translate('Products'),
+      translate('Seeds'),
+      translate('Fertilizers')
+    ])
       .then((translated) => {
-        setPlaceholder(translated)
+        setSuggestions(translated)
       })
       .catch(() => {
-        setPlaceholder('Search Products, Seeds, Fertilizers, etc')
+        setSuggestions(['Products', 'Seeds', 'Fertilizers'])
       })
   }, [isEnglish, translate, language])
 
+  const currentSuggestion = suggestions[currentSuggestionIndex] || 'Products'
+  const displayPlaceholder = `${baseText} ${currentSuggestion}`
+
   return (
-    <input
-      type="text"
-      placeholder={placeholder}
-      className="home-search-bar__input"
-      onClick={onSearchClick}
-      readOnly
-    />
+    <>
+      <input
+        type="text"
+        className="home-search-bar__input"
+        onClick={onSearchClick}
+        readOnly
+      />
+      <div className="home-search-bar__placeholder-animated">
+        <span className="home-search-bar__placeholder-static">{baseText}</span>
+        <span className="home-search-bar__placeholder-space"> </span>
+        <span className={cn('home-search-bar__placeholder-suggestion', isAnimating && 'fade-out')}>
+          {currentSuggestion}
+        </span>
+      </div>
+    </>
   )
 }
 

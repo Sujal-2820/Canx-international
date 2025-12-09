@@ -39,7 +39,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
   const [selectedAttributeStock, setSelectedAttributeStock] = useState(null) // The matching attributeStock entry
   const [selectedVariants, setSelectedVariants] = useState([]) // Array of selected variant combinations
   const [variantQuantities, setVariantQuantities] = useState({}) // Track quantity per variant: { variantKey: quantity }
-  const [activeTab, setActiveTab] = useState('description') // Tab state: 'description', 'stock', 'delivery'
+  const [activeTab, setActiveTab] = useState('description') // Tab state: 'description', 'stock', 'delivery', 'reviews'
   const [variantError, setVariantError] = useState('') // Error message for variant selection
   const variantSectionRef = useRef(null) // Ref for variant selection section
   const containerRef = useRef(null)
@@ -816,11 +816,11 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
     <div ref={containerRef} className="user-product-detail-view space-y-6">
       <button
         type="button"
-        className="flex items-center gap-2 text-sm font-semibold text-[#1b8f5b] mb-2"
+        className="flex items-center gap-2 text-sm font-semibold text-[#1b8f5b] mb-2 user-product-detail-view__back-button"
         onClick={onBack}
       >
-        <ChevronRightIcon className="h-5 w-5 rotate-180" />
-        Back
+        <ChevronRightIcon className="h-5 w-5 rotate-180 transition-transform duration-300" />
+        <Trans>Back</Trans>
       </button>
 
       {/* Product Content Group - Image Gallery and Product Info */}
@@ -831,7 +831,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
             <img src={images[selectedImage]} alt={product.name} className="w-full h-full object-cover" />
           </div>
           {images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-2">
+            <div className="flex gap-2 overflow-x-auto pb-2 user-product-detail-view__thumbnail-container">
               {images.map((img, index) => (
                 <button
                   key={index}
@@ -1151,8 +1151,37 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
            </div>
          )}
 
-        {/* Tabbed Content: Description, Stock, Delivery Time */}
-        <div className="space-y-4">
+        {/* Add to Cart Button - Enhanced */}
+        <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-[rgba(34,94,65,0.15)] -mx-5 mt-6 shadow-lg backdrop-blur-sm bg-white/95 user-product-info__add-to-cart-container">
+          <button
+            type="button"
+            className={cn(
+              'w-full py-4 px-6 rounded-2xl text-base font-bold transition-all shadow-lg',
+              inStock
+                ? 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]'
+                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+            )}
+            onClick={handleAddToCart}
+             disabled={!inStock || (hasAttributes && selectedVariants.length === 0)}
+           >
+             {!inStock ? (
+               <Trans>Out of Stock</Trans>
+             ) : hasAttributes && selectedVariants.length === 0 ? (
+               <Trans>Please select at least one variant</Trans>
+             ) : hasAttributes && selectedVariants.length > 0 ? (
+               <AddVariantToCartText count={selectedVariants.length} price={totalVariantPrice} />
+             ) : (
+               <>
+                 <Trans>Add to Cart</Trans> • ₹{(currentPrice * quantity).toLocaleString('en-IN')}
+               </>
+             )}
+          </button>
+        </div>
+        </div>
+      </div>
+
+      {/* Tabbed Content: Description, Stock, Delivery Time - Full Width Below 2-Column Layout */}
+      <div className="user-product-detail-view__tabs-section space-y-4">
           {/* Horizontal Scrollable Tab Menu */}
           <div>
             <style>{`
@@ -1167,7 +1196,7 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                 msOverflowStyle: 'none'
               }}
             >
-              <div className="flex gap-2 min-w-max">
+              <div className="flex gap-2 min-w-max user-product-detail-view__tabs-container">
                 <button
                   type="button"
                   onClick={() => setActiveTab('description')}
@@ -1209,6 +1238,19 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                 >
                   <TruckIcon className="h-3.5 w-3.5" />
                   <Trans>Delivery Time</Trans>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('reviews')}
+                  className={cn(
+                    "px-5 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border-2 min-w-[120px] flex items-center justify-center gap-2",
+                    activeTab === 'reviews'
+                      ? "bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white border-[#1b8f5b] shadow-lg scale-105"
+                      : "bg-white text-[#172022] border-gray-200 hover:border-[#1b8f5b]/50 hover:bg-[rgba(27,143,91,0.05)]"
+                  )}
+                >
+                  <StarIcon className="h-3.5 w-3.5" />
+                  <Trans>Reviews & Ratings</Trans>
                 </button>
               </div>
             </div>
@@ -1405,63 +1447,34 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
                  </div>
                </div>
              )}
-          </div>
-        </div>
 
-
-        {/* Add to Cart Button - Enhanced */}
-        <div className="sticky bottom-0 left-0 right-0 p-4 bg-white border-t-2 border-[rgba(34,94,65,0.15)] -mx-5 mt-6 shadow-lg backdrop-blur-sm bg-white/95">
-          <button
-            type="button"
-            className={cn(
-              'w-full py-4 px-6 rounded-2xl text-base font-bold transition-all shadow-lg',
-              inStock
-                ? 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61] text-white hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]'
-                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-            )}
-            onClick={handleAddToCart}
-             disabled={!inStock || (hasAttributes && selectedVariants.length === 0)}
-           >
-             {!inStock ? (
-               <Trans>Out of Stock</Trans>
-             ) : hasAttributes && selectedVariants.length === 0 ? (
-               <Trans>Please select at least one variant</Trans>
-             ) : hasAttributes && selectedVariants.length > 0 ? (
-               <AddVariantToCartText count={selectedVariants.length} price={totalVariantPrice} />
-             ) : (
-               <>
-                 <Trans>Add to Cart</Trans> • ₹{(currentPrice * quantity).toLocaleString('en-IN')}
-               </>
-             )}
-          </button>
-        </div>
-
-        {/* Reviews & Ratings Section */}
-        <section className="space-y-6 mt-8 p-6 rounded-2xl bg-gradient-to-br from-[rgba(240,245,242,0.4)] via-[rgba(248,250,249,0.3)] to-white border-2 border-[#1b8f5b]/20 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-[#172022] mb-1"><Trans>Reviews & Ratings</Trans></h3>
-            <p className="text-sm text-[rgba(26,42,34,0.65)]">
-              {reviewStats.totalReviews} {reviewStats.totalReviews === 1 ? <Trans>review</Trans> : <Trans>reviews</Trans>}
-            </p>
-          </div>
-          {reviewStats.averageRating > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-0.5">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <StarIcon
-                    key={star}
-                    className="h-4 w-4 text-yellow-400"
-                    filled={star <= Math.round(reviewStats.averageRating)}
-                  />
-                ))}
-              </div>
-              <span className="text-base font-bold text-[#172022]">
-                {reviewStats.averageRating.toFixed(1)}
-              </span>
-            </div>
-          )}
-        </div>
+             {/* Reviews Tab */}
+             {activeTab === 'reviews' && (
+               <div className="space-y-6 p-6 rounded-2xl bg-gradient-to-br from-[rgba(240,245,242,0.4)] via-[rgba(248,250,249,0.3)] to-white border-2 border-[#1b8f5b]/20 shadow-sm">
+                 <div className="flex items-center justify-between">
+                   <div>
+                     <h3 className="text-lg font-bold text-[#172022] mb-1"><Trans>Reviews & Ratings</Trans></h3>
+                     <p className="text-sm text-[rgba(26,42,34,0.65)]">
+                       {reviewStats.totalReviews} {reviewStats.totalReviews === 1 ? <Trans>review</Trans> : <Trans>reviews</Trans>}
+                     </p>
+                   </div>
+                   {reviewStats.averageRating > 0 && (
+                     <div className="flex items-center gap-2">
+                       <div className="flex items-center gap-0.5">
+                         {[1, 2, 3, 4, 5].map((star) => (
+                           <StarIcon
+                             key={star}
+                             className="h-4 w-4 text-yellow-400"
+                             filled={star <= Math.round(reviewStats.averageRating)}
+                           />
+                         ))}
+                       </div>
+                       <span className="text-base font-bold text-[#172022]">
+                         {reviewStats.averageRating.toFixed(1)}
+                       </span>
+                     </div>
+                   )}
+                 </div>
 
         {/* Rating Distribution */}
         {reviewStats.totalReviews > 0 && (
@@ -1754,9 +1767,10 @@ export function ProductDetailView({ productId, onAddToCart, onBack, onProductCli
             </button>
           </div>
         )}
-        </section>
+               </div>
+             )}
+          </div>
         </div>
-      </div>
 
       {/* Similar Products Section */}
       {similarProducts.length > 0 && (

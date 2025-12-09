@@ -99,6 +99,8 @@ function App() {
     <TranslationProvider>
       <BrowserRouter>
         <Routes>
+        {/* Home route redirects to user dashboard */}
+        <Route path="/" element={<Navigate to="/user/dashboard" replace />} />
         {/* Console/Admin Routes - Specific paths first */}
         <Route path="/console" element={<Home />} />
         <Route path="/admin/login" element={<AdminLoginRoute />} />

@@ -1,106 +1,68 @@
 /**
  * Translation Utility
- * 
- * Handles translation using Google Translate API
- * Includes caching to reduce API calls
+ * Handles translation using Google Translate API directly from frontend
  */
 
-const CACHE_KEY = 'ira_sathi_translations'
-const CACHE_VERSION = '1.0'
-const API_BATCH_SIZE = 50 // Maximum items per API call
-const DEBOUNCE_DELAY = 300 // ms
-
+const GOOGLE_TRANSLATE_API_KEY = import.meta.env.VITE_GOOGLE_TRANSLATE_API_KEY || 'AIzaSyC2UW5-Nt9KidxOfBRrZImeBRh9SOMGluo'
 const GOOGLE_TRANSLATE_API_URL = 'https://translation.googleapis.com/language/translate/v2'
-const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY // Using the same API key
+const TRANSLATION_CACHE_KEY = 'ira_sathi_translation_cache'
+const CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-/**
- * Hash a string for cache key
- */
-function hashString(str) {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash // Convert to 32bit integer
-  }
-  return hash.toString(36)
-}
-
-/**
- * Check if a string is an entity ID (should not be translated)
- */
-function isEntityId(str) {
-  if (!str || typeof str !== 'string') return false
-  // Pattern: ORD-20240115-0001, PROD-123, etc.
-  return /^[A-Z]{2,4}-[\dA-Z-]+$/i.test(str.trim())
-}
-
-/**
- * Load cache from localStorage
- */
-function loadCache() {
+// Load cache from localStorage
+function getCache() {
   try {
-    const cached = localStorage.getItem(CACHE_KEY)
+    const cached = localStorage.getItem(TRANSLATION_CACHE_KEY)
     if (cached) {
-      const parsed = JSON.parse(cached)
-      if (parsed.version === CACHE_VERSION) {
-        return parsed
-      }
+      return JSON.parse(cached)
     }
   } catch (error) {
     console.error('[Translation] Error loading cache:', error)
   }
-  return { version: CACHE_VERSION, translations: {} }
+  return {}
 }
 
-/**
- * Save cache to localStorage
- */
+// Save cache to localStorage
 function saveCache(cache) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
+    localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify(cache))
   } catch (error) {
     console.error('[Translation] Error saving cache:', error)
-    // If quota exceeded, clear old cache and try again
-    try {
-      localStorage.removeItem(CACHE_KEY)
-      localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
-    } catch (e) {
-      console.error('[Translation] Failed to save cache after cleanup:', e)
-    }
   }
 }
 
-/**
- * Translate text using Google Translate API
- */
-async function translateTextWithGoogleAPI(text, targetLang) {
-  if (!API_KEY) {
-    throw new Error('Google Maps API key not found')
-  }
+// Get cache key for text and target language
+function getCacheKey(text, targetLang) {
+  return `${targetLang}:${text}`
+}
 
-  if (!text || typeof text !== 'string' || text.trim().length === 0) {
-    return text
-  }
+// Check if cache entry is valid
+function isCacheValid(entry) {
+  if (!entry || !entry.timestamp) return false
+  return Date.now() - entry.timestamp < CACHE_EXPIRY
+}
 
-  // Don't translate entity IDs
-  if (isEntityId(text)) {
-    return text
-  }
-
+// Translate text using Google Translate API
+async function translateTextWithAPI(text, targetLang) {
   try {
-    const response = await fetch(
-      `${GOOGLE_TRANSLATE_API_URL}?key=${API_KEY}&q=${encodeURIComponent(text)}&target=${targetLang}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    )
+    const sourceLang = 'en'
+    const targetLangCode = targetLang === 'hi' ? 'hi' : targetLang
+    
+    const response = await fetch(`${GOOGLE_TRANSLATE_API_URL}?key=${GOOGLE_TRANSLATE_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        q: text,
+        source: sourceLang,
+        target: targetLangCode,
+        format: 'text',
+      }),
+    })
 
     if (!response.ok) {
-      throw new Error(`Translation API error: ${response.status}`)
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(`Google Translate API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`)
     }
 
     const data = await response.json()
@@ -109,18 +71,26 @@ async function translateTextWithGoogleAPI(text, targetLang) {
       return data.data.translations[0].translatedText
     }
     
-    throw new Error('Invalid response from translation API')
+    throw new Error('No translation returned from API')
   } catch (error) {
-    console.error('[Translation] API error:', error)
+    console.error('[Translation] Google Translate API error:', error)
     throw error
   }
 }
 
 /**
- * Translate a single text
+ * Get translation for a single text
+ * @param {string} text - Text to translate
+ * @param {string} targetLang - Target language code (e.g., 'hi')
+ * @param {boolean} forceRefresh - Force refresh from API
+ * @returns {Promise<string>} Translated text
  */
-export async function getTranslation(text, targetLang, forceRefresh = false) {
+export async function getTranslation(text, targetLang = 'hi', forceRefresh = false) {
   if (!text || typeof text !== 'string') {
+    return text
+  }
+
+  if (targetLang === 'en') {
     return text
   }
 
@@ -129,59 +99,61 @@ export async function getTranslation(text, targetLang, forceRefresh = false) {
     return text
   }
 
-  // Don't translate entity IDs
-  if (isEntityId(trimmedText)) {
-    return trimmedText
-  }
-
-  // If English, return as-is
-  if (targetLang === 'en') {
-    return trimmedText
-  }
-
-  const cache = loadCache()
-  const cacheKey = `${trimmedText}_${targetLang}`
-  
   // Check cache first (unless force refresh)
-  if (!forceRefresh && cache.translations[cacheKey]) {
-    return cache.translations[cacheKey]
+  if (!forceRefresh) {
+    const cache = getCache()
+    const cacheKey = getCacheKey(trimmedText, targetLang)
+    const cached = cache[cacheKey]
+    
+    if (isCacheValid(cached)) {
+      return cached.translated
+    }
   }
 
   try {
-    // Translate via API
-    const translated = await translateTextWithGoogleAPI(trimmedText, targetLang)
+    // Call translation API
+    const translated = await translateTextWithAPI(trimmedText, targetLang)
     
     // Save to cache
-    cache.translations[cacheKey] = translated
+    const cache = getCache()
+    const cacheKey = getCacheKey(trimmedText, targetLang)
+    cache[cacheKey] = {
+      translated,
+      timestamp: Date.now(),
+    }
     saveCache(cache)
     
     return translated
   } catch (error) {
     console.error('[Translation] Error translating:', error)
     // Return original text on error
-    return trimmedText
+    return text
   }
 }
 
 /**
- * Translate multiple texts in batch
+ * Get translations for multiple texts (batch)
+ * @param {string[]} texts - Array of texts to translate
+ * @param {string} targetLang - Target language code (e.g., 'hi')
+ * @param {boolean} forceRefresh - Force refresh from API
+ * @returns {Promise<string[]>} Array of translated texts
  */
-export async function getBatchTranslations(texts, targetLang, forceRefresh = false) {
+export async function getBatchTranslations(texts, targetLang = 'hi', forceRefresh = false) {
   if (!texts || !Array.isArray(texts) || texts.length === 0) {
-    return texts
+    return texts || []
   }
 
-  // If English, return as-is
   if (targetLang === 'en') {
     return texts
   }
 
-  const cache = loadCache()
   const results = []
   const textsToTranslate = []
-  const indicesToTranslate = []
+  const indices = []
 
   // Check cache for each text
+  const cache = getCache()
+  
   texts.forEach((text, index) => {
     if (!text || typeof text !== 'string') {
       results[index] = text
@@ -194,82 +166,84 @@ export async function getBatchTranslations(texts, targetLang, forceRefresh = fal
       return
     }
 
-    // Don't translate entity IDs
-    if (isEntityId(trimmedText)) {
-      results[index] = trimmedText
-      return
+    if (!forceRefresh) {
+      const cacheKey = getCacheKey(trimmedText, targetLang)
+      const cached = cache[cacheKey]
+      
+      if (isCacheValid(cached)) {
+        results[index] = cached.translated
+        return
+      }
     }
 
-    const cacheKey = `${trimmedText}_${targetLang}`
-    
-    if (!forceRefresh && cache.translations[cacheKey]) {
-      results[index] = cache.translations[cacheKey]
-    } else {
-      textsToTranslate.push(trimmedText)
-      indicesToTranslate.push(index)
-    }
+    // Need to translate this one
+    textsToTranslate.push(trimmedText)
+    indices.push(index)
   })
 
-  // If all texts are cached, return results
+  // If all texts were cached, return results
   if (textsToTranslate.length === 0) {
     return results
   }
 
-  // Translate remaining texts in batches
   try {
-    for (let i = 0; i < textsToTranslate.length; i += API_BATCH_SIZE) {
-      const batch = textsToTranslate.slice(i, i + API_BATCH_SIZE)
-      const batchIndices = indicesToTranslate.slice(i, i + API_BATCH_SIZE)
-      
-      // Use Google Translate API batch endpoint
-      const response = await fetch(
-        `${GOOGLE_TRANSLATE_API_URL}?key=${API_KEY}&target=${targetLang}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            q: batch,
-          }),
-        }
-      )
+    // Call Google Translate API for batch translation
+    const sourceLang = 'en'
+    const targetLangCode = targetLang === 'hi' ? 'hi' : targetLang
+    
+    const response = await fetch(`${GOOGLE_TRANSLATE_API_URL}?key=${GOOGLE_TRANSLATE_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        q: textsToTranslate,
+        source: sourceLang,
+        target: targetLangCode,
+        format: 'text',
+      }),
+    })
 
-      if (!response.ok) {
-        throw new Error(`Batch translation API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-      
-      if (data.data && data.data.translations) {
-        data.data.translations.forEach((translation, idx) => {
-          const originalIndex = batchIndices[idx]
-          const originalText = batch[idx]
-          const translatedText = translation.translatedText
-          
-          results[originalIndex] = translatedText
-          
-          // Save to cache
-          const cacheKey = `${originalText}_${targetLang}`
-          cache.translations[cacheKey] = translatedText
-        })
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(`Google Translate API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`)
     }
 
-    // Save updated cache
-    saveCache(cache)
+    const data = await response.json()
     
-    return results
+    if (data.data && data.data.translations && Array.isArray(data.data.translations)) {
+      // Update cache and results
+      textsToTranslate.forEach((text, i) => {
+        const translated = data.data.translations[i]?.translatedText || text
+        const originalIndex = indices[i]
+        results[originalIndex] = translated
+        
+        // Save to cache
+        const cacheKey = getCacheKey(text, targetLang)
+        cache[cacheKey] = {
+          translated,
+          timestamp: Date.now(),
+        }
+      })
+      
+      saveCache(cache)
+      return results
+    }
+    
+    throw new Error('No translations returned from API')
   } catch (error) {
     console.error('[Translation] Batch translation error:', error)
-    // Return original texts for failed translations
-    textsToTranslate.forEach((text, idx) => {
-      const originalIndex = indicesToTranslate[idx]
-      if (results[originalIndex] === undefined) {
-        results[originalIndex] = text
+    // Fallback: translate individually
+    const fallbackResults = [...results]
+    for (let i = 0; i < textsToTranslate.length; i++) {
+      const originalIndex = indices[i]
+      try {
+        fallbackResults[originalIndex] = await getTranslation(textsToTranslate[i], targetLang, forceRefresh)
+      } catch {
+        fallbackResults[originalIndex] = textsToTranslate[i]
       }
-    })
-    return results
+    }
+    return fallbackResults
   }
 }
 
@@ -278,10 +252,9 @@ export async function getBatchTranslations(texts, targetLang, forceRefresh = fal
  */
 export function clearTranslationCache() {
   try {
-    localStorage.removeItem(CACHE_KEY)
+    localStorage.removeItem(TRANSLATION_CACHE_KEY)
   } catch (error) {
     console.error('[Translation] Error clearing cache:', error)
   }
 }
-
 

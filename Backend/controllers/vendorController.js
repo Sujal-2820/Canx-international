@@ -993,22 +993,71 @@ exports.getOrders = async (req, res, next) => {
       search,
       sortBy = 'createdAt',
       sortOrder = 'desc',
+      escalated,
     } = req.query;
 
     // Build query - orders assigned to this vendor
     // Primary condition: vendorId must match
-    // Secondary condition: assignedTo should be 'vendor' (but also include orders where it's not set for compatibility)
     const vendorIdForQuery = vendor._id;
     
     // Build the query - start simple and add conditions
     const query = { 
       vendorId: vendorIdForQuery,
-      $or: [
+    };
+    
+    // Handle escalated filter
+    if (escalated === 'true' || escalated === true) {
+      // For escalated orders, show only orders that:
+      // 1. Are escalated (assignedTo: 'admin' OR escalation.isEscalated: true OR status: 'rejected')
+      // 2. AND (status: 'awaiting' OR (status: 'accepted' AND assignedTo: 'admin'))
+      // This includes: Escalated && Awaiting (waiting for admin acceptance)
+      //              AND Escalated && Accepted (admin accepted to fulfill from warehouse)
+      query.$and = [
+        {
+          $or: [
+            { assignedTo: 'admin' },
+            { 'escalation.isEscalated': true },
+            { status: 'rejected' }
+          ]
+        },
+        {
+          $or: [
+            // Escalated && Awaiting (not yet accepted by admin)
+            { 
+              $and: [
+                { status: 'awaiting' },
+                {
+                  $or: [
+                    { assignedTo: 'admin' },
+                    { 'escalation.isEscalated': true }
+                  ]
+                }
+              ]
+            },
+            // Escalated && Accepted (admin accepted to fulfill from warehouse)
+            { 
+              $and: [
+                { status: 'accepted' },
+                { assignedTo: 'admin' }
+              ]
+            }
+          ]
+        }
+      ];
+    } else {
+      // For normal orders (including "All Orders"), include:
+      // 1. Orders assigned to vendor (or not set for compatibility)
+      // 2. Escalated orders (so they appear in "All Orders" view as well)
+      query.$or = [
         { assignedTo: 'vendor' },
         { assignedTo: { $exists: false } },
-        { assignedTo: null }
-      ]
-    };
+        { assignedTo: null },
+        // Include escalated orders in "All Orders"
+        { assignedTo: 'admin' },
+        { 'escalation.isEscalated': true },
+        { status: 'rejected' }
+      ];
+    }
     
     // Debug logging
     console.log(`🔍 Vendor ${vendor.name} fetching orders`);
@@ -1022,7 +1071,13 @@ exports.getOrders = async (req, res, next) => {
 
     // Apply status filter if provided (but ignore if it's the string "undefined")
     if (status && status !== 'undefined' && status !== 'null') {
-      query.status = status;
+      // Special handling for "delivered" filter: include both delivered and fully_paid orders
+      if (status === 'delivered') {
+        // Use $in operator to match either 'delivered' or 'fully_paid' status
+        query.status = { $in: ['delivered', 'fully_paid'] };
+      } else {
+        query.status = status;
+      }
       console.log(`📋 Query with status filter '${status}':`, {
         vendorId: query.vendorId.toString(),
         $or: query.$or,
@@ -1565,9 +1620,10 @@ exports.rejectOrder = async (req, res, next) => {
       });
     }
 
-    // Allow rejection if order is pending OR in grace period
+    // Allow rejection if order is pending/awaiting OR in grace period
     const isInGracePeriod = order.acceptanceGracePeriod?.isActive;
-    if (order.status !== 'pending' && !isInGracePeriod) {
+    const canRejectStatuses = ['pending', 'awaiting'];
+    if (!canRejectStatuses.includes(order.status) && !isInGracePeriod) {
       return res.status(400).json({
         success: false,
         message: `Order cannot be rejected. Current status: ${order.status}`,
@@ -1681,7 +1737,9 @@ exports.acceptOrderPartially = async (req, res, next) => {
       });
     }
 
-    if (order.status !== 'pending') {
+    // Allow partial acceptance if order is pending or awaiting
+    const canPartiallyAcceptStatuses = ['pending', 'awaiting'];
+    if (!canPartiallyAcceptStatuses.includes(order.status)) {
       return res.status(400).json({
         success: false,
         message: `Order cannot be partially accepted. Current status: ${order.status}`,
@@ -1917,7 +1975,9 @@ exports.escalateOrderPartial = async (req, res, next) => {
       });
     }
 
-    if (order.status !== 'pending') {
+    // Allow escalation if order is pending or awaiting
+    const canEscalateStatuses = ['pending', 'awaiting'];
+    if (!canEscalateStatuses.includes(order.status)) {
       return res.status(400).json({
         success: false,
         message: `Order cannot be escalated. Current status: ${order.status}`,
@@ -2134,20 +2194,23 @@ exports.updateOrderStatus = async (req, res, next) => {
     const { orderId } = req.params;
     const { status, notes, finalizeGracePeriod } = req.body;
 
-    if (!status) {
+    // If finalizing grace period, status is not required
+    if (!finalizeGracePeriod && !status) {
       return res.status(400).json({
         success: false,
         message: 'Status is required',
       });
     }
 
-    // Valid status transitions for vendor
-    const validStatuses = ['awaiting', 'accepted', 'processing', 'dispatched', 'delivered', 'fully_paid'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status. Allowed: ${validStatuses.join(', ')}`,
-      });
+    // Valid status transitions for vendor (only validate if status is provided)
+    if (status) {
+      const validStatuses = ['awaiting', 'accepted', 'processing', 'dispatched', 'delivered', 'fully_paid'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid status. Allowed: ${validStatuses.join(', ')}`,
+        });
+      }
     }
 
     const order = await Order.findOne({
@@ -2306,16 +2369,22 @@ exports.updateOrderStatus = async (req, res, next) => {
       order.paymentStatus = PAYMENT_STATUS.FULLY_PAID;
       order.remainingAmount = 0;
 
+      // For fully_paid status, no grace period - finalize immediately
       if (!isReverting && isStatusChange) {
-        startGracePeriod({
-          previousPaymentStatus,
-          previousRemainingAmount,
-        });
+        // Finalize any existing grace period if present
+        if (order.statusUpdateGracePeriod?.isActive) {
+          finalizeStatusUpdateGracePeriod();
+        }
+        // Don't start a new grace period for fully_paid
+        // Status is immediately finalized
       } else if (isReverting && order.statusUpdateGracePeriod?.isActive) {
         order.paymentStatus = order.statusUpdateGracePeriod.previousPaymentStatus || previousPaymentStatus;
         if (typeof order.statusUpdateGracePeriod.previousRemainingAmount === 'number') {
           order.remainingAmount = order.statusUpdateGracePeriod.previousRemainingAmount;
         }
+        finalizeStatusUpdateGracePeriod();
+      } else if (order.statusUpdateGracePeriod?.isActive) {
+        // If there's an active grace period, finalize it
         finalizeStatusUpdateGracePeriod();
       }
     } else {
@@ -2364,13 +2433,18 @@ exports.updateOrderStatus = async (req, res, next) => {
 
     // TODO: Send real-time notification to user (WebSocket/SSE)
 
+    // For fully_paid status, no grace period message
+    const hasGracePeriod = isStatusChange && normalizedNewStatus !== ORDER_STATUS.FULLY_PAID && order.statusUpdateGracePeriod?.isActive;
+    
     const message = isReverting 
       ? `Order status reverted to ${timelineStatus}`
-      : isStatusChange
-        ? `Order status updated to ${timelineStatus}. You have 1 hour to revert this change.`
-        : `Order status updated to ${timelineStatus}`;
+      : normalizedNewStatus === ORDER_STATUS.FULLY_PAID
+        ? `Order status updated to ${timelineStatus}. Payment completed.`
+        : isStatusChange
+          ? `Order status updated to ${timelineStatus}. You have 1 hour to revert this change.`
+          : `Order status updated to ${timelineStatus}`;
 
-    console.log(`✅ Order ${order.orderNumber} status updated to ${status} by vendor ${vendor.name}${isStatusChange ? ' (grace period active)' : ''}`);
+    console.log(`✅ Order ${order.orderNumber} status updated to ${status} by vendor ${vendor.name}${hasGracePeriod ? ' (grace period active)' : normalizedNewStatus === ORDER_STATUS.FULLY_PAID ? ' (no grace period - immediately finalized)' : ''}`);
 
     res.status(200).json({
       success: true,
@@ -2380,7 +2454,7 @@ exports.updateOrderStatus = async (req, res, next) => {
           statusUpdateGracePeriod: order.statusUpdateGracePeriod,
         },
         message,
-        gracePeriod: isStatusChange ? {
+        gracePeriod: hasGracePeriod ? {
           isActive: true,
           expiresAt: order.statusUpdateGracePeriod.expiresAt,
           previousStatus: order.statusUpdateGracePeriod.previousStatus,
@@ -4722,6 +4796,29 @@ exports.confirmRepayment = async (req, res, next) => {
       await repayment.save({ session });
 
       await session.commitTransaction();
+
+      // Log to payment history
+      try {
+        await createPaymentHistory({
+          activityType: 'vendor_credit_repayment',
+          vendorId: vendor._id,
+          amount: repayment.amount,
+          status: 'completed',
+          paymentMethod: 'razorpay',
+          description: `Vendor credit repayment of ₹${repayment.amount}${repayment.penaltyAmount > 0 ? ` (including ₹${repayment.penaltyAmount} penalty)` : ''}`,
+          metadata: {
+            repaymentId: repayment.repaymentId,
+            creditUsedBefore: repayment.creditUsedBefore,
+            creditUsedAfter: newCreditUsed,
+            penaltyAmount: repayment.penaltyAmount,
+            razorpayPaymentId: razorpayPaymentId,
+          },
+          processedAt: new Date(),
+        });
+      } catch (historyError) {
+        console.error('Error logging credit repayment to payment history:', historyError);
+        // Don't fail repayment if history logging fails
+      }
 
       console.log(`✅ Credit repayment completed: Vendor ${vendor.name} repaid ₹${repayment.amount.toLocaleString('en-IN')}. Credit: ${previousCreditUsed} → ${newCreditUsed}`);
 

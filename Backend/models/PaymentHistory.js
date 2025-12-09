@@ -36,6 +36,7 @@ const paymentHistorySchema = new mongoose.Schema({
       'seller_withdrawal_approved', // Seller withdrawal approved
       'seller_withdrawal_rejected', // Seller withdrawal rejected
       'seller_withdrawal_completed', // Seller withdrawal completed
+      'vendor_credit_repayment',    // Vendor credit repayment to admin
       'bank_account_added',         // Bank account added
       'bank_account_updated',       // Bank account updated
       'bank_account_deleted',       // Bank account deleted

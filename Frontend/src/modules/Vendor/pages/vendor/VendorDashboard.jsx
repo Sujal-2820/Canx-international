@@ -71,11 +71,12 @@ const NAV_ITEMS = [
 export function VendorDashboard({ onLogout }) {
   const { profile, dashboard, notifications } = useVendorState()
   const dispatch = useVendorDispatch()
-  const { acceptOrder, confirmOrderAcceptance, cancelOrderAcceptance, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getOrders, requestWithdrawal, getEarningsSummary, getBankAccounts, createRepaymentIntent, confirmRepayment, getCreditInfo, getNotifications, markNotificationAsRead, markAllNotificationsAsRead } = useVendorApi()
+  const { acceptOrder, confirmOrderAcceptance, cancelOrderAcceptance, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getOrders, requestWithdrawal, getEarningsSummary, getBankAccounts, createRepaymentIntent, confirmRepayment, getCreditInfo, getNotifications, markNotificationAsRead, markAllNotificationsAsRead, getOrderDetails } = useVendorApi()
   const [activeTab, setActiveTab] = useState('overview')
   const [showAllOrders, setShowAllOrders] = useState(false)
   const [showOrderDetails, setShowOrderDetails] = useState(false)
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null)
+  const [ordersViewRefreshKey, setOrdersViewRefreshKey] = useState(0)
   const welcomeName = (profile?.name || 'Partner').split(' ')[0]
   const { isOpen, isMounted, currentAction, openPanel, closePanel } = useButtonAction()
   const { toasts, dismissToast, success, error, info, warning } = useToast()
@@ -509,6 +510,8 @@ export function VendorDashboard({ onLogout }) {
           {activeTab === 'orders' && !showAllOrders && !showOrderDetails && (
             <OrdersView 
               openPanel={openPanel}
+              refreshKey={ordersViewRefreshKey}
+              onRefresh={() => setOrdersViewRefreshKey(prev => prev + 1)}
               onOpenEscalationModal={(order) => {
                 setSelectedOrderForEscalation(order)
                 setEscalationModalOpen(true)
@@ -800,28 +803,44 @@ export function VendorDashboard({ onLogout }) {
                   error(result.error.message || 'Failed to accept order partially')
                 }
               } else if (buttonId === 'update-order-status' && data.orderId && data.status) {
-                const result = await updateOrderStatus(data.orderId, { status: data.status })
+                const updatePayload = { 
+                  status: data.status
+                }
+                if (data.notes) {
+                  updatePayload.notes = data.notes
+                }
+                if (data.isRevert) {
+                  updatePayload.isRevert = data.isRevert
+                }
+                
+                const result = await updateOrderStatus(data.orderId, updatePayload)
                 if (result.data) {
                   // Show message from backend (includes grace period info if applicable)
                   success(result.data.message || 'Order status updated successfully!')
-                  // Refresh orders and dashboard
+                  
+                  // If viewing order details, refresh the order details explicitly (only once)
+                  if (showOrderDetails && selectedOrderForDetails) {
+                    const orderId = data.orderId
+                    // Fetch full order details to ensure all data is up to date
+                    getOrderDetails(orderId).then((detailsResult) => {
+                      if (detailsResult.data?.order) {
+                        setSelectedOrderForDetails(detailsResult.data.order)
+                      }
+                    }).catch((err) => {
+                      console.error('Error refreshing order details:', err)
+                    })
+                  }
+                  
+                  // Refresh orders list and dashboard
                   getOrders().then((result) => {
                     if (result.data) {
                       dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
-                      // If viewing order details, refresh the order
-                      if (showOrderDetails && selectedOrderForDetails) {
-                        const updatedOrder = result.data.orders?.find(o => 
-                          (o._id && selectedOrderForDetails.id && o._id.toString() === selectedOrderForDetails.id.toString()) ||
-                          (o.id && selectedOrderForDetails.id && o.id.toString() === selectedOrderForDetails.id.toString()) ||
-                          (o._id && selectedOrderForDetails._id && o._id.toString() === selectedOrderForDetails._id.toString())
-                        )
-                        if (updatedOrder) {
-                          setSelectedOrderForDetails(updatedOrder)
-                        }
-                      }
                     }
                   })
                   fetchDashboardData()
+                  
+                  // Trigger OrdersView refresh (only once)
+                  setOrdersViewRefreshKey(prev => prev + 1)
                 } else if (result.error) {
                   error(result.error.message || 'Failed to update order status')
                 }
@@ -3116,15 +3135,16 @@ function InventoryView({ openPanel, onNavigate }) {
   )
 }
 
-function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationModal, onShowAllOrders, onViewOrderDetails }) {
+function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationModal, onShowAllOrders, onViewOrderDetails, refreshKey, onRefresh }) {
   const { dashboard } = useVendorState()
   const dispatch = useVendorDispatch()
   const { getOrders, getOrderDetails, updateOrderStatus, fetchDashboardData } = useVendorApi()
   const { success, error } = useToast()
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [ordersData, setOrdersData] = useState(null)
+  const lastRefreshKeyRef = useRef(refreshKey || 0)
 
-  useEffect(() => {
+  const refreshOrders = useCallback(() => {
     // Always fetch all orders (no status filter) to get accurate totals
     // We'll filter client-side based on selectedFilter
     getOrders({}).then((result) => {
@@ -3141,6 +3161,18 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
       console.error('❌ OrdersView: Exception fetching orders:', error)
     })
   }, [getOrders, dispatch])
+
+  useEffect(() => {
+    refreshOrders()
+  }, [refreshOrders])
+
+  // Refresh when refreshKey changes (triggered by parent after status updates)
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey !== lastRefreshKeyRef.current) {
+      lastRefreshKeyRef.current = refreshKey
+      refreshOrders()
+    }
+  }, [refreshKey, refreshOrders])
 
   const STATUS_FLOW = ['awaiting', 'accepted', 'dispatched', 'delivered', 'fully_paid']
   const STAGES = ['Awaiting', 'Accepted', 'Dispatched', 'Delivered']
@@ -3220,6 +3252,10 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
   const mapOrderToDisplay = (order) => {
     const isFullyPaid = order.paymentStatus === 'fully_paid'
     const isDelivered = order.status === 'delivered'
+    // Check if order is escalated
+    const isEscalated = order.assignedTo === 'admin' || 
+                        order.escalation?.isEscalated === true || 
+                        order.status === 'rejected'
     
     // Determine next message based on status and payment
     let nextMessage = null
@@ -3257,6 +3293,9 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
       createdAt: order.createdAt,
       statusUpdateGracePeriod: order.statusUpdateGracePeriod || null,
       acceptanceGracePeriod: order.acceptanceGracePeriod || null,
+      isEscalated,
+      assignedTo: order.assignedTo,
+      escalation: order.escalation,
       next: nextMessage,
     }
   }
@@ -3482,10 +3521,12 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
             const isPartialPayment = order.paymentPreference !== 'full'
             const paymentStatus = order.paymentStatus || 'pending'
             const paymentCompleted = paymentStatus === 'fully_paid'
-            // Show accept/reject actions only while awaiting confirmation
-            const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod
+            // Check if order is escalated
+            const isEscalated = orderDisplay.isEscalated || false
+            // Show accept/reject actions only while awaiting confirmation and not escalated
+            const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod && !isEscalated
             const workflowCompleted = isPartialPayment ? normalizedStatus === 'fully_paid' : normalizedStatus === 'delivered'
-            const canShowStatusUpdate = !showAvailabilityActions && !isInStatusUpdateGracePeriod && !isInGracePeriod && !workflowCompleted && normalizedStatus !== 'awaiting'
+            const canShowStatusUpdate = !showAvailabilityActions && !isInStatusUpdateGracePeriod && !isInGracePeriod && !workflowCompleted && normalizedStatus !== 'awaiting' && !isEscalated
             const nextMessage =
               orderDisplay.next ||
               (isInGracePeriod
@@ -3514,6 +3555,9 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
                   <div className="orders-card__details">
                     <p className="orders-card__name">{orderDisplay.farmer}</p>
                     <p className="orders-card__value">{orderDisplay.value}</p>
+                    {orderDisplay.orderNumber && (
+                      <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '2px' }}>{orderDisplay.orderNumber}</p>
+                    )}
               </div>
             </div>
                 <div className="orders-card__status">
@@ -3523,7 +3567,15 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
                   )}>
                     {orderDisplay.payment}
                   </span>
-                  <span className="orders-card__stage-label">
+                  <span className="orders-card__stage-label" style={
+                    normalizedStatus === 'delivered' && isPartialPayment && !paymentCompleted 
+                      ? { display: 'flex', flexDirection: 'column', gap: '2px' } 
+                      : normalizedStatus === 'fully_paid' 
+                        ? { display: 'flex', flexDirection: 'column', gap: '2px' } 
+                        : isEscalated
+                          ? { display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-end' }
+                          : {}
+                  }>
                     {normalizedStatus === 'awaiting'
                       ? 'Awaiting'
                       : normalizedStatus === 'accepted'
@@ -3531,10 +3583,33 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
                         : normalizedStatus === 'dispatched'
                           ? 'Dispatched'
                           : normalizedStatus === 'delivered'
-                            ? (isPartialPayment && !paymentCompleted ? 'Delivered • Awaiting Payment' : 'Delivered')
+                            ? (isPartialPayment && !paymentCompleted ? (
+                                <>
+                                  <span>Delivered</span>
+                                  <span>Awaiting Payment</span>
+                                </>
+                              ) : 'Delivered')
                             : normalizedStatus === 'fully_paid'
-                              ? 'Delivered • Paid'
+                              ? (
+                                <>
+                                  <span>Delivered</span>
+                                  <span>Paid</span>
+                                </>
+                              )
                               : order.status}
+                    {isEscalated && (
+                      <span style={{ 
+                        padding: '2px 8px',
+                        backgroundColor: '#FEF3C7',
+                        color: '#92400E',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        textTransform: 'uppercase'
+                      }}>
+                        Escalated
+                      </span>
+                    )}
                   </span>
             </div>
               </header>
@@ -3598,8 +3673,8 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
                         ⏰ Status Update Grace Period: {statusUpdateTimeRemaining} minutes remaining. You can revert to "{previousStatus}" status or confirm now.
                       </div>
                     )}
-                    {/* Show update status button for accepted orders (not pending, not paid, not in grace period) */}
-                    {canShowStatusUpdate && (
+                    {/* Show update status button for accepted orders (not pending, not paid, not in grace period) - Hide for escalated orders */}
+                    {canShowStatusUpdate && !isEscalated && (
                       <button
                         type="button"
                         className="orders-card__action is-primary"
@@ -3613,8 +3688,8 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
                         Update status
                       </button>
                     )}
-                    {/* Show confirm and revert buttons during grace period */}
-                    {!workflowCompleted && isInStatusUpdateGracePeriod && (
+                    {/* Show confirm and revert buttons during grace period - Hide for escalated orders */}
+                    {!workflowCompleted && isInStatusUpdateGracePeriod && !isEscalated && (
                       <>
                         <button
                           type="button"
@@ -3623,12 +3698,30 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
                             const result = await updateOrderStatus(orderDisplay.id, { finalizeGracePeriod: true })
                             if (result.data) {
                               success(result.data.message || 'Status update confirmed successfully!')
+                              // Refresh orders list
                               getOrders().then((result) => {
                                 if (result.data) {
                                   dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
+                                  // If order details view is open, refresh it
+                                  const updatedOrder = result.data.orders?.find(o => 
+                                    (o._id && orderDisplay.id && o._id.toString() === orderDisplay.id.toString()) ||
+                                    (o.id && orderDisplay.id && o.id.toString() === orderDisplay.id.toString())
+                                  )
+                                  if (updatedOrder && onViewOrderDetails) {
+                                    // Trigger refresh by calling onViewOrderDetails with updated order
+                                    getOrderDetails(orderDisplay.id).then((detailsResult) => {
+                                      if (detailsResult.data?.order) {
+                                        onViewOrderDetails(detailsResult.data.order)
+                                      }
+                                    })
+                                  }
                                 }
                               })
                               fetchDashboardData()
+                              // Trigger OrdersView refresh (only once)
+                              if (onRefresh) {
+                                onRefresh()
+                              }
                             } else if (result.error) {
                               error(result.error.message || 'Failed to confirm status update')
                             }
@@ -3786,14 +3879,18 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
     { id: 'dispatched', label: 'Dispatched' },
     { id: 'delivered', label: 'Delivered' },
     { id: 'fully_paid', label: 'Fully Paid' },
+    { id: 'escalated', label: 'Escalated' },
   ]
 
   const fetchOrders = useCallback(async () => {
     setIsLoading(true)
     const params = {}
     
-    // Add status filter
-    if (selectedFilter !== 'all') {
+    // Handle escalated filter
+    if (selectedFilter === 'escalated') {
+      params.escalated = true
+    } else if (selectedFilter !== 'all') {
+      // Add status filter for non-escalated filters
       if (selectedFilter === 'fully_paid') {
         params.paymentStatus = 'fully_paid'
       } else {
@@ -3866,6 +3963,10 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
     const normalizedStatus = normalizeStatus(order.status)
     const isPartialPayment = order.paymentPreference !== 'full'
     const paymentStatus = order.paymentStatus || 'pending'
+    // Check if order is escalated
+    const isEscalated = order.assignedTo === 'admin' || 
+                        order.escalation?.isEscalated === true || 
+                        order.status === 'rejected'
     const next =
       normalizedStatus === 'awaiting'
         ? 'Accept or escalate this order'
@@ -3894,6 +3995,9 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
       createdAt: order.createdAt,
       statusUpdateGracePeriod: order.statusUpdateGracePeriod || null,
       acceptanceGracePeriod: order.acceptanceGracePeriod || null,
+      isEscalated,
+      assignedTo: order.assignedTo,
+      escalation: order.escalation,
       next,
     }
   })
@@ -3990,9 +4094,10 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
           const isPartialPayment = order.paymentPreference !== 'full'
           const paymentStatus = order.paymentStatus || 'pending'
           const paymentCompleted = paymentStatus === 'fully_paid'
-          const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod
+          const isEscalated = order.isEscalated || false
+          const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod && !isEscalated
           const workflowCompleted = isPartialPayment ? normalizedStatus === 'fully_paid' : normalizedStatus === 'delivered'
-          const canShowStatusUpdate = !showAvailabilityActions && !isInStatusUpdateGracePeriod && !isInGracePeriod && !workflowCompleted && normalizedStatus !== 'awaiting'
+          const canShowStatusUpdate = !showAvailabilityActions && !isInStatusUpdateGracePeriod && !isInGracePeriod && !workflowCompleted && normalizedStatus !== 'awaiting' && !isEscalated
           const nextMessage =
             order.next ||
             (isInGracePeriod
@@ -4021,6 +4126,9 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
                   <div className="orders-card__details">
                     <p className="orders-card__name">{order.farmer}</p>
                     <p className="orders-card__value">{order.value}</p>
+                    {order.orderNumber && (
+                      <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '2px' }}>{order.orderNumber}</p>
+                    )}
                   </div>
                 </div>
                 <div className="orders-card__status">
@@ -4030,7 +4138,15 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
                   )}>
                     {order.payment}
                   </span>
-                  <span className="orders-card__stage-label">
+                  <span className="orders-card__stage-label" style={
+                    normalizedStatus === 'delivered' && isPartialPayment && !paymentCompleted 
+                      ? { display: 'flex', flexDirection: 'column', gap: '2px' } 
+                      : normalizedStatus === 'fully_paid' 
+                        ? { display: 'flex', flexDirection: 'column', gap: '2px' } 
+                        : isEscalated
+                          ? { display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-end' }
+                          : {}
+                  }>
                     {normalizedStatus === 'awaiting'
                       ? 'Awaiting'
                       : normalizedStatus === 'accepted'
@@ -4038,10 +4154,33 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
                         : normalizedStatus === 'dispatched'
                           ? 'Dispatched'
                           : normalizedStatus === 'delivered'
-                            ? (isPartialPayment && !paymentCompleted ? 'Delivered • Awaiting Payment' : 'Delivered')
+                            ? (isPartialPayment && !paymentCompleted ? (
+                                <>
+                                  <span>Delivered</span>
+                                  <span>Awaiting Payment</span>
+                                </>
+                              ) : 'Delivered')
                             : normalizedStatus === 'fully_paid'
-                              ? 'Delivered • Paid'
+                              ? (
+                                <>
+                                  <span>Delivered</span>
+                                  <span>Paid</span>
+                                </>
+                              )
                               : order.status}
+                    {isEscalated && (
+                      <span style={{ 
+                        padding: '2px 8px',
+                        backgroundColor: '#FEF3C7',
+                        color: '#92400E',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        textTransform: 'uppercase'
+                      }}>
+                        Escalated
+                      </span>
+                    )}
                   </span>
                 </div>
               </header>
@@ -4104,8 +4243,8 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
                         ⏰ Status Update Grace Period: {statusUpdateTimeRemaining} minutes remaining. You can revert to "{previousStatus}" status.
                       </div>
                     )}
-                    {/* Show update status button once acceptance is finalized */}
-                    {canShowStatusUpdate && (
+                    {/* Show update status button once acceptance is finalized - Hide for escalated orders */}
+                    {canShowStatusUpdate && !isEscalated && (
                       <button
                         type="button"
                         className="orders-card__action is-primary"
@@ -4119,8 +4258,8 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
                         Update status
                       </button>
                     )}
-                    {/* Show revert button during grace period */}
-                    {!workflowCompleted && isInStatusUpdateGracePeriod && previousStatus && (
+                    {/* Show revert button during grace period - Hide for escalated orders */}
+                    {!workflowCompleted && isInStatusUpdateGracePeriod && previousStatus && !isEscalated && (
                       <button
                         type="button"
                         className="orders-card__action is-secondary"
@@ -4231,19 +4370,23 @@ function AllOrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalati
 }
 
 function OrderDetailsView({ order: initialOrder, openPanel, onBack, onOpenEscalationModal, onOpenPartialEscalationModal, onOrderUpdated }) {
-  const { getOrderDetails } = useVendorApi()
+  const { getOrderDetails, updateOrderStatus } = useVendorApi()
+  const { success, error } = useToast()
   const [order, setOrder] = useState(initialOrder)
   const [isLoading, setIsLoading] = useState(false)
+  const lastRefreshedStatusRef = useRef(initialOrder?.status)
 
   // Refresh order details
   const refreshOrder = useCallback(async () => {
     const orderId = initialOrder?.id || initialOrder?._id || order?.id || order?._id
     if (!orderId) return
+    
     setIsLoading(true)
     try {
       const result = await getOrderDetails(orderId)
       if (result.data?.order) {
         setOrder(result.data.order)
+        lastRefreshedStatusRef.current = result.data.order.status
         onOrderUpdated?.()
       }
     } catch (error) {
@@ -4255,11 +4398,19 @@ function OrderDetailsView({ order: initialOrder, openPanel, onBack, onOpenEscala
 
   useEffect(() => {
     if (initialOrder) {
+      const currentStatus = initialOrder.status
+      const previousRefreshedStatus = lastRefreshedStatusRef.current
+      
+      // Update local state with initialOrder
       setOrder(initialOrder)
-      refreshOrder()
+      
+      // Refresh if status changed (only refresh once per status change)
+      if (currentStatus !== previousRefreshedStatus) {
+        refreshOrder()
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialOrder?.id, initialOrder?._id]) // Refresh when order changes
+  }, [initialOrder?.id, initialOrder?._id, initialOrder?.status]) // Refresh when order ID or status changes
 
   const normalizeStatus = (status) => {
     if (!status) return 'awaiting'
@@ -4296,10 +4447,14 @@ function OrderDetailsView({ order: initialOrder, openPanel, onBack, onOpenEscala
   const isPartialPayment = order?.paymentPreference !== 'full'
   const paymentStatus = order?.paymentStatus || 'pending'
   const paymentCompleted = paymentStatus === 'fully_paid'
-  const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod
+  // Check if order is escalated
+  const isEscalated = order?.assignedTo === 'admin' || 
+                      order?.escalation?.isEscalated === true || 
+                      order?.status === 'rejected'
+  const showAvailabilityActions = normalizedStatus === 'awaiting' && !isInGracePeriod && !isEscalated
   const workflowCompleted = isPartialPayment ? normalizedStatus === 'fully_paid' : normalizedStatus === 'delivered'
   const isApproved = normalizedStatus !== 'awaiting'
-  const canShowStatusUpdate = isApproved && !workflowCompleted && !isInStatusUpdateGracePeriod && !isInGracePeriod
+  const canShowStatusUpdate = isApproved && !workflowCompleted && !isInStatusUpdateGracePeriod && !isInGracePeriod && !isEscalated
 
   if (isLoading) {
     return (
@@ -4350,7 +4505,15 @@ function OrderDetailsView({ order: initialOrder, openPanel, onBack, onOpenEscala
             )}>
               {order?.paymentStatus === 'fully_paid' ? 'Paid' : order?.paymentStatus === 'partial_paid' ? 'Partial' : 'Pending'}
             </span>
-            <span className="orders-card__stage-label">
+            <span className="orders-card__stage-label" style={
+              normalizedStatus === 'delivered' && isPartialPayment && !paymentCompleted 
+                ? { display: 'flex', flexDirection: 'column', gap: '2px' } 
+                : normalizedStatus === 'fully_paid' 
+                  ? { display: 'flex', flexDirection: 'column', gap: '2px' } 
+                  : isEscalated
+                    ? { display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }
+                    : {}
+            }>
               {normalizedStatus === 'awaiting'
                 ? 'Awaiting'
                 : normalizedStatus === 'accepted'
@@ -4358,10 +4521,33 @@ function OrderDetailsView({ order: initialOrder, openPanel, onBack, onOpenEscala
                   : normalizedStatus === 'dispatched'
                     ? 'Dispatched'
                     : normalizedStatus === 'delivered'
-                      ? (isPartialPayment && !paymentCompleted ? 'Delivered • Awaiting Payment' : 'Delivered')
+                      ? (isPartialPayment && !paymentCompleted ? (
+                          <>
+                            <span>Delivered</span>
+                            <span>Awaiting Payment</span>
+                          </>
+                        ) : 'Delivered')
                       : normalizedStatus === 'fully_paid'
-                        ? 'Delivered • Paid'
+                        ? (
+                          <>
+                            <span>Delivered</span>
+                            <span>Paid</span>
+                          </>
+                        )
                         : order?.status}
+              {isEscalated && (
+                <span style={{ 
+                  padding: '2px 8px',
+                  backgroundColor: '#FEF3C7',
+                  color: '#92400E',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  textTransform: 'uppercase'
+                }}>
+                  Escalated
+                </span>
+              )}
             </span>
           </div>
         </header>
@@ -4455,8 +4641,8 @@ function OrderDetailsView({ order: initialOrder, openPanel, onBack, onOpenEscala
             </button>
           )}
 
-          {/* Update Status Button (after approved) */}
-          {canShowStatusUpdate && (
+          {/* Update Status Button (after approved) - Hide for escalated orders */}
+          {canShowStatusUpdate && !isEscalated && (
             <button
               type="button"
               className="orders-card__action is-primary"
@@ -4471,21 +4657,44 @@ function OrderDetailsView({ order: initialOrder, openPanel, onBack, onOpenEscala
             </button>
           )}
 
-          {/* Revert Button (during grace period) */}
-          {!workflowCompleted && isInStatusUpdateGracePeriod && previousStatus && (
-            <button
-              type="button"
-              className="orders-card__action is-secondary"
-              onClick={() =>
-                openPanel('update-order-status', {
-                  orderId: order.id || order._id,
-                  status: previousStatus,
-                  revert: true,
-                })
-              }
-            >
-              Revert to {previousStatus}
-            </button>
+          {/* Confirm Status Update and Revert Buttons (during grace period) - Hide for escalated orders */}
+          {!workflowCompleted && isInStatusUpdateGracePeriod && !isEscalated && (
+            <>
+              <button
+                type="button"
+                className="orders-card__action is-primary"
+                onClick={async () => {
+                  const orderId = order.id || order._id
+                  if (!orderId) return
+                  
+                  const result = await updateOrderStatus(orderId, { finalizeGracePeriod: true })
+                  if (result.data) {
+                    success(result.data.message || 'Status update confirmed successfully!')
+                    // Refresh order details
+                    refreshOrder()
+                  } else if (result.error) {
+                    error(result.error.message || 'Failed to confirm status update')
+                  }
+                }}
+              >
+                Confirm Status Update
+              </button>
+              {previousStatus && (
+                <button
+                  type="button"
+                  className="orders-card__action is-secondary"
+                  onClick={() =>
+                    openPanel('update-order-status', {
+                      orderId: order.id || order._id,
+                      status: previousStatus,
+                      revert: true,
+                    })
+                  }
+                >
+                  Revert to {previousStatus}
+                </button>
+              )}
+            </>
           )}
 
           {/* Escalation Buttons */}
