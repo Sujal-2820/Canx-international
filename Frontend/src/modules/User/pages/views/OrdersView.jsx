@@ -76,10 +76,24 @@ const getStatusKey = (status) => {
   return normalized
 }
 
-const getDisplayStatus = (status, translatedLabels) => {
+const getDisplayStatus = (status, translatedLabels, paymentStatus) => {
   if (status === 'added_to_cart') return 'In Cart'
+  
+  // If status is fully_paid, just show "Fully Paid"
+  const normalizedStatus = status?.toLowerCase()
+  if (normalizedStatus === 'fully_paid' || normalizedStatus === 'fully paid') {
+    return 'Fully Paid'
+  }
+  
   const key = getStatusKey(status)
-  return translatedLabels[key] || STATUS_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1)
+  const statusLabel = translatedLabels[key] || STATUS_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1)
+  
+  // If fully paid and has a delivery status, show both status and payment status
+  if (paymentStatus === 'fully_paid' && key !== 'fully_paid') {
+    return `${statusLabel} • Fully Paid`
+  }
+  
+  return statusLabel
 }
 
 const formatTimelineTimestamp = (timestamp) => {
@@ -111,13 +125,47 @@ export function OrdersView() {
 
   // Combine orders and cart items
   const allItems = useMemo(() => {
-    const orderItems = orders.map((order) => {
-      const normalizedStatus = getStatusKey(order.status)
+    const orderItems = orders.map((order, index) => {
+      let deliveryStatus = order.status
+      const normalizedStatus = order.status?.toLowerCase()
+      
+      // If status is payment-related (fully_paid), extract delivery status from statusTimeline
+      if (normalizedStatus === 'fully_paid' || normalizedStatus === 'fully paid') {
+        if (order.statusTimeline && Array.isArray(order.statusTimeline) && order.statusTimeline.length > 0) {
+          // Find the latest delivery status (delivered > dispatched > awaiting)
+          const deliveryStatuses = ['delivered', 'dispatched', 'awaiting']
+          for (const ds of deliveryStatuses) {
+            // Optimize: check timeline entries more efficiently
+            const timelineEntry = order.statusTimeline.find(entry => {
+              if (!entry?.status) return false
+              const entryStatusKey = getStatusKey(entry.status)
+              return entryStatusKey === ds
+            })
+            if (timelineEntry) {
+              // Use the normalized status key directly
+              deliveryStatus = ds
+              break
+            }
+          }
+        }
+        // If no delivery status found in timeline, default to awaiting
+        if (deliveryStatus === order.status || getStatusKey(deliveryStatus) === 'fully_paid') {
+          deliveryStatus = 'awaiting'
+        }
+      }
+      
+      // Normalize the final status (only if not already normalized)
+      const normalizedDeliveryStatus = deliveryStatus && ['awaiting', 'dispatched', 'delivered'].includes(deliveryStatus)
+        ? deliveryStatus
+        : getStatusKey(deliveryStatus || 'awaiting')
+      
       return {
         ...order,
         type: 'order',
-        status: normalizedStatus,
+        status: normalizedDeliveryStatus,
         statusTimeline: order.statusTimeline || [],
+        // Ensure unique ID - use id or _id, fallback to index-based unique key
+        uniqueId: order.id || order._id || `order-${index}-${Date.now()}`,
       }
     })
 
@@ -132,6 +180,7 @@ export function OrdersView() {
             items: cart,
             total: cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
             paymentStatus: 'pending',
+            uniqueId: 'cart',
           },
         ]
       : []
@@ -141,13 +190,34 @@ export function OrdersView() {
 
   // Filter items based on active filter
   const filteredItems = useMemo(() => {
+    // Early return for 'all' filter - no filtering needed
     if (activeFilter === 'all') {
       return allItems
     }
+    
+    // Early return for 'added_to_cart' filter
     if (activeFilter === 'added_to_cart') {
-      return allItems.filter((item) => item.status === 'added_to_cart')
+      const cartFiltered = allItems.filter((item) => item.status === 'added_to_cart' || item.type === 'cart')
+      return cartFiltered
     }
-    return allItems.filter((item) => item.status === activeFilter)
+    
+    // For status filters (awaiting, dispatched, delivered)
+    // Status is already normalized in allItems, so direct comparison is faster
+    const filtered = []
+    for (let i = 0; i < allItems.length; i++) {
+      const item = allItems[i]
+      // Skip cart items for status filters
+      if (item.type === 'cart' || item.status === 'added_to_cart') {
+        continue
+      }
+      // Direct comparison - status is already normalized in allItems
+      // Only include items that match the active filter exactly
+      if (item.status === activeFilter) {
+        filtered.push(item)
+      }
+    }
+    // Return a new array to ensure React detects the change
+    return [...filtered]
   }, [allItems, activeFilter])
 
   const getStatusIcon = (status) => {
@@ -249,7 +319,7 @@ export function OrdersView() {
         setProcessingPayment(null)
         return
       }
-    } catch (err) {
+    } catch {
       showError('Payment processing failed. Please try again.')
       setProcessingPayment(null)
     }
@@ -259,10 +329,20 @@ export function OrdersView() {
     if (item.type !== 'order') return null
     const currentStatus = getStatusKey(item.status)
     const currentIndex = USER_ORDER_STATUSES.indexOf(currentStatus)
+    
+    // Only show steps up to and including current step (not future steps)
+    const maxIndex = currentIndex >= 0 ? currentIndex : 0
+    
     return (
       <div className="user-orders-view__tracker">
-        {USER_ORDER_STATUSES.map((status, index) => {
-          const timelineEntry = item.statusTimeline?.find((entry) => entry.status === status)
+        {USER_ORDER_STATUSES.filter((_, index) => index <= maxIndex).map((status, index) => {
+          const timelineEntry = item.statusTimeline?.find((entry) => {
+            const entryStatusKey = getStatusKey(entry.status)
+            return entryStatusKey === status
+          })
+          const actualIndex = USER_ORDER_STATUSES.indexOf(status)
+          const isCompleted = actualIndex < currentIndex
+          
           return (
             <div
               key={`${item.id}-${status}`}
@@ -275,7 +355,8 @@ export function OrdersView() {
               <div className="user-orders-view__tracker-step-body">
                 <p className="user-orders-view__tracker-step-title">{translatedStatusLabels[status] || STATUS_LABELS[status]}</p>
                 <p className="user-orders-view__tracker-step-desc">{translatedStatusDescriptions[status] || STATUS_DESCRIPTIONS[status]}</p>
-                {timelineEntry?.timestamp && (
+                {/* Only show timestamp for completed steps, not current step */}
+                {isCompleted && timelineEntry?.timestamp && (
                   <p className="user-orders-view__tracker-step-time">
                     {formatTimelineTimestamp(timelineEntry.timestamp)}
                   </p>
@@ -297,7 +378,7 @@ export function OrdersView() {
       {/* Main Content - 2 Column Layout for Laptop */}
       <div className="user-orders-view__main-content">
         {/* Left Column - Filter Sidebar */}
-        <div className="user-orders-view__filters-sidebar">
+        <div className="user-orders-view__filters-sidebar hidden lg:block">
           <div className="user-orders-view__filter-panel-desktop">
             <div className="user-orders-view__filter-header-desktop">
               <h3 className="user-orders-view__filter-title-desktop"><Trans>Filter Orders</Trans></h3>
@@ -348,7 +429,7 @@ export function OrdersView() {
           </div>
 
           {/* Orders List */}
-          <div className="user-orders-view__list">
+          <div key={`orders-list-${activeFilter}`} className="user-orders-view__list">
         {filteredItems.length === 0 ? (
           <div className="user-orders-view__empty">
             <PackageIcon className="user-orders-view__empty-icon" />
@@ -362,8 +443,8 @@ export function OrdersView() {
             </p>
           </div>
         ) : (
-          filteredItems.map((item) => (
-            <div key={item.id} className="user-orders-view__card">
+          filteredItems.map((item, index) => (
+            <div key={`${activeFilter}-${item.uniqueId || `${item.type}-${item.id || item._id || index}`}`} className="user-orders-view__card">
               <div className="user-orders-view__card-header">
                 <div className="user-orders-view__card-header-left">
                   <div className="user-orders-view__card-id">
@@ -371,11 +452,19 @@ export function OrdersView() {
                   </div>
                   <div className="user-orders-view__card-date">{formatDate(item.date)}</div>
                 </div>
-                <div className={cn('user-orders-view__card-status', getStatusColor(item.status))}>
-                  {getStatusIcon(item.status)}
-                  <span className="user-orders-view__card-status-text">
-                    {getDisplayStatus(item.status, translatedStatusLabels)}
-                  </span>
+                <div className="flex items-center gap-2">
+                  <div className={cn('user-orders-view__card-status', getStatusColor(item.status))}>
+                    {getStatusIcon(item.status)}
+                    <span className="user-orders-view__card-status-text">
+                      {getDisplayStatus(item.status, translatedStatusLabels, item.paymentStatus)}
+                    </span>
+                  </div>
+                  {item.paymentStatus === 'fully_paid' && (
+                    <div className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700">
+                      <CreditCardIcon className="h-3 w-3" />
+                      <span><Trans>Fully Paid</Trans></span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -394,8 +483,11 @@ export function OrdersView() {
                   // Get price - use unitPrice from orderItem or price
                   const unitPrice = orderItem.unitPrice || orderItem.price || 0
                   
+                  // Create unique key for order item
+                  const orderItemKey = orderItem.productId || orderItem.id || orderItem._id || `${item.uniqueId || item.id}-item-${index}`
+                  
                   return (
-                    <div key={index} className="user-orders-view__card-item">
+                    <div key={orderItemKey} className="user-orders-view__card-item">
                       <div className="user-orders-view__card-item-image">
                         <img
                           src={orderItem.product ? getPrimaryImageUrl(orderItem.product) : (orderItem.image || 'https://via.placeholder.com/60')}
@@ -450,35 +542,42 @@ export function OrdersView() {
                 </div>
                 
                 {/* Payment Status */}
-                {item.paymentStatus && item.paymentStatus !== 'fully_paid' && (
+                {item.paymentStatus && (
                   <div className="space-y-2 mb-3">
-                    {item.paymentPreference === 'partial' && item.upfrontAmount !== undefined && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600"><Trans>Advance (30%)</Trans>:</span>
-                        <span className="text-green-600 font-medium">₹{item.upfrontAmount?.toLocaleString('en-IN') || '0'}</span>
-                      </div>
-                    )}
-                    {item.paymentPreference === 'partial' && item.remainingAmount !== undefined && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600"><Trans>Remaining (70%)</Trans>:</span>
-                        <span className={cn(
-                          'font-medium',
-                          item.paymentStatus === 'partial_paid' ? 'text-orange-600' : 'text-red-600'
-                        )}>
-                          ₹{item.remainingAmount?.toLocaleString('en-IN') || '0'}
-                        </span>
-                      </div>
+                    {item.paymentStatus !== 'fully_paid' && (
+                      <>
+                        {item.paymentPreference === 'partial' && item.upfrontAmount !== undefined && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600"><Trans>Advance (30%)</Trans>:</span>
+                            <span className="text-green-600 font-medium">₹{item.upfrontAmount?.toLocaleString('en-IN') || '0'}</span>
+                          </div>
+                        )}
+                        {item.paymentPreference === 'partial' && item.remainingAmount !== undefined && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600"><Trans>Remaining (70%)</Trans>:</span>
+                            <span className={cn(
+                              'font-medium',
+                              item.paymentStatus === 'partial_paid' ? 'text-orange-600' : 'text-red-600'
+                            )}>
+                              ₹{item.remainingAmount?.toLocaleString('en-IN') || '0'}
+                            </span>
+                          </div>
+                        )}
+                      </>
                     )}
                     <div className="flex justify-between text-sm pt-2 border-t border-gray-200">
                       <span className="text-gray-600"><Trans>Payment Status</Trans>:</span>
                       <span
                         className={cn(
                           'font-semibold',
+                          item.paymentStatus === 'fully_paid' && 'text-green-600',
                           item.paymentStatus === 'partial_paid' && 'text-orange-600',
                           item.paymentStatus === 'pending' && 'text-red-600'
                         )}
                       >
-                        {item.paymentStatus === 'partial_paid' ? (
+                        {item.paymentStatus === 'fully_paid' ? (
+                          <Trans>Fully Paid</Trans>
+                        ) : item.paymentStatus === 'partial_paid' ? (
                           <Trans>Partial Paid</Trans>
                         ) : item.paymentStatus === 'pending' ? (
                           <Trans>Pending</Trans>
