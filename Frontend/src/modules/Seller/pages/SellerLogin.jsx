@@ -11,6 +11,10 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
   const [sellerId, setSellerId] = useState(null)
   const dispatch = useSellerDispatch()
 
+  // OTP bypass configuration for specific test seller
+  const BYPASS_PHONE = '9981331318'
+  const BYPASS_OTP = '123456'
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
@@ -31,6 +35,62 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
       if (form.phone.length < 10) {
         setError('Please enter a valid contact number')
         setLoading(false)
+        return
+      }
+
+      // Bypass OTP screen for the configured seller phone
+      if (form.phone === BYPASS_PHONE) {
+        try {
+          const result = await sellerApi.loginSellerWithOtp({ phone: form.phone, otp: BYPASS_OTP })
+
+          if (result.success || result.data) {
+            // Check if seller requires approval (pending status)
+            if (result.data?.requiresApproval || result.data?.seller?.status === 'pending') {
+              setSellerId(result.data?.seller?.sellerId || result.data?.sellerId)
+              setStep('pending')
+              return
+            }
+
+            // Check if seller is rejected
+            if (result.data?.seller?.status === 'rejected') {
+              setError('Your account has been rejected by the admin. Please contact support.')
+              return
+            }
+
+            // If approved, proceed with login
+            if (result.data?.token) {
+              localStorage.setItem('seller_token', result.data.token)
+            }
+
+            // Update context with seller data
+            if (result.data?.seller) {
+              dispatch({
+                type: 'AUTH_LOGIN',
+                payload: {
+                  id: result.data.seller.id || result.data.seller._id,
+                  name: result.data.seller.name,
+                  phone: result.data.seller.phone,
+                  sellerId: result.data.seller.sellerId,
+                  area: result.data.seller.area,
+                  status: result.data.seller.status,
+                  isActive: result.data.seller.isActive,
+                },
+              })
+            }
+
+            // Call both onSuccess and onSubmit for backward compatibility
+            onSuccess?.(result.data?.seller || { phone: form.phone })
+            onSubmit?.(result.data?.seller || { phone: form.phone })
+          } else {
+            setError(result.error?.message || 'Failed to login with bypass OTP. Please try again.')
+          }
+        } catch (err) {
+          setError(err.message || 'Failed to login with bypass OTP. Please try again.')
+        } finally {
+          setLoading(false)
+        }
+
+        // Stop normal OTP flow for this phone
         return
       }
 
