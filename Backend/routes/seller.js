@@ -79,6 +79,27 @@ router.put('/profile', authorizeSeller, sellerController.updateProfile);
  */
 router.put('/password', authorizeSeller, sellerController.changePassword);
 
+/**
+ * @route   POST /api/sellers/profile/request-name-change
+ * @desc    Request name change
+ * @access  Private (Seller)
+ */
+router.post('/profile/request-name-change', authorizeSeller, sellerController.requestNameChange);
+
+/**
+ * @route   POST /api/sellers/profile/request-phone-change
+ * @desc    Request phone change
+ * @access  Private (Seller)
+ */
+router.post('/profile/request-phone-change', authorizeSeller, sellerController.requestPhoneChange);
+
+/**
+ * @route   GET /api/sellers/profile/change-requests
+ * @desc    Get change requests
+ * @access  Private (Seller)
+ */
+router.get('/profile/change-requests', authorizeSeller, sellerController.getChangeRequests);
+
 // ============================================================================
 // DASHBOARD ROUTES
 // ============================================================================

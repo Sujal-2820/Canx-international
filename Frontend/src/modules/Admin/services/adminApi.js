@@ -1815,6 +1815,73 @@ export async function getSellerWithdrawalRequests(params = {}) {
   }
 }
 
+/**
+ * Get Seller Change Requests
+ * GET /admin/sellers/change-requests
+ * 
+ * @param {Object} params - { status, changeType, page, limit }
+ * @returns {Promise<Object>} - { changeRequests: Array, pagination: Object }
+ */
+export async function getSellerChangeRequests(params = {}) {
+  try {
+    const queryParams = new URLSearchParams()
+    if (params.status) queryParams.append('status', params.status)
+    if (params.changeType) queryParams.append('changeType', params.changeType)
+    if (params.page) queryParams.append('page', params.page)
+    if (params.limit) queryParams.append('limit', params.limit)
+
+    const queryString = queryParams.toString()
+    const response = await apiRequest(`/admin/sellers/change-requests${queryString ? `?${queryString}` : ''}`)
+
+    return response
+  } catch (error) {
+    throw error
+  }
+}
+
+/**
+ * Get Seller Change Request Details
+ * GET /admin/sellers/change-requests/:requestId
+ * 
+ * @param {string} requestId - Change request ID
+ * @returns {Promise<Object>} - { changeRequest: Object }
+ */
+export async function getSellerChangeRequestDetails(requestId) {
+  return apiRequest(`/admin/sellers/change-requests/${requestId}`)
+}
+
+/**
+ * Approve Seller Change Request
+ * POST /admin/sellers/change-requests/:requestId/approve
+ * 
+ * @param {string} requestId - Change request ID
+ * @returns {Promise<Object>} - { changeRequest: Object, seller: Object, message: string }
+ */
+export async function approveSellerChangeRequest(requestId) {
+  const response = await apiRequest(`/admin/sellers/change-requests/${requestId}/approve`, {
+    method: 'POST',
+  })
+
+  return response
+}
+
+/**
+ * Reject Seller Change Request
+ * POST /admin/sellers/change-requests/:requestId/reject
+ * 
+ * @param {string} requestId - Change request ID
+ * @param {Object} rejectionData - { reason?: string }
+ * @returns {Promise<Object>} - { changeRequest: Object, message: string }
+ */
+export async function rejectSellerChangeRequest(requestId, rejectionData = {}) {
+  const response = await apiRequest(`/admin/sellers/change-requests/${requestId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify(rejectionData || {}),
+  })
+
+  return response
+}
+
 // ============================================================================
 // PAYMENT HISTORY APIs
 // ============================================================================

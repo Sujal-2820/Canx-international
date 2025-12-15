@@ -4,16 +4,12 @@ import { useSellerApi } from '../../hooks/useSellerApi'
 import { sellerSnapshot } from '../../services/sellerData'
 import {
   UserIcon,
-  MapPinIcon,
-  BellIcon,
-  ShieldCheckIcon,
   HelpCircleIcon,
   EditIcon,
   CheckIcon,
   XIcon,
-  WalletIcon,
-  TargetIcon,
   BuildingIcon,
+  MapPinIcon,
 } from '../../components/icons'
 import { cn } from '../../../../lib/cn'
 import { useToast } from '../../components/ToastNotification'
@@ -21,30 +17,23 @@ import { useToast } from '../../components/ToastNotification'
 export function ProfileView({ onLogout, onNavigate }) {
   const { profile } = useSellerState()
   const dispatch = useSellerDispatch()
-  const { updateProfile, changePassword, reportIssue, fetchDashboardOverview } = useSellerApi()
+  const { requestNameChange, requestPhoneChange, reportIssue, fetchDashboardOverview } = useSellerApi()
   const { success, warning, error: showError } = useToast()
-  const [editingName, setEditingName] = useState(false)
-  const [editedName, setEditedName] = useState(profile.name || sellerSnapshot.profile.name)
-  const [showPasswordPanel, setShowPasswordPanel] = useState(false)
+  const [showNameChangePanel, setShowNameChangePanel] = useState(false)
+  const [showPhoneChangePanel, setShowPhoneChangePanel] = useState(false)
   const [showSupportPanel, setShowSupportPanel] = useState(false)
   const [showReportPanel, setShowReportPanel] = useState(false)
-  const [showPrivacyPanel, setShowPrivacyPanel] = useState(false)
 
-  // Notification preferences state
-  const [notificationPrefs, setNotificationPrefs] = useState({
-    sms: true,
-    email: true,
-    push: true,
-    announcements: true,
-    commission: true,
-    target: true,
+  // Name change request form
+  const [nameChangeForm, setNameChangeForm] = useState({
+    requestedName: '',
+    confirmName: '',
   })
 
-  // Password change form
-  const [passwordForm, setPasswordForm] = useState({
-    current: '',
-    new: '',
-    confirm: '',
+  // Phone change request form
+  const [phoneChangeForm, setPhoneChangeForm] = useState({
+    requestedPhone: '',
+    confirmPhone: '',
   })
 
   // Report issue form
@@ -54,63 +43,70 @@ export function ProfileView({ onLogout, onNavigate }) {
     category: 'general',
   })
 
-  // Update edited name when profile changes
-  useEffect(() => {
-    setEditedName(profile.name || sellerSnapshot.profile.name)
-  }, [profile.name])
-
-  const handleSaveName = async () => {
-    if (!editedName.trim()) {
-      warning('Name cannot be empty')
+  const handleRequestNameChange = async () => {
+    if (!nameChangeForm.requestedName.trim()) {
+      warning('Please enter the new name')
       return
     }
-    const result = await updateProfile({ name: editedName.trim() })
-    if (result.data) {
-      dispatch({
-        type: 'UPDATE_PROFILE',
-        payload: { ...profile, name: editedName.trim() },
+    if (nameChangeForm.requestedName.trim() !== nameChangeForm.confirmName.trim()) {
+      warning('Name confirmation does not match. Please enter the same name in both fields.')
+      return
+    }
+    try {
+      const result = await requestNameChange({
+        requestedName: nameChangeForm.requestedName.trim(),
+        description: '',
       })
-      setEditingName(false)
-      success('Name updated successfully!')
-      // Refresh dashboard to reflect updated profile
-      await fetchDashboardOverview()
-    } else if (result.error) {
-      showError(result.error.message || 'Failed to update name')
+      // Check for success
+      if (result && (result.success || (result.data && !result.error))) {
+        success('Your request has been sent to Admin. Necessary action shall be taken within 24 hours.')
+        setNameChangeForm({ requestedName: '', confirmName: '' })
+        setShowNameChangePanel(false)
+      } else if (result && result.error) {
+        showError(result.error.message || 'Failed to submit name change request')
+      } else {
+        showError('Failed to submit name change request. Please try again.')
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to submit name change request')
     }
   }
 
-  const handleSavePassword = async () => {
-    if (!passwordForm.current || !passwordForm.new || !passwordForm.confirm) {
-      warning('Please fill in all fields')
+  const handleRequestPhoneChange = async () => {
+    if (!phoneChangeForm.requestedPhone.trim()) {
+      warning('Please enter the new phone number')
       return
     }
-    if (passwordForm.new !== passwordForm.confirm) {
-      warning('New passwords do not match')
+    // Basic phone validation
+    const phoneRegex = /^[+]?[1-9]\d{9,14}$/
+    if (!phoneRegex.test(phoneChangeForm.requestedPhone.trim())) {
+      warning('Please enter a valid phone number')
       return
     }
-    if (passwordForm.new.length < 6) {
-      warning('Password must be at least 6 characters long')
+    if (phoneChangeForm.requestedPhone.trim() !== phoneChangeForm.confirmPhone.trim()) {
+      warning('Phone confirmation does not match. Please enter the same phone number in both fields.')
       return
     }
-    const result = await changePassword({
-      currentPassword: passwordForm.current,
-      newPassword: passwordForm.new,
-    })
-    if (result.data) {
-      success('Password changed successfully!')
-      setPasswordForm({ current: '', new: '', confirm: '' })
-      setShowPasswordPanel(false)
-    } else if (result.error) {
-      showError(result.error.message || 'Failed to change password')
+    try {
+      const result = await requestPhoneChange({
+        requestedPhone: phoneChangeForm.requestedPhone.trim(),
+        description: '',
+      })
+      // Check for success
+      if (result && result.success) {
+        success('Your request has been sent to Admin. Necessary action shall be taken within 24 hours.')
+        setPhoneChangeForm({ requestedPhone: '', confirmPhone: '' })
+        setShowPhoneChangePanel(false)
+      } else if (result && result.error) {
+        // Show the specific error message from the backend
+        const errorMessage = result.error.message || 'Failed to submit phone change request'
+        showError(errorMessage)
+      } else {
+        showError('Failed to submit phone change request. Please try again.')
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to submit phone change request')
     }
-  }
-
-  const handleToggleNotification = (key) => {
-    setNotificationPrefs((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }))
-    success(`${key === 'sms' ? 'SMS' : key === 'email' ? 'Email' : key === 'push' ? 'Push' : key === 'announcements' ? 'Announcements' : key === 'commission' ? 'Commission' : 'Target'} notifications ${!notificationPrefs[key] ? 'enabled' : 'disabled'}`)
   }
 
   const handleSubmitReport = async () => {
@@ -145,7 +141,7 @@ export function ProfileView({ onLogout, onNavigate }) {
           label: 'Full Name',
           value: sellerProfile.name,
           editable: true,
-          onEdit: () => setEditingName(true),
+          onEdit: () => setShowNameChangePanel(true),
         },
         {
           id: 'seller-id',
@@ -154,23 +150,11 @@ export function ProfileView({ onLogout, onNavigate }) {
           editable: false,
         },
         {
-          id: 'email',
-          label: 'Email',
-          value: sellerProfile.email || sellerSnapshot.profile.email || 'Not set',
-          editable: false,
-        },
-        {
           id: 'phone',
           label: 'Phone',
           value: sellerProfile.phone || sellerSnapshot.profile.phone || 'Not set',
-          editable: false,
-        },
-        {
-          id: 'password',
-          label: 'Password',
-          value: '••••••••',
           editable: true,
-          onEdit: () => setShowPasswordPanel(true),
+          onEdit: () => setShowPhoneChangePanel(true),
         },
       ],
     },
@@ -180,15 +164,9 @@ export function ProfileView({ onLogout, onNavigate }) {
       icon: BuildingIcon,
       items: [
         {
-          id: 'vendor',
-          label: 'Assigned Vendor',
-          value: sellerProfile.assignedVendor || sellerSnapshot.profile.assignedVendor || 'Not assigned',
-          editable: false,
-        },
-        {
-          id: 'area',
-          label: 'Service Area',
-          value: sellerProfile.area || sellerSnapshot.profile.area || 'Not set',
+          id: 'location',
+          label: 'Location',
+          value: sellerProfile.area || sellerSnapshot.profile.area || sellerProfile.location?.city || sellerProfile.location?.state || 'Not set',
           editable: false,
         },
         {
@@ -202,74 +180,6 @@ export function ProfileView({ onLogout, onNavigate }) {
           label: 'Cashback Rate',
           value: sellerProfile.cashbackRate || sellerSnapshot.profile.cashbackRate || 'Not set',
           editable: false,
-        },
-      ],
-    },
-    {
-      id: 'notifications',
-      title: 'Notifications & Alerts',
-      icon: BellIcon,
-      items: [
-        {
-          id: 'sms',
-          label: 'SMS Notifications',
-          value: notificationPrefs.sms ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.sms,
-          onToggle: () => handleToggleNotification('sms'),
-        },
-        {
-          id: 'email',
-          label: 'Email Notifications',
-          value: notificationPrefs.email ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.email,
-          onToggle: () => handleToggleNotification('email'),
-        },
-        {
-          id: 'push',
-          label: 'Push Notifications',
-          value: notificationPrefs.push ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.push,
-          onToggle: () => handleToggleNotification('push'),
-        },
-        {
-          id: 'announcements',
-          label: 'Announcements',
-          value: notificationPrefs.announcements ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.announcements,
-          onToggle: () => handleToggleNotification('announcements'),
-        },
-        {
-          id: 'commission',
-          label: 'Commission Alerts',
-          value: notificationPrefs.commission ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.commission,
-          onToggle: () => handleToggleNotification('commission'),
-        },
-        {
-          id: 'target',
-          label: 'Target Updates',
-          value: notificationPrefs.target ? 'Enabled' : 'Disabled',
-          toggle: true,
-          enabled: notificationPrefs.target,
-          onToggle: () => handleToggleNotification('target'),
-        },
-      ],
-    },
-    {
-      id: 'security',
-      title: 'Security & Privacy',
-      icon: ShieldCheckIcon,
-      items: [
-        {
-          id: 'privacy',
-          label: 'Privacy Settings',
-          value: 'Manage privacy',
-          action: () => setShowPrivacyPanel(true),
         },
       ],
     },
@@ -310,50 +220,12 @@ export function ProfileView({ onLogout, onNavigate }) {
         <div className="seller-profile-view__header-info">
           <h2 className="seller-profile-view__header-name">{sellerProfile.name}</h2>
           <p className="seller-profile-view__header-id">Seller ID: {sellerProfile.sellerId || sellerSnapshot.profile.sellerId}</p>
-          <p className="seller-profile-view__header-area">
+          <p className="seller-profile-view__header-location">
             <MapPinIcon className="h-4 w-4 inline mr-1" />
-            {sellerProfile.area || sellerSnapshot.profile.area}
+            {sellerProfile.area || sellerSnapshot.profile.area || sellerProfile.location?.city || sellerProfile.location?.state || 'Location not set'}
           </p>
         </div>
       </div>
-
-      {/* Name Edit Modal */}
-      {editingName && (
-        <div className="seller-profile-view__edit-modal">
-          <div className="seller-profile-view__edit-modal-content">
-            <h3 className="seller-profile-view__edit-modal-title">Edit Name</h3>
-            <input
-              type="text"
-              value={editedName}
-              onChange={(e) => setEditedName(e.target.value)}
-              className="seller-profile-view__edit-modal-input"
-              placeholder="Enter your name"
-              autoFocus
-            />
-            <div className="seller-profile-view__edit-modal-actions">
-              <button
-                type="button"
-                className="seller-profile-view__edit-modal-cancel"
-                onClick={() => {
-                  setEditedName(sellerProfile.name)
-                  setEditingName(false)
-                }}
-              >
-                <XIcon className="h-4 w-4" />
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="seller-profile-view__edit-modal-save"
-                onClick={handleSaveName}
-              >
-                <CheckIcon className="h-4 w-4" />
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Sections */}
       <div className="seller-profile-view__sections">
@@ -372,37 +244,23 @@ export function ProfileView({ onLogout, onNavigate }) {
                       <span className="seller-profile-view__item-value">{item.value}</span>
                     </div>
                     <div className="seller-profile-view__item-actions">
-                      {item.toggle ? (
-                        <label className="seller-profile-view__toggle">
-                          <input
-                            type="checkbox"
-                            checked={item.enabled}
-                            onChange={item.onToggle || (() => {})}
-                            className="seller-profile-view__toggle-input"
-                          />
-                          <span className="seller-profile-view__toggle-slider" />
-                        </label>
-                      ) : (
-                        <>
-                          {item.editable && (
-                            <button
-                              type="button"
-                              className="seller-profile-view__item-edit"
-                              onClick={item.onEdit}
-                            >
-                              <EditIcon className="h-4 w-4" />
-                            </button>
-                          )}
-                          {item.action && (
-                            <button
-                              type="button"
-                              className="seller-profile-view__item-action"
-                              onClick={item.action}
-                            >
-                              →
-                            </button>
-                          )}
-                        </>
+                      {item.editable && (
+                        <button
+                          type="button"
+                          className="seller-profile-view__item-edit"
+                          onClick={item.onEdit}
+                        >
+                          <EditIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      {item.action && (
+                        <button
+                          type="button"
+                          className="seller-profile-view__item-action"
+                          onClick={item.action}
+                        >
+                          →
+                        </button>
                       )}
                     </div>
                   </div>
@@ -429,25 +287,25 @@ export function ProfileView({ onLogout, onNavigate }) {
         </button>
       </div>
 
-      {/* Password Change Panel */}
-      {showPasswordPanel && (
+      {/* Name Change Request Panel */}
+      {showNameChangePanel && (
         <div
           className="seller-profile-view__panel"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setShowPasswordPanel(false)
-              setPasswordForm({ current: '', new: '', confirm: '' })
+              setShowNameChangePanel(false)
+              setNameChangeForm({ requestedName: '', confirmName: '' })
             }
           }}
         >
           <div className="seller-profile-view__panel-content">
             <div className="seller-profile-view__panel-header">
-              <h3 className="seller-profile-view__panel-title">Change Password</h3>
+              <h3 className="seller-profile-view__panel-title">Request Name Change</h3>
               <button
                 type="button"
                 onClick={() => {
-                  setShowPasswordPanel(false)
-                  setPasswordForm({ current: '', new: '', confirm: '' })
+                  setShowNameChangePanel(false)
+                  setNameChangeForm({ requestedName: '', confirmName: '' })
                 }}
                 className="seller-profile-view__panel-close"
               >
@@ -458,48 +316,54 @@ export function ProfileView({ onLogout, onNavigate }) {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Current Password <span className="text-red-500">*</span>
+                    Current Name
                   </label>
                   <input
-                    type="password"
-                    value={passwordForm.current}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
-                    placeholder="Enter current password"
+                    type="text"
+                    value={sellerProfile.name}
+                    disabled
+                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-gray-50 text-sm text-gray-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                    New Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={nameChangeForm.requestedName}
+                    onChange={(e) => setNameChangeForm({ ...nameChangeForm, requestedName: e.target.value })}
+                    placeholder="Write your suggested name"
                     className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    New Password <span className="text-red-500">*</span>
+                    Confirm Name <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="password"
-                    value={passwordForm.new}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
-                    placeholder="Enter new password (min 6 characters)"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
+                    type="text"
+                    value={nameChangeForm.confirmName}
+                    onChange={(e) => setNameChangeForm({ ...nameChangeForm, confirmName: e.target.value })}
+                    placeholder="Enter the name again to confirm"
+                    className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none ${
+                      nameChangeForm.confirmName && nameChangeForm.requestedName.trim() !== nameChangeForm.confirmName.trim()
+                        ? 'border-red-300 bg-red-50 focus:border-red-500'
+                        : 'border-[rgba(34,94,65,0.15)] bg-white focus:border-[#1b8f5b]'
+                    }`}
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
-                    Confirm New Password <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={passwordForm.confirm}
-                    onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
-                    placeholder="Confirm new password"
-                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
-                  />
+                  {nameChangeForm.confirmName && nameChangeForm.requestedName.trim() !== nameChangeForm.confirmName.trim() && (
+                    <p className="mt-1 text-xs text-red-600">Name does not match. Please enter the same name.</p>
+                  )}
                 </div>
               </div>
               <div className="mt-6">
                 <button
                   type="button"
-                  onClick={handleSavePassword}
+                  onClick={handleRequestNameChange}
                   className="w-full py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors"
                 >
-                  Change Password
+                  Submit Request
                 </button>
               </div>
             </div>
@@ -507,22 +371,26 @@ export function ProfileView({ onLogout, onNavigate }) {
         </div>
       )}
 
-      {/* Privacy Settings Panel */}
-      {showPrivacyPanel && (
+      {/* Phone Change Request Panel */}
+      {showPhoneChangePanel && (
         <div
           className="seller-profile-view__panel"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              setShowPrivacyPanel(false)
+              setShowPhoneChangePanel(false)
+              setPhoneChangeForm({ requestedPhone: '', confirmPhone: '' })
             }
           }}
         >
           <div className="seller-profile-view__panel-content">
             <div className="seller-profile-view__panel-header">
-              <h3 className="seller-profile-view__panel-title">Privacy Settings</h3>
+              <h3 className="seller-profile-view__panel-title">Request Phone Change</h3>
               <button
                 type="button"
-                onClick={() => setShowPrivacyPanel(false)}
+                onClick={() => {
+                  setShowPhoneChangePanel(false)
+                  setPhoneChangeForm({ requestedPhone: '', confirmPhone: '' })
+                }}
                 className="seller-profile-view__panel-close"
               >
                 <XIcon className="h-5 w-5" />
@@ -530,29 +398,57 @@ export function ProfileView({ onLogout, onNavigate }) {
             </div>
             <div className="seller-profile-view__panel-body">
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 rounded-xl border border-[rgba(34,94,65,0.15)]">
-                  <div>
-                    <h4 className="font-semibold text-[#172022] mb-1">Profile Visibility</h4>
-                    <p className="text-sm text-[rgba(26,42,34,0.7)]">Control who can see your profile</p>
-                  </div>
-                  <label className="seller-profile-view__toggle">
-                    <input type="checkbox" defaultChecked className="seller-profile-view__toggle-input" />
-                    <span className="seller-profile-view__toggle-slider" />
+                <div>
+                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                    Current Phone
                   </label>
+                  <input
+                    type="text"
+                    value={sellerProfile.phone || 'Not set'}
+                    disabled
+                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-gray-50 text-sm text-gray-600"
+                  />
                 </div>
-                <div className="flex items-center justify-between p-4 rounded-xl border border-[rgba(34,94,65,0.15)]">
-                  <div>
-                    <h4 className="font-semibold text-[#172022] mb-1">Data Sharing</h4>
-                    <p className="text-sm text-[rgba(26,42,34,0.7)]">Allow data sharing for better experience</p>
-                  </div>
-                  <label className="seller-profile-view__toggle">
-                    <input type="checkbox" defaultChecked className="seller-profile-view__toggle-input" />
-                    <span className="seller-profile-view__toggle-slider" />
+                <div>
+                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                    New Phone Number <span className="text-red-500">*</span>
                   </label>
+                  <input
+                    type="tel"
+                    value={phoneChangeForm.requestedPhone}
+                    onChange={(e) => setPhoneChangeForm({ ...phoneChangeForm, requestedPhone: e.target.value })}
+                    placeholder="Write your suggested phone number to change"
+                    className="w-full px-3 py-2.5 rounded-lg border border-[rgba(34,94,65,0.15)] bg-white text-sm focus:outline-none focus:border-[#1b8f5b]"
+                  />
                 </div>
-                <p className="text-xs text-[rgba(26,42,34,0.6)]">
-                  Your privacy is important to us. We never share your personal information with third parties without your consent.
-                </p>
+                <div>
+                  <label className="block text-sm font-semibold text-[#172022] mb-1.5">
+                    Confirm Phone Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={phoneChangeForm.confirmPhone}
+                    onChange={(e) => setPhoneChangeForm({ ...phoneChangeForm, confirmPhone: e.target.value })}
+                    placeholder="Enter the phone number again to confirm"
+                    className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none ${
+                      phoneChangeForm.confirmPhone && phoneChangeForm.requestedPhone.trim() !== phoneChangeForm.confirmPhone.trim()
+                        ? 'border-red-300 bg-red-50 focus:border-red-500'
+                        : 'border-[rgba(34,94,65,0.15)] bg-white focus:border-[#1b8f5b]'
+                    }`}
+                  />
+                  {phoneChangeForm.confirmPhone && phoneChangeForm.requestedPhone.trim() !== phoneChangeForm.confirmPhone.trim() && (
+                    <p className="mt-1 text-xs text-red-600">Phone number does not match. Please enter the same phone number.</p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-6">
+                <button
+                  type="button"
+                  onClick={handleRequestPhoneChange}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#1b8f5b] text-white text-sm font-semibold hover:bg-[#2a9d61] transition-colors"
+                >
+                  Submit Request
+                </button>
               </div>
             </div>
           </div>

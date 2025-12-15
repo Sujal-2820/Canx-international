@@ -136,6 +136,60 @@ export function useSellerApi() {
     [handleApiCall],
   )
 
+  const requestNameChange = useCallback(
+    async (changeData) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await sellerApi.requestNameChange(changeData)
+        // Backend returns { success: true, data: {...} } or { success: false, error: {...} }
+        if (result.success && result.data) {
+          return { data: result.data, error: null, success: true }
+        } else {
+          return { data: null, error: result.error || { message: 'Failed to submit name change request' }, success: false }
+        }
+      } catch (err) {
+        const errorMsg = err.message || 'Failed to submit name change request'
+        setError(errorMsg)
+        return { data: null, error: { message: errorMsg }, success: false }
+      } finally {
+        setLoading(false)
+      }
+    },
+    [],
+  )
+
+  const requestPhoneChange = useCallback(
+    async (changeData) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await sellerApi.requestPhoneChange(changeData)
+        // Backend returns { success: true, data: {...} } or { success: false, error: {...} }
+        if (result && result.success && result.data) {
+          return { data: result.data, error: null, success: true }
+        } else if (result && result.error) {
+          // Handle error response from API
+          const errorMsg = result.error.message || 'Failed to submit phone change request'
+          setError(errorMsg)
+          return { data: null, error: result.error, success: false }
+        } else {
+          // Unexpected response structure
+          const errorMsg = result?.message || 'Failed to submit phone change request'
+          setError(errorMsg)
+          return { data: null, error: { message: errorMsg }, success: false }
+        }
+      } catch (err) {
+        const errorMsg = err.message || 'Failed to submit phone change request'
+        setError(errorMsg)
+        return { data: null, error: { message: errorMsg }, success: false }
+      } finally {
+        setLoading(false)
+      }
+    },
+    [],
+  )
+
   // Wallet APIs
   const requestWithdrawal = useCallback(
     async (withdrawalData) => {
@@ -266,6 +320,8 @@ export function useSellerApi() {
     fetchTargetIncentives,
     updateProfile,
     changePassword,
+    requestNameChange,
+    requestPhoneChange,
     requestWithdrawal,
     markNotificationRead,
     markAllNotificationsRead,

@@ -15,10 +15,16 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000
  * API Response Handler
  */
 async function handleResponse(response) {
-  const data = await response.json().catch(() => ({ 
-    success: false,
-    error: { message: 'An error occurred' }
-  }))
+  let data;
+  try {
+    const text = await response.text()
+    data = text ? JSON.parse(text) : {}
+  } catch (err) {
+    data = { 
+      success: false,
+      error: { message: 'An error occurred while parsing response' }
+    }
+  }
   
   if (!response.ok) {
     // Return error in same format as success response for consistent error handling
@@ -167,6 +173,46 @@ export async function changePassword(passwordData) {
     method: 'PUT',
     body: JSON.stringify(passwordData),
   })
+}
+
+/**
+ * Request Name Change
+ * POST /sellers/profile/request-name-change
+ * 
+ * @param {Object} changeData - { requestedName, description }
+ * @returns {Promise<Object>} - { changeRequest, message }
+ */
+export async function requestNameChange(changeData) {
+  return apiRequest('/sellers/profile/request-name-change', {
+    method: 'POST',
+    body: JSON.stringify(changeData),
+  })
+}
+
+/**
+ * Request Phone Change
+ * POST /sellers/profile/request-phone-change
+ * 
+ * @param {Object} changeData - { requestedPhone, description }
+ * @returns {Promise<Object>} - { changeRequest, message }
+ */
+export async function requestPhoneChange(changeData) {
+  return apiRequest('/sellers/profile/request-phone-change', {
+    method: 'POST',
+    body: JSON.stringify(changeData),
+  })
+}
+
+/**
+ * Get Change Requests
+ * GET /sellers/profile/change-requests
+ * 
+ * @param {Object} params - { status, limit, offset }
+ * @returns {Promise<Object>} - { changeRequests: Array, total: number }
+ */
+export async function getChangeRequests(params = {}) {
+  const queryParams = new URLSearchParams(params).toString()
+  return apiRequest(`/sellers/profile/change-requests?${queryParams}`)
 }
 
 // ============================================================================

@@ -421,7 +421,20 @@ export function useSellerState() {
 
 export function useSellerDispatch() {
   const dispatch = useContext(SellerDispatchContext)
-  if (!dispatch || !dispatch[SELLER_CONTEXT_SYMBOL]) {
+  if (!dispatch) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('useSellerDispatch must be used within SellerProvider')
+      throw new Error('useSellerDispatch must be used within SellerProvider')
+    }
+    // In production, return a no-op function to prevent crashes
+    return () => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('SellerDispatch called outside SellerProvider')
+      }
+    }
+  }
+  // Check for symbol to ensure it's the wrapped dispatch
+  if (!dispatch[SELLER_CONTEXT_SYMBOL]) {
     if (process.env.NODE_ENV !== 'production') {
       console.error('useSellerDispatch must be used within SellerProvider')
       throw new Error('useSellerDispatch must be used within SellerProvider')

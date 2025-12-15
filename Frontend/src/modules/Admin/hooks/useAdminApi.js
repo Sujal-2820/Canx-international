@@ -411,6 +411,45 @@ export function useAdminApi() {
 
   const getSellerWithdrawalRequests = useCallback((params) => callApi(adminApi.getSellerWithdrawalRequests, params), [callApi])
 
+  // Seller Change Request APIs
+  const getSellerChangeRequests = useCallback(
+    (params) => {
+      return callApi(adminApi.getSellerChangeRequests, params).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
+  const getSellerChangeRequestDetails = useCallback((requestId) => callApi(adminApi.getSellerChangeRequestDetails, requestId), [callApi])
+
+  const approveSellerChangeRequest = useCallback(
+    (requestId) => {
+      return callApi(adminApi.approveSellerChangeRequest, requestId).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
+  const rejectSellerChangeRequest = useCallback(
+    (requestId, rejectionData) => {
+      return callApi(adminApi.rejectSellerChangeRequest, requestId, rejectionData).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
   // Payment History APIs
   const getPaymentHistory = useCallback((params) => callApi(adminApi.getPaymentHistory, params), [callApi])
   const getPaymentHistoryStats = useCallback((params) => callApi(adminApi.getPaymentHistoryStats, params), [callApi])
@@ -825,6 +864,10 @@ export function useAdminApi() {
     approveSellerWithdrawal,
     rejectSellerWithdrawal,
     getSellerWithdrawalRequests,
+    getSellerChangeRequests,
+    getSellerChangeRequestDetails,
+    approveSellerChangeRequest,
+    rejectSellerChangeRequest,
     getPaymentHistory,
     getPaymentHistoryStats,
     getPaymentHistory,

@@ -315,6 +315,34 @@ router.post('/sellers/withdrawals/:requestId/approve', authorizeAdmin, adminCont
  */
 router.post('/sellers/withdrawals/:requestId/reject', authorizeAdmin, adminController.rejectSellerWithdrawal);
 
+/**
+ * @route   GET /api/admin/sellers/change-requests
+ * @desc    Get all seller change requests
+ * @access  Private (Admin)
+ */
+router.get('/sellers/change-requests', authorizeAdmin, adminController.getSellerChangeRequests);
+
+/**
+ * @route   GET /api/admin/sellers/change-requests/:requestId
+ * @desc    Get seller change request details
+ * @access  Private (Admin)
+ */
+router.get('/sellers/change-requests/:requestId', authorizeAdmin, adminController.getSellerChangeRequestDetails);
+
+/**
+ * @route   POST /api/admin/sellers/change-requests/:requestId/approve
+ * @desc    Approve seller change request
+ * @access  Private (Admin)
+ */
+router.post('/sellers/change-requests/:requestId/approve', authorizeAdmin, adminController.approveSellerChangeRequest);
+
+/**
+ * @route   POST /api/admin/sellers/change-requests/:requestId/reject
+ * @desc    Reject seller change request
+ * @access  Private (Admin)
+ */
+router.post('/sellers/change-requests/:requestId/reject', authorizeAdmin, adminController.rejectSellerChangeRequest);
+
 // ============================================================================
 // UNIFIED WITHDRAWAL MANAGEMENT ROUTES
 // ============================================================================

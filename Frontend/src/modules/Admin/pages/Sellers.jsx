@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Award, Gift, Users, Edit2, Eye, Wallet, CheckCircle, XCircle, ArrowLeft, User, Hash, Percent, Target, IndianRupee, TrendingUp, Calendar, Search } from 'lucide-react'
+import { Award, Gift, Users, Edit2, Eye, Wallet, CheckCircle, XCircle, ArrowLeft, User, Hash, Percent, Target, IndianRupee, TrendingUp, Calendar, Search, Phone, FileText } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { ProgressList } from '../components/ProgressList'
@@ -37,6 +37,10 @@ export function SellersPage({ subRoute = null, navigate }) {
     getSellerWithdrawalRequests,
     approveSellerWithdrawal,
     rejectSellerWithdrawal,
+    getSellerChangeRequests,
+    getSellerChangeRequestDetails,
+    approveSellerChangeRequest,
+    rejectSellerChangeRequest,
     loading,
   } = useAdminApi()
   const { success, error: showError, warning: showWarning } = useToast()
@@ -44,16 +48,20 @@ export function SellersPage({ subRoute = null, navigate }) {
   const [sellersList, setSellersList] = useState([])
   const [allSellersList, setAllSellersList] = useState([])
   const [withdrawalRequests, setWithdrawalRequests] = useState([])
+  const [changeRequests, setChangeRequests] = useState([])
   
   // View states (replacing modals with full-screen views)
-  const [currentView, setCurrentView] = useState(null) // 'sellerForm', 'sellerDetail', 'withdrawalRequest', 'approveSeller', 'rejectSeller', 'editSeller'
+  const [currentView, setCurrentView] = useState(null) // 'sellerForm', 'sellerDetail', 'withdrawalRequest', 'approveSeller', 'rejectSeller', 'editSeller', 'changeRequest', 'approveChangeRequest', 'rejectChangeRequest'
   const [selectedSeller, setSelectedSeller] = useState(null)
   const [selectedSellerForDetail, setSelectedSellerForDetail] = useState(null)
   const [selectedWithdrawalRequest, setSelectedWithdrawalRequest] = useState(null)
+  const [selectedChangeRequest, setSelectedChangeRequest] = useState(null)
   const [selectedSellerForAction, setSelectedSellerForAction] = useState(null)
   const [selectedSellerForEdit, setSelectedSellerForEdit] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [withdrawalRejectReason, setWithdrawalRejectReason] = useState(null) // null = not showing, '' = showing input
+  const [changeRequestRejectReason, setChangeRequestRejectReason] = useState(null) // null = not showing, '' = showing input, string = has value
+  const [changeRequestLoading, setChangeRequestLoading] = useState(false) // Local loading state for change request operations
   const [searchQuery, setSearchQuery] = useState('')
 
   // Format seller data for display
@@ -151,10 +159,19 @@ export function SellersPage({ subRoute = null, navigate }) {
     }
   }, [getSellerWithdrawalRequests])
 
+  // Fetch change requests
+  const fetchChangeRequests = useCallback(async () => {
+    const result = await getSellerChangeRequests({ status: 'pending' })
+    if (result.data?.changeRequests) {
+      setChangeRequests(result.data.changeRequests)
+    }
+  }, [getSellerChangeRequests])
+
   useEffect(() => {
     fetchSellers()
     fetchWithdrawalRequests()
-  }, [fetchSellers, fetchWithdrawalRequests])
+    fetchChangeRequests()
+  }, [fetchSellers, fetchWithdrawalRequests, fetchChangeRequests])
 
   // Refresh when sellers are updated
   useEffect(() => {
@@ -190,6 +207,7 @@ export function SellersPage({ subRoute = null, navigate }) {
     setSelectedSellerForEdit(null)
     setRejectReason('')
     setWithdrawalRejectReason(null)
+    setChangeRequestRejectReason(null)
     if (navigate) navigate('sellers')
   }
 
@@ -314,6 +332,65 @@ export function SellersPage({ subRoute = null, navigate }) {
       }
     } catch (error) {
       showError(error.message || 'Failed to reject withdrawal', 5000)
+    }
+  }
+
+  const handleApproveChangeRequest = async (requestId) => {
+    try {
+      setChangeRequestLoading(true)
+      const result = await approveSellerChangeRequest(requestId)
+      if (result && result.success && result.data) {
+        setCurrentView(null)
+        setSelectedChangeRequest(null)
+        setChangeRequestRejectReason(null)
+        fetchChangeRequests()
+        fetchSellers()
+        success('Change request approved successfully!', 3000)
+        // Navigate back to list if multiple requests exist, otherwise to sellers list
+        if (changeRequests.length > 1) {
+          setCurrentView('changeRequestList')
+        } else {
+          handleBackToList()
+        }
+      } else if (result && result.error) {
+        const errorMessage = result.error.message || 'Failed to approve change request'
+        showError(errorMessage, 5000)
+      } else {
+        showError('Failed to approve change request. Please try again.', 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to approve change request', 5000)
+    } finally {
+      setChangeRequestLoading(false)
+    }
+  }
+
+  const handleRejectChangeRequest = async (requestId, rejectionData) => {
+    try {
+      setChangeRequestLoading(true)
+      const result = await rejectSellerChangeRequest(requestId, rejectionData)
+      if (result && result.success && result.data) {
+        setCurrentView(null)
+        setSelectedChangeRequest(null)
+        setChangeRequestRejectReason(null)
+        fetchChangeRequests()
+        success('Change request rejected successfully.', 3000)
+        // Navigate back to list if multiple requests exist, otherwise to sellers list
+        if (changeRequests.length > 1) {
+          setCurrentView('changeRequestList')
+        } else {
+          handleBackToList()
+        }
+      } else if (result && result.error) {
+        const errorMessage = result.error.message || 'Failed to reject change request'
+        showError(errorMessage, 5000)
+      } else {
+        showError('Failed to reject change request. Please try again.', 5000)
+      }
+    } catch (error) {
+      showError(error.message || 'Failed to reject change request', 5000)
+    } finally {
+      setChangeRequestLoading(false)
     }
   }
 
@@ -941,6 +1018,254 @@ export function SellersPage({ subRoute = null, navigate }) {
     )
   }
 
+  // Change Request List View (when multiple requests exist)
+  if (currentView === 'changeRequestList' && changeRequests.length > 1) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleBackToList}
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-purple-500 hover:bg-purple-50 hover:text-purple-700"
+            title="Back to IRA Partners"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h2 className="text-2xl font-bold text-gray-900">Change Requests ({changeRequests.length})</h2>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-lg">
+          <div className="space-y-4">
+            {changeRequests.map((request) => {
+              const seller = request.sellerId || {}
+              const isNameChange = request.changeType === 'name'
+              const requestId = request._id || request.id
+              
+              return (
+                <div
+                  key={requestId}
+                  className="rounded-xl border border-gray-200 bg-white p-5 hover:border-purple-300 hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                          isNameChange ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
+                        }`}>
+                          {isNameChange ? <User className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-gray-900">
+                            {isNameChange ? 'Name Change Request' : 'Phone Change Request'}
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            {seller.name || 'N/A'} ({seller.sellerId || request.sellerIdCode || 'N/A'})
+                          </p>
+                        </div>
+                      </div>
+                      <div className="ml-[52px] space-y-1">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-500">Current:</span>
+                          <span className="font-semibold text-gray-900">{request.currentValue || 'N/A'}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-500">Requested:</span>
+                          <span className="font-semibold text-green-700">{request.requestedValue || 'N/A'}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                          <Calendar className="h-3 w-3" />
+                          <span>
+                            {request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-IN', { 
+                              day: 'numeric', 
+                              month: 'short', 
+                              year: 'numeric', 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            }) : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedChangeRequest(request)
+                        setChangeRequestRejectReason(null)
+                        setCurrentView('changeRequest')
+                      }}
+                      className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-2.5 text-sm font-bold text-white shadow-[0_4px_15px_rgba(147,51,234,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all hover:shadow-[0_6px_20px_rgba(147,51,234,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]"
+                    >
+                      <Eye className="h-4 w-4" />
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Change Request Detail View
+  if (currentView === 'changeRequest' && selectedChangeRequest) {
+    const request = selectedChangeRequest
+    const requestId = request._id || request.id
+    const seller = request.sellerId || {}
+    const isNameChange = request.changeType === 'name'
+    const isPhoneChange = request.changeType === 'phone'
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => {
+              setChangeRequestRejectReason(null)
+              if (changeRequests.length > 1) {
+                setCurrentView('changeRequestList')
+                setSelectedChangeRequest(null)
+              } else {
+                handleBackToList()
+              }
+            }}
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 transition-all hover:border-purple-500 hover:bg-purple-50 hover:text-purple-700"
+            title={changeRequests.length > 1 ? "Back to Change Requests List" : "Back to IRA Partners"}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {isNameChange ? 'Name Change Request' : 'Phone Change Request'}
+          </h2>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-lg">
+          <div className="space-y-6">
+            {/* Seller Info */}
+            <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-lg">
+                  <User className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{seller.name || 'N/A'}</h3>
+                  <p className="text-sm text-gray-600">IRA Partner ID: {seller.sellerId || request.sellerIdCode || 'N/A'}</p>
+                  <p className="text-sm text-gray-600">Phone: {seller.phone || request.currentValue || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Change Details */}
+            <div className="rounded-xl border border-purple-200 bg-purple-50 p-5">
+              <h4 className="mb-4 text-sm font-bold uppercase tracking-wide text-purple-900">
+                Change Request Details
+              </h4>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-white p-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Current {isNameChange ? 'Name' : 'Phone'}</p>
+                    <p className="mt-1 text-lg font-bold text-gray-900">{request.currentValue || 'N/A'}</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="mx-auto h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+                      <ArrowLeft className="h-4 w-4 text-purple-600 rotate-180" />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-gray-500">Requested {isNameChange ? 'Name' : 'Phone'}</p>
+                    <p className="mt-1 text-lg font-bold text-green-700">{request.requestedValue || 'N/A'}</p>
+                  </div>
+                </div>
+
+                {request.description && (
+                  <div className="rounded-lg border border-purple-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase text-gray-500 mb-2">Description</p>
+                    <p className="text-sm text-gray-700">{request.description}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Calendar className="h-3 w-3" />
+                  <span>Requested on: {request.createdAt ? new Date(request.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning for phone change */}
+            {isPhoneChange && (
+              <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+                <p className="text-sm text-yellow-800">
+                  <strong>Note:</strong> Changing the phone number will require the seller to use the new number for future logins.
+                </p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleBackToList}
+                className="rounded-xl border border-gray-300 bg-white px-6 py-3 text-sm font-bold text-gray-700 transition-all hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              {changeRequestRejectReason === null ? (
+                <button
+                  type="button"
+                  onClick={() => setChangeRequestRejectReason('')}
+                  disabled={changeRequestLoading}
+                  className="flex items-center gap-2 rounded-xl border border-red-300 bg-white px-6 py-3 text-sm font-bold text-red-600 transition-all hover:bg-red-50 disabled:opacity-50"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Reject
+                </button>
+              ) : (
+                <>
+                  <div className="flex-1 rounded-xl border border-red-200 bg-red-50 p-4">
+                    <label className="block text-sm font-semibold text-red-900 mb-2">
+                      Rejection Reason
+                    </label>
+                    <textarea
+                      value={changeRequestRejectReason || ''}
+                      onChange={(e) => setChangeRequestRejectReason(e.target.value)}
+                      placeholder="Enter reason for rejection..."
+                      rows={3}
+                      className="w-full rounded-lg border border-red-300 bg-white p-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (requestId) {
+                        handleRejectChangeRequest(requestId, { reason: changeRequestRejectReason || undefined })
+                      }
+                    }}
+                    disabled={changeRequestLoading}
+                    className="flex items-center gap-2 rounded-xl border border-red-300 bg-red-600 px-6 py-3 text-sm font-bold text-white transition-all hover:bg-red-700 disabled:opacity-50"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Confirm Rejection
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (requestId) {
+                    handleApproveChangeRequest(requestId)
+                  }
+                }}
+                disabled={changeRequestLoading}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 text-sm font-bold text-white shadow-[0_4px_15px_rgba(34,197,94,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all hover:shadow-[0_6px_20px_rgba(34,197,94,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50"
+              >
+                <CheckCircle className="h-4 w-4" />
+                {changeRequestLoading ? 'Processing...' : `Approve ${isNameChange ? 'Name' : 'Phone'} Change`}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (currentView === 'approveSeller' && selectedSellerForAction) {
     const seller = selectedSellerForAction
     return (
@@ -1087,6 +1412,25 @@ export function SellersPage({ subRoute = null, navigate }) {
           </p>
         </div>
         <div className="flex gap-2">
+          {changeRequests.length > 0 && (
+            <button
+              onClick={() => {
+                if (changeRequests.length === 1) {
+                  // If only one request, show it directly
+                  setSelectedChangeRequest(changeRequests[0])
+                  setChangeRequestRejectReason(null)
+                  setCurrentView('changeRequest')
+                } else {
+                  // If multiple requests, show list first
+                  setCurrentView('changeRequestList')
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-2.5 text-sm font-bold text-white shadow-[0_4px_15px_rgba(147,51,234,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all duration-200 hover:shadow-[0_6px_20px_rgba(147,51,234,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] hover:scale-105"
+            >
+              <Edit2 className="h-4 w-4" />
+              Change Requests ({changeRequests.length})
+            </button>
+          )}
           {withdrawalRequests.length > 0 && (
             <button
               onClick={() => {

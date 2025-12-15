@@ -25,6 +25,7 @@ const Notification = require('../models/Notification');
 const Offer = require('../models/Offer');
 const CreditRepayment = require('../models/CreditRepayment');
 const Review = require('../models/Review');
+const SellerChangeRequest = require('../models/SellerChangeRequest');
 const razorpayService = require('../services/razorpayService');
 const { VENDOR_COVERAGE_RADIUS_KM, MIN_VENDOR_PURCHASE, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
 
@@ -3368,6 +3369,227 @@ exports.rejectSellerWithdrawal = async (req, res, next) => {
         },
         message: 'Withdrawal rejected successfully',
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// SELLER CHANGE REQUEST CONTROLLERS
+// ============================================================================
+
+/**
+ * @desc    Get all seller change requests
+ * @route   GET /api/admin/sellers/change-requests
+ * @access  Private (Admin)
+ */
+exports.getSellerChangeRequests = async (req, res, next) => {
+  try {
+    const { status, changeType, page = 1, limit = 20 } = req.query;
+
+    const query = {};
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (changeType) {
+      query.changeType = changeType;
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const changeRequests = await SellerChangeRequest.find(query)
+      .populate('sellerId', 'sellerId name phone email area status isActive')
+      .populate('reviewedBy', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .select('-__v')
+      .lean();
+
+    const total = await SellerChangeRequest.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        changeRequests,
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          totalItems: total,
+          itemsPerPage: limitNum,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get seller change request details
+ * @route   GET /api/admin/sellers/change-requests/:requestId
+ * @access  Private (Admin)
+ */
+exports.getSellerChangeRequestDetails = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+
+    const changeRequest = await SellerChangeRequest.findById(requestId)
+      .populate('sellerId', 'sellerId name phone email area status isActive')
+      .populate('reviewedBy', 'name email')
+      .lean();
+
+    if (!changeRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'Change request not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        changeRequest,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Approve seller change request
+ * @route   POST /api/admin/sellers/change-requests/:requestId/approve
+ * @access  Private (Admin)
+ */
+exports.approveSellerChangeRequest = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+
+    const changeRequest = await SellerChangeRequest.findById(requestId)
+      .populate('sellerId');
+
+    if (!changeRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'Change request not found',
+      });
+    }
+
+    if (changeRequest.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `Change request is already ${changeRequest.status}`,
+      });
+    }
+
+    const seller = changeRequest.sellerId;
+
+    if (!seller) {
+      return res.status(404).json({
+        success: false,
+        message: 'Seller not found',
+      });
+    }
+
+    // Apply the change based on type
+    if (changeRequest.changeType === 'name') {
+      seller.name = changeRequest.requestedValue;
+    } else if (changeRequest.changeType === 'phone') {
+      // Check if phone is already in use by another seller
+      const existingSeller = await Seller.findOne({
+        phone: changeRequest.requestedValue,
+        _id: { $ne: seller._id },
+      });
+
+      if (existingSeller) {
+        return res.status(400).json({
+          success: false,
+          message: 'This phone number is already in use by another seller',
+        });
+      }
+
+      seller.phone = changeRequest.requestedValue;
+    }
+
+    await seller.save();
+
+    // Update change request status
+    changeRequest.status = 'approved';
+    changeRequest.reviewedBy = req.admin._id;
+    changeRequest.reviewedAt = new Date();
+    await changeRequest.save();
+
+    console.log(`✅ Seller change request approved: ${changeRequest.requestId} - ${changeRequest.changeType} change for seller ${seller.sellerId}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        changeRequest,
+        seller: {
+          id: seller._id,
+          sellerId: seller.sellerId,
+          name: seller.name,
+          phone: seller.phone,
+        },
+      },
+      message: 'Change request approved and applied successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Reject seller change request
+ * @route   POST /api/admin/sellers/change-requests/:requestId/reject
+ * @access  Private (Admin)
+ */
+exports.rejectSellerChangeRequest = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const { reason } = req.body;
+
+    const changeRequest = await SellerChangeRequest.findById(requestId)
+      .populate('sellerId', 'sellerId name phone');
+
+    if (!changeRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'Change request not found',
+      });
+    }
+
+    if (changeRequest.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: `Change request is already ${changeRequest.status}`,
+      });
+    }
+
+    // Reject change request
+    changeRequest.status = 'rejected';
+    changeRequest.reviewedBy = req.admin._id;
+    changeRequest.reviewedAt = new Date();
+    if (reason) {
+      changeRequest.rejectionReason = reason;
+    }
+    await changeRequest.save();
+
+    console.log(`❌ Seller change request rejected: ${changeRequest.requestId} - ${changeRequest.changeType} change for seller ${changeRequest.sellerId?.sellerId || 'N/A'}${reason ? ` - Reason: ${reason}` : ''}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        changeRequest,
+      },
+      message: 'Change request rejected successfully',
     });
   } catch (error) {
     next(error);

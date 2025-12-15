@@ -11,6 +11,7 @@ const Commission = require('../models/Commission');
 const WithdrawalRequest = require('../models/WithdrawalRequest');
 const BankAccount = require('../models/BankAccount');
 const PaymentHistory = require('../models/PaymentHistory');
+const SellerChangeRequest = require('../models/SellerChangeRequest');
 
 const { sendOTP } = require('../utils/otp');
 const { getTestOTPInfo } = require('../services/smsIndiaHubService');
@@ -2567,6 +2568,214 @@ exports.deleteBankAccount = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Bank account deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// PROFILE CHANGE REQUEST CONTROLLERS
+// ============================================================================
+
+/**
+ * @desc    Request name change
+ * @route   POST /api/sellers/profile/request-name-change
+ * @access  Private (Seller)
+ */
+exports.requestNameChange = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { requestedName, description } = req.body;
+
+    if (!requestedName || !requestedName.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Requested name is required',
+      });
+    }
+
+    // Check if there's already a pending name change request
+    const existingRequest = await SellerChangeRequest.findOne({
+      sellerId: seller._id,
+      changeType: 'name',
+      status: 'pending',
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a pending name change request. Please wait for admin approval.',
+      });
+    }
+
+    // Generate unique request ID
+    const requestId = await generateUniqueId(SellerChangeRequest, 'SCR', 'requestId', 101);
+
+    // Create change request
+    const changeRequest = await SellerChangeRequest.create({
+      requestId,
+      sellerId: seller._id,
+      sellerIdCode: seller.sellerId,
+      changeType: 'name',
+      currentValue: seller.name,
+      requestedValue: requestedName.trim(),
+      description: description || '',
+      status: 'pending',
+    });
+
+    console.log(`📝 Name change request created: ${requestId} for seller ${seller.sellerId}`);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        changeRequest,
+      },
+      message: 'Name change request submitted successfully. Awaiting admin approval.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Request phone change
+ * @route   POST /api/sellers/profile/request-phone-change
+ * @access  Private (Seller)
+ */
+exports.requestPhoneChange = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { requestedPhone, description } = req.body;
+
+    // Debug logging
+    console.log('📞 Phone change request received:', {
+      sellerId: seller?._id,
+      requestedPhone,
+      body: req.body,
+    });
+
+    if (!requestedPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Requested phone number is required',
+      });
+    }
+
+    const trimmedPhone = String(requestedPhone).trim();
+    if (!trimmedPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Requested phone number cannot be empty',
+      });
+    }
+
+    // Validate phone format
+    const phoneRegex = /^[+]?[1-9]\d{9,14}$/;
+    if (!phoneRegex.test(trimmedPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: `Please provide a valid phone number. Format: 10-15 digits, optionally starting with +. Received: ${trimmedPhone}`,
+      });
+    }
+
+    // Check if phone is already in use by another seller
+    const existingSeller = await Seller.findOne({
+      phone: trimmedPhone,
+      _id: { $ne: seller._id },
+    });
+
+    if (existingSeller) {
+      return res.status(400).json({
+        success: false,
+        message: 'This phone number is already in use by another seller',
+      });
+    }
+
+    // Check if there's already a pending phone change request
+    const existingRequest = await SellerChangeRequest.findOne({
+      sellerId: seller._id,
+      changeType: 'phone',
+      status: 'pending',
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a pending phone change request. Please wait for admin approval.',
+      });
+    }
+
+    // Generate unique request ID
+    const requestId = await generateUniqueId(SellerChangeRequest, 'SCR', 'requestId', 101);
+
+    // Create change request
+    const changeRequest = await SellerChangeRequest.create({
+      requestId,
+      sellerId: seller._id,
+      sellerIdCode: seller.sellerId,
+      changeType: 'phone',
+      currentValue: seller.phone,
+      requestedValue: trimmedPhone,
+      description: description || '',
+      status: 'pending',
+    });
+
+    console.log(`📝 Phone change request created: ${requestId} for seller ${seller.sellerId}`);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        changeRequest,
+      },
+      message: 'Phone change request submitted successfully. Awaiting admin approval.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get change requests
+ * @route   GET /api/sellers/profile/change-requests
+ * @access  Private (Seller)
+ */
+exports.getChangeRequests = async (req, res, next) => {
+  try {
+    const seller = req.seller;
+    const { status, page = 1, limit = 20 } = req.query;
+
+    const query = { sellerId: seller._id };
+
+    if (status) {
+      query.status = status;
+    }
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const changeRequests = await SellerChangeRequest.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .select('-__v')
+      .lean();
+
+    const total = await SellerChangeRequest.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        changeRequests,
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          totalItems: total,
+          itemsPerPage: limitNum,
+        },
+      },
     });
   } catch (error) {
     next(error);
