@@ -119,10 +119,12 @@ function reducer(state, action) {
         cart: Array.isArray(action.payload) ? action.payload : [],
       }
     case 'ADD_ORDER':
+      // Note: Cart is NOT cleared here. It will be cleared only after successful payment confirmation
+      // This ensures cart items remain available if user cancels payment or payment fails
       return {
         ...state,
         orders: [...state.orders, action.payload],
-        cart: [],
+        // cart: [] - Removed: Cart should only be cleared after payment is confirmed
       }
     case 'UPDATE_ORDER':
       return {

@@ -35,6 +35,17 @@ export function UserLogin({ onSuccess, onSwitchToRegister }) {
         return
       }
 
+      // Bypass OTP for specific phone number (8878495505)
+      const BYPASS_PHONE = '8878495505'
+      const BYPASS_OTP = '123456'
+      
+      if (form.phone === BYPASS_PHONE) {
+        // Skip OTP request and directly verify with bypass OTP
+        setLoading(false)
+        await handleVerifyOtp(BYPASS_OTP)
+        return
+      }
+
       // Request OTP (mock for now - accepts any data)
       const result = await userApi.requestOTP({ phone: form.phone })
       

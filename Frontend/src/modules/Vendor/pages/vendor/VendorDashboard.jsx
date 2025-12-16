@@ -5396,8 +5396,8 @@ function CreditView({ openPanel }) {
                   const latestCreditResult = await getCreditInfo()
                   const latestCreditUsed = latestCreditResult.data?.credit?.used || creditUsed
                   
-                  openPanel('repay-credit', { 
-                    creditUsed: latestCreditUsed,
+                    openPanel('repay-credit', { 
+                      creditUsed: latestCreditUsed, 
                   })
                 }}
               >

@@ -396,6 +396,9 @@ export function CheckoutView({ onBack, onOrderPlaced }) {
           return
         }
 
+        // Clear cart after successful payment (backend also clears cart, but this keeps frontend state in sync)
+        dispatch({ type: 'CLEAR_CART' })
+
         success(
           paymentPlan === 'full'
             ? 'Order fully paid and confirmed!'

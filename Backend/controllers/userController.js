@@ -2624,9 +2624,8 @@ exports.createOrder = async (req, res, next) => {
     console.log(`   - assignedTo: ${order.assignedTo}`);
     console.log(`   - deliveryAddress.city: ${order.deliveryAddress?.city || 'N/A'}`);
 
-    // Clear cart after order creation
-    cart.clear();
-    await cart.save();
+    // Note: Cart is NOT cleared here. It will be cleared only after successful payment confirmation
+    // This ensures cart items remain available if user cancels payment or payment fails
 
     res.status(201).json({
       success: true,
@@ -3249,6 +3248,20 @@ exports.confirmPayment = async (req, res, next) => {
     }
     
     await order.save();
+
+    // Clear cart only after payment is successfully confirmed
+    // This ensures cart items remain available if user cancels payment or payment fails
+    try {
+      const cart = await Cart.findOne({ userId });
+      if (cart) {
+        cart.clear();
+        await cart.save();
+        console.log(`🛒 Cart cleared for user ${userId} after successful payment for order ${order.orderNumber}`);
+      }
+    } catch (cartError) {
+      console.error('Error clearing cart after payment confirmation:', cartError);
+      // Don't fail payment confirmation if cart clearing fails
+    }
 
     // Process earnings (vendor earnings and seller commission) when order is fully paid
     if (order.paymentStatus === PAYMENT_STATUS.FULLY_PAID) {
