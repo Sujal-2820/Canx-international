@@ -299,7 +299,7 @@
   gap: 1.15rem;
   padding: 1.35rem 1.4rem 1.5rem;
   border-radius: 28px;
-  background: linear-gradient(150deg, rgba(35, 95, 65, 0.65), rgba(38, 100, 68, 0.63), rgba(41, 105, 72, 0.61));
+  background: #2b8a5d;
   color: var(--vendor-ink);
   box-shadow: 0 24px 48px -30px rgba(13, 38, 24, 0.32);
   overflow: hidden;
@@ -312,6 +312,7 @@
   height: 220px;
   background: radial-gradient(circle, rgba(164, 208, 178, 0.35), transparent 70%);
   pointer-events: none;
+  display: none;
 }
 
 .overview-hero__meta {
@@ -486,7 +487,7 @@
   gap: 1.4rem;
   padding: 1.5rem 1.6rem;
   border-radius: 28px;
-  background: linear-gradient(150deg, rgba(35, 95, 65, 0.65), rgba(38, 100, 68, 0.63), rgba(41, 105, 72, 0.61));
+  background: #2b8a5d;
   box-shadow: 0 24px 48px -30px rgba(13, 38, 24, 0.32);
   overflow: hidden;
 }
@@ -498,6 +499,7 @@
   height: 220px;
   background: radial-gradient(circle, rgba(164, 208, 178, 0.35), transparent 70%);
   pointer-events: none;
+  display: none;
 }
 
 .inventory-hero__headline {
@@ -1041,7 +1043,7 @@
   gap: 1.25rem;
   padding: 1.5rem 1.65rem;
   border-radius: 28px;
-  background: linear-gradient(150deg, rgba(35, 95, 65, 0.65), rgba(38, 100, 68, 0.63), rgba(41, 105, 72, 0.61));
+  background: #2b8a5d;
   box-shadow: 0 24px 48px -30px rgba(13, 38, 24, 0.32);
   overflow: hidden;
 }
@@ -1053,6 +1055,7 @@
   height: 220px;
   background: radial-gradient(circle, rgba(164, 208, 178, 0.35), transparent 70%);
   pointer-events: none;
+  display: none;
 }
 
 .orders-hero__headline {
@@ -2026,7 +2029,7 @@
   overflow: hidden;
 }
 
-.vendor-progress > span {
+.vendor-progress>span {
   display: block;
   height: 100%;
   border-radius: inherit;
@@ -2503,12 +2506,12 @@
     justify-items: center;
     gap: 1.2rem;
   }
-  
+
   .credit-status-card__details {
     width: 100%;
     text-align: center;
   }
-  
+
   .credit-status-card__quick-info {
     text-align: left;
   }
@@ -3031,7 +3034,7 @@
   gap: 1rem;
   padding: 1.3rem 1.4rem;
   border-radius: 28px;
-  background: linear-gradient(150deg, rgba(35, 95, 65, 0.65), rgba(38, 100, 68, 0.63), rgba(41, 105, 72, 0.61));
+  background: #2b8a5d;
   box-shadow: 0 24px 48px -30px rgba(13, 38, 24, 0.32);
   overflow: hidden;
 }
@@ -3043,6 +3046,7 @@
   height: 220px;
   background: radial-gradient(circle, rgba(164, 208, 178, 0.35), transparent 70%);
   pointer-events: none;
+  display: none;
 }
 
 .reports-summary-card__content {
@@ -3255,6 +3259,7 @@
     opacity: 0;
     transform: translateY(4px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -4076,32 +4081,32 @@
   .bank-account-form-view {
     padding: 0;
   }
-  
+
   .bank-account-form-view__header {
     padding: 0 0 1rem 0;
     gap: 0.75rem;
   }
-  
+
   .bank-account-form-view__header h4 {
     font-size: 1.1rem;
   }
-  
+
   .vendor-action-panel__input {
     width: 100% !important;
     box-sizing: border-box !important;
   }
-  
+
   .vendor-action-panel__label {
     width: 100% !important;
     word-wrap: break-word;
     overflow-wrap: break-word;
   }
-  
+
   .vendor-action-panel__form {
     width: 100% !important;
     box-sizing: border-box;
   }
-  
+
   .vendor-action-panel__button {
     min-width: 0 !important;
     width: 100% !important;
@@ -4391,7 +4396,7 @@
   text-overflow: ellipsis;
 }
 
-.vendor-info-display__item--repayment > * {
+.vendor-info-display__item--repayment>* {
   flex-shrink: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -4631,6 +4636,7 @@
     transform: translateY(-20px);
     opacity: 0;
   }
+
   to {
     transform: translateY(0);
     opacity: 1;
@@ -4755,33 +4761,44 @@
 }
 
 @keyframes vendor-bell-vibrate {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: rotate(0deg) translateY(0);
   }
+
   10% {
     transform: rotate(-10deg) translateY(-2px);
   }
+
   20% {
     transform: rotate(10deg) translateY(-2px);
   }
+
   30% {
     transform: rotate(-8deg) translateY(0);
   }
+
   40% {
     transform: rotate(8deg) translateY(0);
   }
+
   50% {
     transform: rotate(-5deg) translateY(0);
   }
+
   60% {
     transform: rotate(5deg) translateY(0);
   }
+
   70% {
     transform: rotate(-3deg) translateY(0);
   }
+
   80% {
     transform: rotate(3deg) translateY(0);
   }
+
   90% {
     transform: rotate(0deg) translateY(0);
   }
@@ -5036,4 +5053,3 @@
   color: rgba(26, 42, 34, 0.5);
   margin-top: 0.25rem;
 }
-

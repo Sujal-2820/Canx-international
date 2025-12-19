@@ -59,9 +59,12 @@ export function ProfileView({ onLogout, onNavigate }) {
       })
       // Check for success
       if (result && (result.success || (result.data && !result.error))) {
-        success('Your request has been sent to Admin. Necessary action shall be taken within 24 hours.')
         setNameChangeForm({ requestedName: '', confirmName: '' })
         setShowNameChangePanel(false)
+        // Show success notification after panel closes
+        setTimeout(() => {
+          success('Name change request sent to Admin. Kindly wait for the Admin approval.')
+        }, 100)
       } else if (result && result.error) {
         showError(result.error.message || 'Failed to submit name change request')
       } else {
@@ -94,9 +97,12 @@ export function ProfileView({ onLogout, onNavigate }) {
       })
       // Check for success
       if (result && result.success) {
-        success('Your request has been sent to Admin. Necessary action shall be taken within 24 hours.')
         setPhoneChangeForm({ requestedPhone: '', confirmPhone: '' })
         setShowPhoneChangePanel(false)
+        // Show success notification after panel closes
+        setTimeout(() => {
+          success('Phone number change request sent to Admin. Kindly wait for the Admin approval.')
+        }, 100)
       } else if (result && result.error) {
         // Show the specific error message from the backend
         const errorMessage = result.error.message || 'Failed to submit phone change request'
@@ -346,11 +352,10 @@ export function ProfileView({ onLogout, onNavigate }) {
                     value={nameChangeForm.confirmName}
                     onChange={(e) => setNameChangeForm({ ...nameChangeForm, confirmName: e.target.value })}
                     placeholder="Enter the name again to confirm"
-                    className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none ${
-                      nameChangeForm.confirmName && nameChangeForm.requestedName.trim() !== nameChangeForm.confirmName.trim()
+                    className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none ${nameChangeForm.confirmName && nameChangeForm.requestedName.trim() !== nameChangeForm.confirmName.trim()
                         ? 'border-red-300 bg-red-50 focus:border-red-500'
                         : 'border-[rgba(34,94,65,0.15)] bg-white focus:border-[#1b8f5b]'
-                    }`}
+                      }`}
                   />
                   {nameChangeForm.confirmName && nameChangeForm.requestedName.trim() !== nameChangeForm.confirmName.trim() && (
                     <p className="mt-1 text-xs text-red-600">Name does not match. Please enter the same name.</p>
@@ -430,11 +435,10 @@ export function ProfileView({ onLogout, onNavigate }) {
                     value={phoneChangeForm.confirmPhone}
                     onChange={(e) => setPhoneChangeForm({ ...phoneChangeForm, confirmPhone: e.target.value })}
                     placeholder="Enter the phone number again to confirm"
-                    className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none ${
-                      phoneChangeForm.confirmPhone && phoneChangeForm.requestedPhone.trim() !== phoneChangeForm.confirmPhone.trim()
+                    className={`w-full px-3 py-2.5 rounded-lg border text-sm focus:outline-none ${phoneChangeForm.confirmPhone && phoneChangeForm.requestedPhone.trim() !== phoneChangeForm.confirmPhone.trim()
                         ? 'border-red-300 bg-red-50 focus:border-red-500'
                         : 'border-[rgba(34,94,65,0.15)] bg-white focus:border-[#1b8f5b]'
-                    }`}
+                      }`}
                   />
                   {phoneChangeForm.confirmPhone && phoneChangeForm.requestedPhone.trim() !== phoneChangeForm.confirmPhone.trim() && (
                     <p className="mt-1 text-xs text-red-600">Phone number does not match. Please enter the same phone number.</p>
