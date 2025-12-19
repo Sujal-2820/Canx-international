@@ -15,6 +15,20 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
   const [expandedVariants, setExpandedVariants] = useState({}) // Track expanded state: { variantId: true/false }
   const fetchingProductsRef = useRef(new Set()) // Track which products are currently being fetched
 
+  // Optimistic quantity state for instant UI updates
+  const [optimisticQuantities, setOptimisticQuantities] = useState({})
+
+  // Sync optimistic quantities when cart updates from backend
+  useEffect(() => {
+    // Update optimistic quantities to match actual cart state
+    const newOptimisticQuantities = {}
+    cart.forEach(item => {
+      const id = item.id || item._id || item.cartItemId
+      newOptimisticQuantities[id] = item.quantity
+    })
+    setOptimisticQuantities(newOptimisticQuantities)
+  }, [cart])
+
   // Fetch suggested products (exclude items already in cart)
   useEffect(() => {
     const loadSuggested = async () => {
@@ -33,7 +47,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
         console.error('Error loading suggested products:', error)
       }
     }
-    
+
     if (cart.length > 0) {
       loadSuggested()
     }
@@ -45,17 +59,17 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
       // Use functional update to check current state without adding to dependencies
       setCartProducts(currentProducts => {
         // Only fetch products that aren't already loaded and aren't currently being fetched
-        const productsToFetch = cart.filter(item => 
+        const productsToFetch = cart.filter(item =>
           !currentProducts[item.productId] && !fetchingProductsRef.current.has(item.productId)
         )
-        
+
         if (productsToFetch.length === 0) {
           return currentProducts // All products already loaded or being fetched
         }
-        
+
         // Mark products as being fetched
         productsToFetch.forEach(item => fetchingProductsRef.current.add(item.productId))
-        
+
         // Fetch missing products and update incrementally (async, doesn't block return)
         productsToFetch.forEach(async (item) => {
           try {
@@ -74,12 +88,12 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
             fetchingProductsRef.current.delete(item.productId)
           }
         })
-        
+
         // Return current products immediately (new products will be added via setState above)
         return currentProducts
       })
     }
-    
+
     if (cart.length > 0) {
       loadCartProducts()
     } else {
@@ -93,9 +107,9 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
   const groupedCartItems = useMemo(() => {
     console.log('🛒 Cart Data:', cart)
     console.log('🛒 Cart Products:', cartProducts)
-    
+
     const grouped = {}
-    
+
     cart.forEach((item, index) => {
       console.log(`\n📦 Cart Item ${index + 1}:`, {
         id: item.id,
@@ -108,10 +122,10 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
         quantity: item.quantity,
         fullItem: item
       })
-      
+
       const product = cartProducts[item.productId]
       console.log(`📦 Product for ${item.productId}:`, product)
-      
+
       // Use variant-specific price (unitPrice) if available, otherwise fallback
       const unitPrice = item.unitPrice || item.price || (product ? (product.priceToUser || product.price || 0) : 0)
       console.log(`💰 Unit Price calculated:`, unitPrice, {
@@ -120,13 +134,13 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
         'product.priceToUser': product?.priceToUser,
         'product.price': product?.price
       })
-      
+
       // Check if item has variant attributes
       const variantAttrs = item.variantAttributes || {}
       const hasVariants = variantAttrs && typeof variantAttrs === 'object' && Object.keys(variantAttrs).length > 0
       console.log(`🔖 Variant Attributes:`, variantAttrs, 'Has Variants:', hasVariants)
       const key = item.productId
-      
+
       if (!grouped[key]) {
         grouped[key] = {
           productId: item.productId,
@@ -137,7 +151,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
           hasVariants: false,
         }
       }
-      
+
       // Add this item as a variant - ensure we have proper ID and variant attributes
       const variantItem = {
         ...item,
@@ -148,17 +162,17 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
         variantAttributes: variantAttrs, // Ensure variant attributes are included
         hasVariants,
       }
-      
+
       console.log(`✅ Adding variant to group ${key}:`, variantItem)
-      
+
       grouped[key].variants.push(variantItem)
-      
+
       // Mark as having variants if any variant exists
       if (hasVariants) {
         grouped[key].hasVariants = true
       }
     })
-    
+
     const groupedArray = Object.values(grouped)
     console.log('\n📊 Final Grouped Cart Items:', groupedArray)
     console.log('📊 Grouped Items Summary:', groupedArray.map(g => ({
@@ -176,7 +190,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
         hasVariantAttrs: v.variantAttributes && Object.keys(v.variantAttributes).length > 0
       }))
     })))
-    
+
     // Verify all cart items are included
     const totalCartItems = cart.length
     const totalGroupedVariants = groupedArray.reduce((sum, g) => sum + g.variants.length, 0)
@@ -184,14 +198,19 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
     if (totalCartItems !== totalGroupedVariants) {
       console.warn('⚠️ WARNING: Cart items count mismatch! Some items may be missing.')
     }
-    
+
     return groupedArray
   }, [cart, cartProducts])
 
   const totals = useMemo(() => {
     const subtotal = groupedCartItems.reduce((sum, group) => {
       return sum + group.variants.reduce((variantSum, variant) => {
-        return variantSum + (variant.unitPrice * variant.quantity)
+        const variantId = variant.id || variant._id || variant.cartItemId
+        // Use optimistic quantity if available, otherwise use actual quantity
+        const quantity = optimisticQuantities[variantId] !== undefined
+          ? optimisticQuantities[variantId]
+          : variant.quantity
+        return variantSum + (variant.unitPrice * quantity)
       }, 0)
     }, 0)
     const delivery = subtotal >= 5000 ? 0 : 50 // Free delivery above ₹5,000
@@ -205,7 +224,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
       meetsMinimum,
       shortfall: meetsMinimum ? 0 : MIN_ORDER_VALUE - total,
     }
-  }, [groupedCartItems])
+  }, [groupedCartItems, optimisticQuantities])
 
   const totalItemsCount = useMemo(() => {
     return groupedCartItems.reduce((sum, group) => sum + group.variants.length, 0)
@@ -254,7 +273,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
                 const variantId = variant.id || variant._id || variant.cartItemId
                 const cartItemId = variant.cartItemId || variant.id || variant._id
                 const isExpanded = expandedVariants[variantId] || false
-                
+
                 return (
                   <div key={variantId || variant.cartItemId || `variant-${groupIndex}-${variantIdx}`} className="rounded-xl bg-white border border-[rgba(34,94,65,0.1)] overflow-hidden">
                     {/* Variant Header - Collapsible */}
@@ -308,14 +327,14 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
                           })()}
                         </div>
                       </div>
-                      <ChevronRightIcon 
+                      <ChevronRightIcon
                         className={cn(
                           "h-4 w-4 text-[rgba(26,42,34,0.5)] transition-transform shrink-0",
                           isExpanded && "rotate-90"
                         )}
                       />
                     </button>
-                    
+
                     {/* Expanded Variant Details */}
                     {isExpanded && (
                       <div className="px-3 pb-3 border-t border-[rgba(34,94,65,0.1)] bg-[rgba(240,245,242,0.2)]">
@@ -336,7 +355,7 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
                         )}
                       </div>
                     )}
-                    
+
                     {/* Variant Controls - Always visible */}
                     <div className="flex items-center justify-between gap-3 p-3 border-t border-[rgba(34,94,65,0.1)] bg-[rgba(240,245,242,0.1)]">
                       <div className="flex items-center gap-2 border border-[rgba(34,94,65,0.2)] rounded-xl bg-white">
@@ -345,32 +364,48 @@ export function CartView({ onUpdateQuantity, onRemove, onCheckout, onAddToCart }
                           className="p-1.5 hover:bg-[rgba(240,245,242,0.5)] transition-colors"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onUpdateQuantity(variantId, variant.quantity - 1)
+                            const currentQty = optimisticQuantities[variantId] !== undefined
+                              ? optimisticQuantities[variantId]
+                              : variant.quantity
+                            const newQty = Math.max(1, currentQty - 1)
+                            // Optimistic update
+                            setOptimisticQuantities(prev => ({ ...prev, [variantId]: newQty }))
+                            // Actual backend update
+                            onUpdateQuantity(variantId, newQty)
                           }}
-                          disabled={variant.quantity <= 1}
+                          disabled={(optimisticQuantities[variantId] !== undefined ? optimisticQuantities[variantId] : variant.quantity) <= 1}
                         >
                           <MinusIcon className="h-4 w-4" />
                         </button>
-                        <span className="px-2 text-sm font-semibold text-[#172022] min-w-[2rem] text-center">{variant.quantity}</span>
+                        <span className="px-2 text-sm font-semibold text-[#172022] min-w-[2rem] text-center">
+                          {optimisticQuantities[variantId] !== undefined ? optimisticQuantities[variantId] : variant.quantity}
+                        </span>
                         <button
                           type="button"
                           className="p-1.5 hover:bg-[rgba(240,245,242,0.5)] transition-colors"
                           onClick={(e) => {
                             e.stopPropagation()
-                            onUpdateQuantity(variantId, variant.quantity + 1)
+                            const currentQty = optimisticQuantities[variantId] !== undefined
+                              ? optimisticQuantities[variantId]
+                              : variant.quantity
+                            const newQty = currentQty + 1
+                            // Optimistic update
+                            setOptimisticQuantities(prev => ({ ...prev, [variantId]: newQty }))
+                            // Actual backend update
+                            onUpdateQuantity(variantId, newQty)
                           }}
                         >
                           <PlusIcon className="h-4 w-4" />
                         </button>
                       </div>
-                      
+
                       {/* Variant Total */}
                       <div className="text-right min-w-[80px]">
                         <div className="text-base font-bold text-[#172022]">
-                          ₹{((variant.unitPrice || 0) * variant.quantity).toLocaleString('en-IN')}
+                          ₹{((variant.unitPrice || 0) * (optimisticQuantities[variantId] !== undefined ? optimisticQuantities[variantId] : variant.quantity)).toLocaleString('en-IN')}
                         </div>
                       </div>
-                      
+
                       <button
                         type="button"
                         className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
