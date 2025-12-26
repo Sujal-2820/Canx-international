@@ -2673,30 +2673,15 @@ function InventoryView({ openPanel, onNavigate }) {
                   // Use cached variant details if available, otherwise check product.attributeStocks
                   const productWithVariants = productsWithVariants[productId] || product
 
-                  // Check multiple sources for variants:
-                  // 1. attributeStocks array (detailed variant info)
-                  // 2. variants array (basic variant info from product list)
-                  const hasAttributeStocks = productWithVariants.attributeStocks &&
+                  // Simplified variant detection:
+                  // A product has variants if it has attributeStocks array with at least one entry
+                  const hasVariants = Boolean(
+                    productWithVariants.attributeStocks &&
                     Array.isArray(productWithVariants.attributeStocks) &&
-                    productWithVariants.attributeStocks.length > 0 &&
-                    productWithVariants.attributeStocks.some(stock => {
-                      if (!stock) return false
-                      // Check if stock has attributes object with at least one key
-                      if (stock.attributes && typeof stock.attributes === 'object') {
-                        const attrKeys = Object.keys(stock.attributes)
-                        if (attrKeys.length > 0) {
-                          // Check if at least one attribute value is not empty
-                          return attrKeys.some(key => stock.attributes[key] != null && stock.attributes[key] !== '')
-                        }
-                      }
-                      return false
-                    })
+                    productWithVariants.attributeStocks.length > 0
+                  )
 
-                  const hasVariantsArray = product.variants &&
-                    Array.isArray(product.variants) &&
-                    product.variants.length > 0
-
-                  const hasVariants = hasAttributeStocks || hasVariantsArray
+                  console.log(`[Inventory] Product ${product.name} - hasVariants:`, hasVariants, 'attributeStocks:', productWithVariants.attributeStocks)
 
                   // Use product with variants for rendering
                   const productToRender = hasVariants && isExpanded ? productWithVariants : product

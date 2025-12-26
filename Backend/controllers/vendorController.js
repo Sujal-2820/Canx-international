@@ -2850,7 +2850,7 @@ exports.getProducts = async (req, res, next) => {
 
     // Get all active products (vendors can see all products to order)
     const products = await Product.find(query)
-      .select('name description category priceToVendor displayStock actualStock images sku weight expiry')
+      .select('name description category priceToVendor displayStock actualStock images sku weight expiry attributeStocks')
       .sort(sort)
       .skip(skip)
       .limit(limitNum)
