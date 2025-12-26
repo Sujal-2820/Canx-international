@@ -2672,7 +2672,11 @@ function InventoryView({ openPanel, onNavigate }) {
                   // Check if product has variants (either from list or from cached details)
                   // Use cached variant details if available, otherwise check product.attributeStocks
                   const productWithVariants = productsWithVariants[productId] || product
-                  const hasVariants = productWithVariants.attributeStocks &&
+
+                  // Check multiple sources for variants:
+                  // 1. attributeStocks array (detailed variant info)
+                  // 2. variants array (basic variant info from product list)
+                  const hasAttributeStocks = productWithVariants.attributeStocks &&
                     Array.isArray(productWithVariants.attributeStocks) &&
                     productWithVariants.attributeStocks.length > 0 &&
                     productWithVariants.attributeStocks.some(stock => {
@@ -2687,6 +2691,12 @@ function InventoryView({ openPanel, onNavigate }) {
                       }
                       return false
                     })
+
+                  const hasVariantsArray = product.variants &&
+                    Array.isArray(product.variants) &&
+                    product.variants.length > 0
+
+                  const hasVariants = hasAttributeStocks || hasVariantsArray
 
                   // Use product with variants for rendering
                   const productToRender = hasVariants && isExpanded ? productWithVariants : product

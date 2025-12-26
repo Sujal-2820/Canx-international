@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { OtpVerification } from '../../../../components/auth/OtpVerification'
 import { useVendorDispatch } from '../../context/VendorContext'
 import * as vendorApi from '../../services/vendorApi'
+import { validatePhoneNumber } from '../../../../utils/phoneValidation'
 
 export function VendorLogin({ onSuccess, onSwitchToRegister }) {
   const dispatch = useVendorDispatch()
@@ -27,15 +28,19 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
         setLoading(false)
         return
       }
-      if (form.phone.length < 10) {
-        setError('Please enter a valid contact number')
+
+      // Validate phone number
+      const validation = validatePhoneNumber(form.phone)
+      if (!validation.isValid) {
+        setError(validation.error)
         setLoading(false)
         return
       }
 
-      const result = await vendorApi.requestVendorOTP({ phone: form.phone })
-      
+      const result = await vendorApi.requestVendorOTP({ phone: validation.normalized })
+
       if (result.success || result.data) {
+        setForm(prev => ({ ...prev, phone: validation.normalized }))
         setStep('otp')
       } else {
         setError(result.error?.message || 'Failed to send OTP. Please try again.')
@@ -59,7 +64,7 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
         if (result.data?.token || result.data?.data?.token) {
           localStorage.setItem('vendor_token', result.data?.token || result.data?.data?.token)
         }
-        
+
         // Update vendor context with profile
         if (vendorData) {
           dispatch({
@@ -75,7 +80,7 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
             },
           })
         }
-        
+
         onSuccess?.(vendorData || { phone: form.phone })
       } else {
         // Check if vendor needs to register

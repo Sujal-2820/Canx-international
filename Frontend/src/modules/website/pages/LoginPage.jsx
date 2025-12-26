@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
 import { useWebsiteDispatch } from '../context/WebsiteContext'
 import * as websiteApi from '../services/websiteApi'
+import { validatePhoneNumber } from '../../../utils/phoneValidation'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -29,16 +30,20 @@ export function LoginPage() {
         setLoading(false)
         return
       }
-      if (form.phone.length < 10) {
-        setError('Please enter a valid contact number')
+
+      // Validate phone number
+      const validation = validatePhoneNumber(form.phone)
+      if (!validation.isValid) {
+        setError(validation.error)
         setLoading(false)
         return
       }
 
       // Request OTP using websiteApi
-      const result = await websiteApi.requestOTP({ phone: form.phone })
-      
+      const result = await websiteApi.requestOTP({ phone: validation.normalized })
+
       if (result.success || result.data) {
+        setForm(prev => ({ ...prev, phone: validation.normalized }))
         setStep('otp')
       } else {
         setError(result.error?.message || 'Failed to send OTP. Please try again.')
@@ -59,11 +64,11 @@ export function LoginPage() {
       const result = await websiteApi.loginWithOtp({ phone: form.phone, otp: otpCode })
 
       if (result.success || result.data) {
-          // Store token if provided (same user_token as User module)
-          if (result.data?.token) {
-            localStorage.setItem('user_token', result.data.token)
-          }
-        
+        // Store token if provided (same user_token as User module)
+        if (result.data?.token) {
+          localStorage.setItem('user_token', result.data.token)
+        }
+
         // Update WebsiteContext with user data
         const userData = result.data?.user || { name: 'User', phone: form.phone }
         dispatch({
@@ -75,7 +80,7 @@ export function LoginPage() {
             location: userData.location || null,
           },
         })
-        
+
         // Navigate to website homepage
         navigate('/')
       } else {

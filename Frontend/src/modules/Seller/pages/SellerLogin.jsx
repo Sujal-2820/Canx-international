@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
 import * as sellerApi from '../services/sellerApi'
 import { useSellerDispatch } from '../context/SellerContext'
+import { validatePhoneNumber, extractPhoneDigits } from '../../../utils/phoneValidation'
 
 export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
   const [step, setStep] = useState('phone') // 'phone' | 'otp' | 'pending'
@@ -32,14 +33,18 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
         setLoading(false)
         return
       }
-      if (form.phone.length < 10) {
-        setError('Please enter a valid contact number')
+
+      // Validate phone number
+      const validation = validatePhoneNumber(form.phone)
+      if (!validation.isValid) {
+        setError(validation.error)
         setLoading(false)
         return
       }
 
-      // Bypass OTP screen for the configured seller phone
-      if (form.phone === BYPASS_PHONE) {
+      // Bypass OTP screen for the configured seller phone (compare digits only)
+      const phoneDigits = extractPhoneDigits(form.phone)
+      if (phoneDigits === BYPASS_PHONE) {
         try {
           const result = await sellerApi.loginSellerWithOtp({ phone: form.phone, otp: BYPASS_OTP })
 
@@ -94,9 +99,10 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
         return
       }
 
-      const result = await sellerApi.requestSellerOTP({ phone: form.phone })
-      
+      const result = await sellerApi.requestSellerOTP({ phone: validation.normalized })
+
       if (result.success || result.data) {
+        setForm(prev => ({ ...prev, phone: validation.normalized }))
         setStep('otp')
       } else {
         setError(result.error?.message || 'Failed to send OTP. Please try again.')
@@ -135,7 +141,7 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
         if (result.data?.token) {
           localStorage.setItem('seller_token', result.data.token)
         }
-        
+
         // Update context with seller data
         if (result.data?.seller) {
           dispatch({
@@ -151,7 +157,7 @@ export function SellerLogin({ onSuccess, onSubmit, onSwitchToRegister }) {
             },
           })
         }
-        
+
         // Call both onSuccess and onSubmit for backward compatibility
         onSuccess?.(result.data?.seller || { phone: form.phone })
         onSubmit?.(result.data?.seller || { phone: form.phone })

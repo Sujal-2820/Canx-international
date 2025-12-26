@@ -97,7 +97,11 @@ export async function getTranslation(text, targetLang = 'hi', forceRefresh = fal
       body: JSON.stringify({ q: trimmedText, target: targetLang }),
     });
 
-    if (!response.ok) throw new Error('Proxy translation failed');
+    if (!response.ok) {
+      console.warn(`[Translation] Proxy returned ${response.status}, falling back to original text`);
+      return text; // Fallback immediately on non-200 status
+    }
+
     const data = await response.json();
     const translated = data.translated;
 
@@ -109,7 +113,8 @@ export async function getTranslation(text, targetLang = 'hi', forceRefresh = fal
 
     return translated;
   } catch (error) {
-    console.error('[Translation] Translation error:', error);
+    // Silent fallback - don't log errors to avoid console spam
+    console.warn('[Translation] Proxy unavailable, using original text');
     return text; // Fallback
   }
 }

@@ -4,6 +4,7 @@ import { useUserDispatch } from '../../context/UserContext'
 import { GoogleMapsLocationPicker } from '../../../../components/GoogleMapsLocationPicker'
 import * as userApi from '../../services/userApi'
 import { Trans } from '../../../../components/Trans'
+import { validatePhoneNumber } from '../../../../utils/phoneValidation'
 
 export function SignupPageView({ onSuccess, onSwitchToLogin }) {
   const dispatch = useUserDispatch()
@@ -40,20 +41,27 @@ export function SignupPageView({ onSuccess, onSwitchToLogin }) {
         setLoading(false)
         return
       }
-      if (form.contact.length < 10) {
-        setError('Please enter a valid contact number')
+
+      // Validate phone number
+      const validation = validatePhoneNumber(form.contact)
+      if (!validation.isValid) {
+        setError(validation.error)
         setLoading(false)
         return
       }
+
       if (!form.location) {
         setError('Location is required')
         setLoading(false)
         return
       }
 
-      const result = await userApi.requestOTP({ phone: form.contact })
-      
+      // Use normalized phone number
+      const result = await userApi.requestOTP({ phone: validation.normalized })
+
       if (result.success || result.data) {
+        // Update form with normalized phone
+        setForm(prev => ({ ...prev, contact: validation.normalized }))
         setStep('otp')
       } else {
         setError(result.error?.message || 'Failed to send OTP. Please try again.')
@@ -81,7 +89,7 @@ export function SignupPageView({ onSuccess, onSwitchToLogin }) {
 
       if (result.success && result.data?.token) {
         localStorage.setItem('user_token', result.data.token)
-        
+
         // Fetch user profile
         const profileResult = await userApi.getUserProfile()
         if (profileResult.success && profileResult.data?.user) {
@@ -165,7 +173,7 @@ export function SignupPageView({ onSuccess, onSwitchToLogin }) {
             <div className="user-auth-page-view__form-wrapper">
               <h1 className="user-auth-page-view__title"><Trans>Create Account</Trans></h1>
               <p className="user-auth-page-view__subtitle"><Trans>Sign up to get started with IRA Sathi</Trans></p>
-              
+
               <form onSubmit={handleRequestOtp} className="user-auth-page-view__form">
                 {error && (
                   <div className="user-auth-page-view__error">

@@ -3,6 +3,7 @@ import { OtpVerification } from '../../../../components/auth/OtpVerification'
 import { useUserDispatch } from '../../context/UserContext'
 import * as userApi from '../../services/userApi'
 import { Trans } from '../../../../components/Trans'
+import { validatePhoneNumber, normalizePhoneNumber } from '../../../../utils/phoneValidation'
 
 export function LoginPageView({ onSuccess, onSwitchToSignup }) {
   const dispatch = useUserDispatch()
@@ -28,15 +29,21 @@ export function LoginPageView({ onSuccess, onSwitchToSignup }) {
         setLoading(false)
         return
       }
-      if (form.phone.length < 10) {
-        setError('Please enter a valid contact number')
+
+      // Validate phone number
+      const validation = validatePhoneNumber(form.phone)
+      if (!validation.isValid) {
+        setError(validation.error)
         setLoading(false)
         return
       }
 
-      const result = await userApi.requestOTP({ phone: form.phone })
-      
+      // Use normalized phone number for API call
+      const result = await userApi.requestOTP({ phone: validation.normalized })
+
       if (result.success || result.data) {
+        // Update form with normalized phone
+        setForm(prev => ({ ...prev, phone: validation.normalized }))
         setStep('otp')
       } else {
         setError(result.error?.message || 'Failed to send OTP. Please try again.')
@@ -57,7 +64,7 @@ export function LoginPageView({ onSuccess, onSwitchToSignup }) {
 
       if (result.success && result.data?.token) {
         localStorage.setItem('user_token', result.data.token)
-        
+
         // Fetch user profile
         const profileResult = await userApi.getUserProfile()
         if (profileResult.success && profileResult.data?.user) {
@@ -141,7 +148,7 @@ export function LoginPageView({ onSuccess, onSwitchToSignup }) {
             <div className="user-auth-page-view__form-wrapper">
               <h1 className="user-auth-page-view__title"><Trans>Welcome Back</Trans></h1>
               <p className="user-auth-page-view__subtitle"><Trans>Sign in with your contact number</Trans></p>
-              
+
               <form onSubmit={handleRequestOtp} className="user-auth-page-view__form">
                 {error && (
                   <div className="user-auth-page-view__error">
