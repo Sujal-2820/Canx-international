@@ -429,7 +429,7 @@ export function OperationsPage({ subRoute = null, navigate }) {
                     className="fixed inset-0 z-10"
                     onClick={() => setOpenNotificationsDropdown(null)}
                   />
-                  <div className="absolute right-0 top-full mt-1 z-20 w-56 rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+                  <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-gray-200 bg-white shadow-lg py-1">
                     {actionItems.map((item, index) => {
                       const Icon = item.icon
                       return (
@@ -645,7 +645,7 @@ export function OperationsPage({ subRoute = null, navigate }) {
                       className="fixed inset-0 z-10"
                       onClick={() => setOpenEscalationsDropdown(null)}
                     />
-                    <div className="absolute right-0 top-full mt-1 z-20 w-64 rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+                    <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg border border-gray-200 bg-white shadow-lg py-1">
                       {actionItems.map((item, index) => {
                         const Icon = item.icon
                         return (
