@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const { translateText } = require('../utils/translator');
+// const { translateText } = require('../utils/translator'); // Removed: Translator utility deleted
+// const { translateText } = require('../utils/translator'); // Removed: Translator utility deleted
 
 /**
  * Product Schema
@@ -244,7 +245,8 @@ productSchema.pre('save', async function (next) {
     this.stock = this.displayStock;
   }
 
-  // Automatic Hindi Translation for alphabetical fields
+  /* 
+  // Automatic Hindi Translation for alphabetical fields - DISABLED (Translator utility removed)
   const needsTranslation =
     this.isNew ||
     this.isModified('name') ||
@@ -292,6 +294,7 @@ productSchema.pre('save', async function (next) {
       // Don't block saving if translation fails
     }
   }
+  */
 
   next();
 });
