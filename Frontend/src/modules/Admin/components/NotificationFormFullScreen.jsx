@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Bell, Users, Building2, ShieldCheck, ArrowLeft, Trash2 } from 'lucide-react'
+import { Bell, Users, Building2, ShieldCheck, ArrowLeft, Trash2, Search, Check, X } from 'lucide-react'
 import { cn } from '../../../lib/cn'
+import { useAdminApi } from '../hooks/useAdminApi'
 
 const TARGET_AUDIENCES = [
   { value: 'all', label: 'All Users', icon: Users },
@@ -10,14 +11,20 @@ const TARGET_AUDIENCES = [
 ]
 
 export function NotificationFormFullScreen({ notification, onSave, onDelete, onCancel, loading }) {
+  const { fetchVendors, fetchSellers, fetchUsers } = useAdminApi()
   const [formData, setFormData] = useState({
     title: '',
     message: '',
     targetAudience: 'all',
+    targetMode: 'all', // 'all' or 'specific'
+    targetRecipients: [],
     priority: 'normal',
     isActive: true,
   })
   const [errors, setErrors] = useState({})
+  const [recipientList, setRecipientList] = useState([])
+  const [recipientSearch, setRecipientSearch] = useState('')
+  const [loadingRecipients, setLoadingRecipients] = useState(false)
 
   useEffect(() => {
     if (notification) {
@@ -25,6 +32,8 @@ export function NotificationFormFullScreen({ notification, onSave, onDelete, onC
         title: notification.title || '',
         message: notification.message || notification.content || '',
         targetAudience: notification.targetAudience || 'all',
+        targetMode: notification.targetMode || 'all',
+        targetRecipients: notification.targetRecipients || [],
         priority: notification.priority || 'normal',
         isActive: notification.isActive !== false,
       })
@@ -33,6 +42,8 @@ export function NotificationFormFullScreen({ notification, onSave, onDelete, onC
         title: '',
         message: '',
         targetAudience: 'all',
+        targetMode: 'all',
+        targetRecipients: [],
         priority: 'normal',
         isActive: true,
       })
@@ -40,23 +51,98 @@ export function NotificationFormFullScreen({ notification, onSave, onDelete, onC
     setErrors({})
   }, [notification])
 
+  // Load recipients when target audience changes
+  useEffect(() => {
+    const loadRecipients = async () => {
+      if (formData.targetAudience === 'all' || formData.targetMode === 'all') {
+        setRecipientList([])
+        return
+      }
+
+      setLoadingRecipients(true)
+      try {
+        let data = []
+        if (formData.targetAudience === 'vendors') {
+          const result = await fetchVendors({ limit: 200 })
+          data = (result?.vendors || []).map(v => ({ id: v._id || v.id, name: v.businessName || v.name, phone: v.phone }))
+        } else if (formData.targetAudience === 'sellers') {
+          const result = await fetchSellers({ limit: 200 })
+          data = (result?.sellers || []).map(s => ({ id: s._id || s.id, name: s.name, phone: s.phone }))
+        } else if (formData.targetAudience === 'users') {
+          const result = await fetchUsers({ limit: 200 })
+          data = (result?.users || []).map(u => ({ id: u._id || u.id, name: u.name, phone: u.phone }))
+        }
+        setRecipientList(data)
+      } catch (err) {
+        console.error('Failed to load recipients:', err)
+      } finally {
+        setLoadingRecipients(false)
+      }
+    }
+
+    if (formData.targetMode === 'specific') {
+      loadRecipients()
+    }
+  }, [formData.targetAudience, formData.targetMode, fetchVendors, fetchSellers, fetchUsers])
+
   const handleChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value }
+      // Reset target mode when audience changes
+      if (field === 'targetAudience') {
+        updated.targetRecipients = []
+        if (value === 'all') {
+          updated.targetMode = 'all'
+        }
+      }
+      return updated
+    })
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }))
     }
   }
 
+  const handleToggleRecipient = (recipientId) => {
+    setFormData(prev => {
+      const isSelected = prev.targetRecipients.includes(recipientId)
+      return {
+        ...prev,
+        targetRecipients: isSelected
+          ? prev.targetRecipients.filter(id => id !== recipientId)
+          : [...prev.targetRecipients, recipientId]
+      }
+    })
+  }
+
+  const handleSelectAll = () => {
+    const filteredIds = filteredRecipients.map(r => r.id)
+    setFormData(prev => ({
+      ...prev,
+      targetRecipients: [...new Set([...prev.targetRecipients, ...filteredIds])]
+    }))
+  }
+
+  const handleDeselectAll = () => {
+    const filteredIds = filteredRecipients.map(r => r.id)
+    setFormData(prev => ({
+      ...prev,
+      targetRecipients: prev.targetRecipients.filter(id => !filteredIds.includes(id))
+    }))
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
-    
+
     const newErrors = {}
-    
+
     if (!formData.title.trim()) {
       newErrors.title = 'Title is required'
     }
     if (!formData.message.trim()) {
       newErrors.message = 'Message is required'
+    }
+    if (formData.targetMode === 'specific' && formData.targetRecipients.length === 0) {
+      newErrors.targetRecipients = 'Select at least one recipient'
     }
 
     setErrors(newErrors)
@@ -70,6 +156,13 @@ export function NotificationFormFullScreen({ notification, onSave, onDelete, onC
       onDelete(notification.id)
     }
   }
+
+  const filteredRecipients = recipientList.filter(r =>
+    r.name?.toLowerCase().includes(recipientSearch.toLowerCase()) ||
+    r.phone?.includes(recipientSearch)
+  )
+
+  const showSpecificTargeting = formData.targetAudience !== 'all'
 
   return (
     <div className="space-y-6">
@@ -170,6 +263,114 @@ export function NotificationFormFullScreen({ notification, onSave, onDelete, onC
             </div>
           </div>
 
+          {/* Target Mode (only shown when specific audience is selected) */}
+          {showSpecificTargeting && (
+            <div>
+              <label className="mb-2 block text-sm font-bold text-gray-900">
+                Targeting Mode
+              </label>
+              <div className="flex gap-4">
+                <label className={cn(
+                  'flex cursor-pointer items-center gap-2 rounded-xl border p-3 flex-1 transition-all',
+                  formData.targetMode === 'all' ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                )}>
+                  <input
+                    type="radio"
+                    name="targetMode"
+                    value="all"
+                    checked={formData.targetMode === 'all'}
+                    onChange={(e) => handleChange('targetMode', e.target.value)}
+                    className="h-4 w-4 text-blue-600"
+                  />
+                  <span className="text-sm font-bold">All {formData.targetAudience}</span>
+                </label>
+                <label className={cn(
+                  'flex cursor-pointer items-center gap-2 rounded-xl border p-3 flex-1 transition-all',
+                  formData.targetMode === 'specific' ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+                )}>
+                  <input
+                    type="radio"
+                    name="targetMode"
+                    value="specific"
+                    checked={formData.targetMode === 'specific'}
+                    onChange={(e) => handleChange('targetMode', e.target.value)}
+                    className="h-4 w-4 text-blue-600"
+                  />
+                  <span className="text-sm font-bold">Specific Recipients</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Recipient Selection (only shown when targetMode is 'specific') */}
+          {showSpecificTargeting && formData.targetMode === 'specific' && (
+            <div>
+              <label className="mb-2 block text-sm font-bold text-gray-900">
+                Select Recipients ({formData.targetRecipients.length} selected)
+                {errors.targetRecipients && <span className="text-red-500 ml-2 font-normal">{errors.targetRecipients}</span>}
+              </label>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                {/* Search */}
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={recipientSearch}
+                    onChange={(e) => setRecipientSearch(e.target.value)}
+                    placeholder="Search by name or phone..."
+                    className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Quick Actions */}
+                <div className="flex gap-2 mb-3">
+                  <button type="button" onClick={handleSelectAll} className="text-xs text-blue-600 hover:underline">Select All</button>
+                  <span className="text-gray-300">|</span>
+                  <button type="button" onClick={handleDeselectAll} className="text-xs text-gray-600 hover:underline">Deselect All</button>
+                </div>
+
+                {/* Recipients List */}
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {loadingRecipients ? (
+                    <p className="text-sm text-gray-500 text-center py-4">Loading...</p>
+                  ) : filteredRecipients.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">No recipients found</p>
+                  ) : (
+                    filteredRecipients.map((recipient) => {
+                      const isSelected = formData.targetRecipients.includes(recipient.id)
+                      return (
+                        <label
+                          key={recipient.id}
+                          className={cn(
+                            'flex items-center gap-3 rounded-lg p-2 cursor-pointer transition-all',
+                            isSelected ? 'bg-blue-100' : 'hover:bg-gray-100'
+                          )}
+                        >
+                          <div className={cn(
+                            'h-5 w-5 rounded border flex items-center justify-center',
+                            isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+                          )}>
+                            {isSelected && <Check className="h-3 w-3 text-white" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{recipient.name || 'Unknown'}</p>
+                            <p className="text-xs text-gray-500">{recipient.phone}</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleRecipient(recipient.id)}
+                            className="sr-only"
+                          />
+                        </label>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Priority */}
           <div>
             <label htmlFor="priority" className="mb-2 block text-sm font-bold text-gray-900">
@@ -244,4 +445,3 @@ export function NotificationFormFullScreen({ notification, onSave, onDelete, onC
     </div>
   )
 }
-

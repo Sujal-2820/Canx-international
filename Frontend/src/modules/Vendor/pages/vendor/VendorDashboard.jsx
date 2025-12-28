@@ -34,6 +34,7 @@ import { openRazorpayCheckout } from '../../../../utils/razorpay'
 import { useTranslation } from '../../../../context/TranslationContext'
 import { Trans } from '../../../../components/Trans'
 import { TransText } from '../../../../components/TransText'
+import { playNotificationSoundIfEnabled } from '../../../../utils/notificationSound'
 
 const NAV_ITEMS = [
   {
@@ -398,12 +399,24 @@ export function VendorDashboard({ onLogout }) {
     setNotificationPanelOpen(false)
   }
 
+  // Track previous unread count for sound notification
+  const prevUnreadCountRef = useRef(0)
+
   // Fetch notifications from backend
   const fetchNotifications = useCallback(async () => {
     try {
       const result = await getNotifications({ page: 1, limit: 50 })
       if (result.data?.notifications) {
-        dispatch({ type: 'SET_NOTIFICATIONS', payload: result.data.notifications })
+        const newNotifications = result.data.notifications
+        const newUnreadCount = newNotifications.filter(n => !n.read).length
+
+        // Play sound if there are more unread notifications than before
+        if (newUnreadCount > prevUnreadCountRef.current && prevUnreadCountRef.current !== 0) {
+          playNotificationSoundIfEnabled()
+        }
+        prevUnreadCountRef.current = newUnreadCount
+
+        dispatch({ type: 'SET_NOTIFICATIONS', payload: newNotifications })
       }
     } catch (err) {
       console.error('Failed to fetch notifications:', err)

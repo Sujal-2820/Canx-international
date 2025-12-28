@@ -2,14 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import { useUserState, useUserDispatch } from '../context/UserContext'
 import { cn } from '../../../lib/cn'
 import { BellIcon, XIcon } from './icons'
+import { playNotificationSoundIfEnabled } from '../../../utils/notificationSound'
 
 export function NotificationsDropdown({ isOpen, onClose }) {
   const { notifications } = useUserState()
   const dispatch = useUserDispatch()
   const dropdownRef = useRef(null)
   const [mounted, setMounted] = useState(false)
+  const prevUnreadCountRef = useRef(0)
 
   const unreadCount = notifications.filter((n) => !n.read).length
+
+  // Play sound when new notifications arrive
+  useEffect(() => {
+    if (unreadCount > prevUnreadCountRef.current && prevUnreadCountRef.current !== 0) {
+      playNotificationSoundIfEnabled()
+    }
+    prevUnreadCountRef.current = unreadCount
+  }, [unreadCount])
 
   useEffect(() => {
     if (isOpen) {

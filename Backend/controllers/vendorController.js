@@ -16,6 +16,7 @@ const BankAccount = require('../models/BankAccount');
 const PaymentHistory = require('../models/PaymentHistory');
 const CreditRepayment = require('../models/CreditRepayment');
 const VendorNotification = require('../models/VendorNotification');
+const UserNotification = require('../models/UserNotification');
 const razorpayService = require('../services/razorpayService');
 
 const { sendOTP } = require('../utils/otp');
@@ -2673,7 +2674,20 @@ exports.updateOrderStatus = async (req, res, next) => {
 
     await order.save();
 
-    // TODO: Send real-time notification to user (WebSocket/SSE)
+    // Send notification to user about order status change
+    try {
+      if (order.userId && isStatusChange && !isReverting) {
+        await UserNotification.createOrderStatusNotification(
+          order.userId,
+          order,
+          normalizedNewStatus
+        );
+        console.log(`📱 User notification sent for order ${order.orderNumber} status: ${normalizedNewStatus}`);
+      }
+    } catch (notifError) {
+      // Don't fail the request if notification fails
+      console.error('Failed to send user notification:', notifError);
+    }
 
     // For fully_paid status, no grace period message
     const hasGracePeriod = isStatusChange && normalizedNewStatus !== ORDER_STATUS.FULLY_PAID && order.statusUpdateGracePeriod?.isActive;

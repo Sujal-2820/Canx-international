@@ -33,6 +33,17 @@ const notificationSchema = new mongoose.Schema({
     default: 'all',
     required: true,
   },
+  // Targeting mode: 'all' sends to everyone in targetAudience, 'specific' sends to selected recipients
+  targetMode: {
+    type: String,
+    enum: ['all', 'specific'],
+    default: 'all',
+  },
+  // Array of specific recipient IDs (used when targetMode is 'specific')
+  targetRecipients: [{
+    type: mongoose.Schema.Types.ObjectId,
+    refPath: 'targetAudience', // Dynamic reference based on targetAudience
+  }],
   priority: {
     type: String,
     enum: ['low', 'normal', 'high', 'urgent'],
@@ -57,6 +68,11 @@ const notificationSchema = new mongoose.Schema({
     default: 0,
   },
   clicks: {
+    type: Number,
+    default: 0,
+  },
+  // Track how many individual notifications were created
+  recipientCount: {
     type: Number,
     default: 0,
   },
@@ -88,13 +104,13 @@ notificationSchema.index({ createdBy: 1, createdAt: -1 }); // Admin's notificati
 // Note: notificationId already has an index from unique: true
 
 // Virtual: Check if notification is currently active (considering dates)
-notificationSchema.virtual('isCurrentlyActive').get(function() {
+notificationSchema.virtual('isCurrentlyActive').get(function () {
   if (!this.isActive) return false;
-  
+
   const now = new Date();
   if (this.startDate && now < this.startDate) return false;
   if (this.endDate && now > this.endDate) return false;
-  
+
   return true;
 });
 

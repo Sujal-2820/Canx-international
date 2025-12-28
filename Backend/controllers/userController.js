@@ -26,6 +26,7 @@ const PaymentHistory = require('../models/PaymentHistory');
 const razorpayService = require('../services/razorpayService');
 const Offer = require('../models/Offer');
 const { generateUniqueId } = require('../utils/generateUniqueId');
+const UserNotification = require('../models/UserNotification');
 
 /**
  * @desc    Request OTP for user
@@ -4300,16 +4301,58 @@ exports.removeFromFavourites = async (req, res, next) => {
 exports.getNotifications = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const { unreadOnly = false, limit = 50 } = req.query;
+    const { page = 1, limit = 20, read } = req.query;
 
-    // TODO: Implement Notification model when needed
-    // For now, return empty array with message
+    // Clean up expired notifications
+    await UserNotification.cleanupExpired();
+
+    const query = { userId };
+
+    // Filter by read status
+    if (read !== undefined) {
+      query.read = read === 'true';
+    }
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const notifications = await UserNotification.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    const total = await UserNotification.countDocuments(query);
+    const unreadCount = await UserNotification.countDocuments({
+      userId,
+      read: false,
+    });
+
     res.status(200).json({
       success: true,
       data: {
-        notifications: [],
-        unreadCount: 0,
-        message: 'Notifications feature coming soon',
+        notifications: notifications.map((notif) => ({
+          id: notif._id,
+          type: notif.type,
+          title: notif.title,
+          message: notif.message,
+          read: notif.read,
+          readAt: notif.readAt,
+          priority: notif.priority,
+          relatedEntityType: notif.relatedEntityType,
+          relatedEntityId: notif.relatedEntityId,
+          metadata: notif.metadata ? Object.fromEntries(notif.metadata) : {},
+          timestamp: notif.createdAt,
+          createdAt: notif.createdAt,
+        })),
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          totalItems: total,
+          itemsPerPage: limitNum,
+        },
+        unreadCount,
       },
     });
   } catch (error) {
@@ -4327,11 +4370,31 @@ exports.markNotificationRead = async (req, res, next) => {
     const userId = req.user.userId;
     const { notificationId } = req.params;
 
-    // TODO: Implement Notification model when needed
+    const notification = await UserNotification.findOne({
+      _id: notificationId,
+      userId,
+    });
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found',
+      });
+    }
+
+    notification.read = true;
+    notification.readAt = new Date();
+    await notification.save();
+
     res.status(200).json({
       success: true,
+      message: 'Notification marked as read',
       data: {
-        message: 'Notification marked as read (Feature coming soon)',
+        notification: {
+          id: notification._id,
+          read: notification.read,
+          readAt: notification.readAt,
+        },
       },
     });
   } catch (error) {
@@ -4348,11 +4411,16 @@ exports.markAllNotificationsRead = async (req, res, next) => {
   try {
     const userId = req.user.userId;
 
-    // TODO: Implement Notification model when needed
+    const result = await UserNotification.updateMany(
+      { userId, read: false },
+      { $set: { read: true, readAt: new Date() } }
+    );
+
     res.status(200).json({
       success: true,
+      message: `${result.modifiedCount || 0} notifications marked as read`,
       data: {
-        message: 'All notifications marked as read (Feature coming soon)',
+        modifiedCount: result.modifiedCount || 0,
       },
     });
   } catch (error) {

@@ -22,6 +22,7 @@ import { NotificationPanel } from '../components/NotificationPanel'
 import '../seller.css'
 import { Trans } from '../../../components/Trans'
 import { TransText } from '../../../components/TransText'
+import { playNotificationSoundIfEnabled } from '../../../utils/notificationSound'
 
 const NAV_ITEMS = [
   {
@@ -252,39 +253,14 @@ export function SellerDashboard({ onLogout }) {
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const previousNotificationsCountRef = useRef(0)
 
-  // Play notification sound
-  const playNotificationSound = useCallback(() => {
-    try {
-      // Create a simple notification sound using Web Audio API
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)()
-      const oscillator = audioContext.createOscillator()
-      const gainNode = audioContext.createGain()
-
-      oscillator.connect(gainNode)
-      gainNode.connect(audioContext.destination)
-
-      oscillator.frequency.value = 800
-      oscillator.type = 'sine'
-
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
-
-      oscillator.start(audioContext.currentTime)
-      oscillator.stop(audioContext.currentTime + 0.3)
-    } catch (err) {
-      // Fallback: try HTML5 audio if Web Audio API is not available
-      console.log('Notification sound played (fallback)')
-    }
-  }, [])
-
   // Trigger bell animation and sound when new notification arrives
   useEffect(() => {
     const currentUnreadCount = unreadNotificationsCount
     const previousUnreadCount = previousNotificationsCountRef.current
 
-    if (currentUnreadCount > previousUnreadCount) {
+    if (currentUnreadCount > previousUnreadCount && previousUnreadCount !== 0) {
       // New notification arrived
-      playNotificationSound()
+      playNotificationSoundIfEnabled()
       setIsNotificationAnimating(true)
 
       // Stop animation after 3 seconds
@@ -296,7 +272,7 @@ export function SellerDashboard({ onLogout }) {
     }
 
     previousNotificationsCountRef.current = currentUnreadCount
-  }, [unreadNotificationsCount, playNotificationSound])
+  }, [unreadNotificationsCount])
 
   // Handle notification panel open/close
   const handleNotificationClick = () => {

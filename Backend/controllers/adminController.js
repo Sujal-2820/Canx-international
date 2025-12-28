@@ -22,6 +22,7 @@ const Commission = require('../models/Commission');
 const PaymentHistory = require('../models/PaymentHistory');
 const Settings = require('../models/Settings');
 const Notification = require('../models/Notification');
+const UserNotification = require('../models/UserNotification');
 const Offer = require('../models/Offer');
 const CreditRepayment = require('../models/CreditRepayment');
 const Review = require('../models/Review');
@@ -6773,6 +6774,21 @@ exports.updateOrderStatus = async (req, res, next) => {
 
     await order.save();
 
+    // Send notification to user about order status change
+    try {
+      if (order.userId && isStatusChange && !isReverting) {
+        await UserNotification.createOrderStatusNotification(
+          order.userId,
+          order,
+          normalizedNewStatus
+        );
+        console.log(`📱 User notification sent for order ${order.orderNumber} status: ${normalizedNewStatus}`);
+      }
+    } catch (notifError) {
+      // Don't fail the request if notification fails
+      console.error('Failed to send user notification:', notifError);
+    }
+
     // For fully_paid status, no grace period message
     const hasGracePeriod = isStatusChange && normalizedNewStatus !== ORDER_STATUS.FULLY_PAID && order.statusUpdateGracePeriod?.isActive;
 
@@ -7815,10 +7831,26 @@ exports.getNotifications = async (req, res, next) => {
  * @desc    Create platform notification
  * @route   POST /api/admin/operations/notifications
  * @access  Private (Admin)
+ * 
+ * Supports:
+ * - targetMode: 'all' (broadcast to all in targetAudience) or 'specific' (specific recipients)
+ * - targetRecipients: Array of vendor/seller/user IDs when targetMode is 'specific'
  */
 exports.createNotification = async (req, res, next) => {
   try {
-    const { title, message, targetAudience, priority, isActive, actionUrl, actionText, startDate, endDate } = req.body;
+    const {
+      title,
+      message,
+      targetAudience,
+      targetMode = 'all',
+      targetRecipients = [],
+      priority,
+      isActive,
+      actionUrl,
+      actionText,
+      startDate,
+      endDate
+    } = req.body;
     const adminId = req.admin?.id || req.user?.id;
 
     // Validation
@@ -7835,11 +7867,21 @@ exports.createNotification = async (req, res, next) => {
       });
     }
 
-    // Create notification
+    // For specific targeting, validate recipients
+    if (targetMode === 'specific' && (!targetRecipients || targetRecipients.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one recipient is required when targeting specific users',
+      });
+    }
+
+    // Create platform notification record
     const notification = await createNotification({
       title: title.trim(),
       message: message.trim(),
       targetAudience: targetAudience || 'all',
+      targetMode: targetMode || 'all',
+      targetRecipients: targetMode === 'specific' ? targetRecipients : [],
       priority: priority || 'normal',
       isActive: isActive !== undefined ? isActive : true,
       actionUrl,
@@ -7851,14 +7893,121 @@ exports.createNotification = async (req, res, next) => {
 
     await notification.save();
 
+    // Create individual notifications for recipients
+    let recipientCount = 0;
+
+    if (isActive !== false) {
+      const notificationData = {
+        title: title.trim(),
+        message: message.trim(),
+        type: 'admin_announcement',
+        priority: priority || 'normal',
+        relatedEntityType: 'none',
+      };
+
+      if (targetMode === 'specific' && targetRecipients.length > 0) {
+        // Target specific recipients
+        if (targetAudience === 'vendors') {
+          const VendorNotification = require('../models/VendorNotification');
+          for (const vendorId of targetRecipients) {
+            try {
+              await VendorNotification.createNotification({
+                vendorId,
+                ...notificationData,
+              });
+              recipientCount++;
+            } catch (err) {
+              console.error(`Failed to create vendor notification for ${vendorId}:`, err);
+            }
+          }
+        } else if (targetAudience === 'sellers') {
+          const SellerNotification = require('../models/SellerNotification');
+          for (const sellerId of targetRecipients) {
+            try {
+              await SellerNotification.createNotification({
+                sellerId,
+                ...notificationData,
+              });
+              recipientCount++;
+            } catch (err) {
+              console.error(`Failed to create seller notification for ${sellerId}:`, err);
+            }
+          }
+        } else if (targetAudience === 'users') {
+          for (const userId of targetRecipients) {
+            try {
+              await UserNotification.createNotification({
+                userId,
+                ...notificationData,
+              });
+              recipientCount++;
+            } catch (err) {
+              console.error(`Failed to create user notification for ${userId}:`, err);
+            }
+          }
+        }
+      } else if (targetMode === 'all') {
+        // Broadcast to all recipients in the target audience
+        if (targetAudience === 'vendors' || targetAudience === 'all') {
+          const VendorNotification = require('../models/VendorNotification');
+          const vendors = await Vendor.find({ isActive: true, verification: { $ne: 'rejected' } }).select('_id');
+          for (const vendor of vendors) {
+            try {
+              await VendorNotification.createNotification({
+                vendorId: vendor._id,
+                ...notificationData,
+              });
+              recipientCount++;
+            } catch (err) {
+              console.error(`Failed to create vendor notification:`, err);
+            }
+          }
+        }
+        if (targetAudience === 'sellers' || targetAudience === 'all') {
+          const SellerNotification = require('../models/SellerNotification');
+          const sellers = await Seller.find({ status: { $ne: 'rejected' } }).select('_id');
+          for (const seller of sellers) {
+            try {
+              await SellerNotification.createNotification({
+                sellerId: seller._id,
+                ...notificationData,
+              });
+              recipientCount++;
+            } catch (err) {
+              console.error(`Failed to create seller notification:`, err);
+            }
+          }
+        }
+        if (targetAudience === 'users' || targetAudience === 'all') {
+          const users = await User.find({ isBlocked: { $ne: true } }).select('_id');
+          for (const user of users) {
+            try {
+              await UserNotification.createNotification({
+                userId: user._id,
+                ...notificationData,
+              });
+              recipientCount++;
+            } catch (err) {
+              console.error(`Failed to create user notification:`, err);
+            }
+          }
+        }
+      }
+
+      // Update recipient count
+      notification.recipientCount = recipientCount;
+      await notification.save();
+    }
+
     // Populate createdBy
     await notification.populate('createdBy', 'name email');
 
     res.status(201).json({
       success: true,
-      message: 'Notification created successfully',
+      message: `Notification created successfully. Sent to ${recipientCount} recipient(s).`,
       data: {
         notification,
+        recipientCount,
       },
     });
   } catch (error) {
@@ -7871,6 +8020,7 @@ exports.createNotification = async (req, res, next) => {
     next(error);
   }
 };
+
 
 /**
  * @desc    Update platform notification
