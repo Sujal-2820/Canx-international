@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BarChart3, Building2, Factory, Home, Layers3, ShieldCheck, Users2, Wallet, Settings, ArrowRightLeft, IndianRupee, History, ChevronDown, ChevronRight, ImageIcon, Star, ListTodo } from 'lucide-react'
+import { BarChart3, Bell, Building2, Factory, Home, Layers3, ShieldCheck, Users2, Wallet, Settings, ArrowRightLeft, IndianRupee, History, ChevronDown, ChevronRight, ImageIcon, Star, ListTodo } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 import { useAdminState } from '../context/AdminContext'
 
@@ -142,6 +142,14 @@ const links = [
       { id: 'operations/notifications/add', label: 'Add Notifications' },
       { id: 'operations/delivery-timeline/update', label: 'Update Delivery Timeline' },
     ]
+  },
+  {
+    id: 'push-notifications',
+    label: 'Push Notifications',
+    icon: Bell,
+    description: 'Send push notifications to devices',
+    color: 'indigo',
+    suboptions: []
   },
   {
     id: 'analytics',

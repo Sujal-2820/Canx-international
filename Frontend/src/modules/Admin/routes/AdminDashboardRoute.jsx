@@ -19,6 +19,7 @@ import { OffersPage } from '../pages/Offers'
 import { RepaymentsPage } from '../pages/Repayments'
 import { ReviewsPage } from '../pages/Reviews'
 import TasksPage from '../pages/Tasks'
+import { PushNotificationsPage } from '../pages/PushNotifications'
 
 const routeConfig = [
   { id: 'dashboard', element: DashboardPage },
@@ -37,6 +38,7 @@ const routeConfig = [
   { id: 'repayments', element: RepaymentsPage },
   { id: 'reviews', element: ReviewsPage },
   { id: 'tasks', element: TasksPage },
+  { id: 'push-notifications', element: PushNotificationsPage },
 ]
 
 function AdminDashboardContent({ activeRoute, setActiveRoute, onExit }) {
