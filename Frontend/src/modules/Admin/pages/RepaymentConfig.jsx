@@ -161,6 +161,7 @@ export function RepaymentConfigPage() {
                 <TierFormModal
                     type={activeTab}
                     tier={editingTier}
+                    existingTiers={activeTab === 'discounts' ? discountTiers : interestTiers}
                     onClose={() => {
                         setShowAddModal(false)
                         setEditingTier(null)

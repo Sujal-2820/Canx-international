@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Building2, CreditCard, MapPin, ShieldAlert, Edit2, Eye, Package, Ban, Unlock, CheckCircle, XCircle, ArrowLeft, Calendar, FileText, ExternalLink, Search, MoreVertical } from 'lucide-react'
+import { Building2, CreditCard, MapPin, ShieldAlert, Edit2, Eye, Package, Ban, Unlock, CheckCircle, XCircle, ArrowLeft, Calendar, FileText, ExternalLink, Search, MoreVertical, User, Phone, Mail, Store, Info } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { Timeline } from '../components/Timeline'
@@ -911,107 +911,159 @@ export function VendorsPage({ subRoute = null, navigate }) {
                 </div>
               </div>
             )}
+            {/* Business & Contact Information */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Personal & Contact Details */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
+                <div className="flex items-center gap-2 border-b border-gray-50 pb-3">
+                  <User className="h-5 w-5 text-purple-600" />
+                  <h4 className="text-sm font-bold text-gray-900">Contact Details</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-gray-500">First Name</p>
+                    <p className="text-sm font-semibold text-gray-800">{vendor.firstName || vendor.name?.split(' ')[0] || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-gray-500">Last Name</p>
+                    <p className="text-sm font-semibold text-gray-800">{vendor.lastName || vendor.name?.split(' ').slice(1).join(' ') || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-gray-500">Phone Number</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Phone className="h-3 w-3 text-green-600" />
+                      <p className="text-sm font-semibold text-gray-800">{vendor.phone}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-gray-500">Email Address</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Mail className="h-3 w-3 text-blue-600" />
+                      <p className="text-sm font-semibold text-gray-800">{vendor.email || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Shop & Business Details */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
+                <div className="flex items-center gap-2 border-b border-gray-50 pb-3">
+                  <Store className="h-5 w-5 text-orange-600" />
+                  <h4 className="text-sm font-bold text-gray-900">Shop Details</h4>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-gray-500">Shop Name</p>
+                    <p className="text-sm font-semibold text-gray-800">{vendor.shopName || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-gray-500">Complete Shop Address</p>
+                    <p className="text-sm font-medium text-gray-700 leading-relaxed">{vendor.shopAddress || vendor.location?.address || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-gray-500">Referring Agent</p>
+                    <p className="text-sm font-semibold text-gray-800">{vendor.agentName || 'No Agent'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* KYC Numbers */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 lg:col-span-2">
+                <div className="flex items-center gap-2 border-b border-gray-50 pb-3 mb-4">
+                  <Info className="h-5 w-5 text-blue-600" />
+                  <h4 className="text-sm font-bold text-gray-900">KYC Identifiers</h4>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-100">
+                    <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">GST Number</p>
+                    <p className="text-sm font-black text-gray-900 tracking-wider">
+                      {vendor.gstNumber || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-100">
+                    <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">PAN Number</p>
+                    <p className="text-sm font-black text-gray-900 tracking-wider">
+                      {vendor.panNumber || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-100">
+                    <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Aadhaar Number</p>
+                    <p className="text-sm font-black text-gray-900 tracking-wider">
+                      {vendor.aadhaarNumber ? (vendor.aadhaarNumber.match(/.{1,4}/g)?.join(' ') || vendor.aadhaarNumber) : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Verification Documents */}
             <div className="space-y-4">
               <h4 className="text-sm font-bold text-gray-900">Verification Documents</h4>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                {/* Aadhaar Card */}
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-gray-400" />
-                      <p className="text-xs font-semibold text-gray-700">Aadhaar Card</p>
-                    </div>
-                    {vendor.aadhaarCard?.url ? (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-red-600" />
-                    )}
-                  </div>
-                  {vendor.aadhaarCard?.url ? (
-                    <div className="space-y-2">
-                      {vendor.aadhaarCard.format === 'pdf' ? (
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                          <FileText className="h-4 w-4 text-red-600" />
-                          <span>PDF Document</span>
-                        </div>
-                      ) : (
-                        <div className="rounded-lg overflow-hidden border border-gray-300 bg-white">
-                          <img
-                            src={vendor.aadhaarCard.url}
-                            alt="Aadhaar Card"
-                            className="w-full h-auto max-h-40 object-contain"
-                            onError={(e) => {
-                              e.target.style.display = 'none'
-                            }}
-                          />
-                        </div>
-                      )}
-                      <a
-                        href={vendor.aadhaarCard.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold"
-                      >
-                        <Eye className="h-3 w-3" />
-                        View Document
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-red-600">Not uploaded</p>
-                  )}
-                </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  { key: 'aadhaarFront', label: 'Aadhaar Front' },
+                  { key: 'aadhaarBack', label: 'Aadhaar Back' },
+                  { key: 'pesticideLicense', label: 'Pesticide License' },
+                  { key: 'securityChecks', label: 'Security Checks' },
+                  { key: 'dealershipForm', label: 'Dealership Form' }
+                ].map((doc) => {
+                  const docData = vendor[doc.key] || (doc.key === 'aadhaarFront' ? vendor.aadhaarCard : (doc.key === 'dealershipForm' ? vendor.panCard : null));
+                  const hasDoc = docData?.url;
 
-                {/* PAN Card */}
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-gray-400" />
-                      <p className="text-xs font-semibold text-gray-700">PAN Card</p>
-                    </div>
-                    {vendor.panCard?.url ? (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-red-600" />
-                    )}
-                  </div>
-                  {vendor.panCard?.url ? (
-                    <div className="space-y-2">
-                      {vendor.panCard.format === 'pdf' ? (
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                          <FileText className="h-4 w-4 text-red-600" />
-                          <span>PDF Document</span>
+                  return (
+                    <div key={doc.key} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-gray-400" />
+                          <p className="text-xs font-semibold text-gray-700">{doc.label}</p>
+                        </div>
+                        {hasDoc ? (
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <XCircle className="h-4 w-4 text-red-600" />
+                        )}
+                      </div>
+                      {hasDoc ? (
+                        <div className="space-y-2">
+                          {docData.format === 'pdf' ? (
+                            <div className="flex h-20 items-center justify-center rounded-lg border border-gray-300 bg-white">
+                              <div className="flex flex-col items-center gap-1">
+                                <FileText className="h-8 w-8 text-red-600" />
+                                <span className="text-[10px] font-bold text-gray-400 uppercase">PDF File</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="rounded-lg overflow-hidden border border-gray-300 bg-white shadow-sm">
+                              <img
+                                src={docData.url}
+                                alt={doc.label}
+                                className="w-full h-auto max-h-32 object-contain bg-gray-50"
+                                onError={(e) => {
+                                  e.target.style.display = 'none'
+                                }}
+                              />
+                            </div>
+                          )}
+                          <a
+                            href={docData.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-1 rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-[0.7rem] text-blue-600 hover:text-blue-800 font-bold shadow-sm transition-all hover:border-blue-300"
+                          >
+                            <Eye className="h-3 w-3" />
+                            View Full Document
+                            <ExternalLink className="h-2 w-2" />
+                          </a>
                         </div>
                       ) : (
-                        <div className="rounded-lg overflow-hidden border border-gray-300 bg-white">
-                          <img
-                            src={vendor.panCard.url}
-                            alt="PAN Card"
-                            className="w-full h-auto max-h-40 object-contain"
-                            onError={(e) => {
-                              e.target.style.display = 'none'
-                            }}
-                          />
+                        <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-100/50">
+                          <p className="text-[0.7rem] font-bold text-gray-400 uppercase">Not Provided</p>
                         </div>
                       )}
-                      <a
-                        href={vendor.panCard.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold"
-                      >
-                        <Eye className="h-3 w-3" />
-                        View Document
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
                     </div>
-                  ) : (
-                    <p className="text-xs text-red-600">Not uploaded</p>
-                  )}
-                </div>
+                  );
+                })}
               </div>
             </div>
           </div>

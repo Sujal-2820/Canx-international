@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { OtpVerification } from '../../../components/auth/OtpVerification'
 import { useUserDispatch } from '../context/UserContext'
 import * as userApi from '../services/userApi'
+import { PhoneInput } from '../../../components/PhoneInput'
+import { validatePhoneNumber } from '../../../utils/phoneValidation'
 
 export function UserLogin({ onSuccess, onSwitchToRegister }) {
   const navigate = useNavigate()
@@ -18,6 +20,12 @@ export function UserLogin({ onSuccess, onSwitchToRegister }) {
     setError(null)
   }
 
+  // Handle value-only changes for components like PhoneInput
+  const handleValueChange = (name, value) => {
+    setForm((prev) => ({ ...prev, [name]: value }))
+    setError(null)
+  }
+
   const handleRequestOtp = async (e) => {
     e.preventDefault()
     setError(null)
@@ -29,8 +37,11 @@ export function UserLogin({ onSuccess, onSwitchToRegister }) {
         setLoading(false)
         return
       }
-      if (form.phone.length < 10) {
-        setError('Please enter a valid contact number')
+
+      // Validate and normalize phone number
+      const validation = validatePhoneNumber(form.phone)
+      if (!validation.isValid) {
+        setError(validation.error)
         setLoading(false)
         return
       }
@@ -46,10 +57,12 @@ export function UserLogin({ onSuccess, onSwitchToRegister }) {
         return
       }
 
-      // Request OTP (mock for now - accepts any data)
-      const result = await userApi.requestOTP({ phone: form.phone })
+      // Request OTP
+      const result = await userApi.requestOTP({ phone: validation.normalized })
 
       if (result.success || result.data) {
+        // Update form with normalized phone for further steps
+        setForm(prev => ({ ...prev, phone: validation.normalized }))
         setStep('otp')
       } else {
         setError(result.error?.message || 'Failed to send OTP. Please try again.')
@@ -172,16 +185,13 @@ export function UserLogin({ onSuccess, onSwitchToRegister }) {
               <label htmlFor="login-phone" className="text-xs font-semibold text-gray-700">
                 Contact Number <span className="text-red-500">*</span>
               </label>
-              <input
+              <PhoneInput
                 id="login-phone"
                 name="phone"
-                type="tel"
                 required
                 value={form.phone}
                 onChange={handleChange}
-                placeholder="+91 90000 00000"
-                maxLength={15}
-                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
+                placeholder="Mobile"
               />
             </div>
 

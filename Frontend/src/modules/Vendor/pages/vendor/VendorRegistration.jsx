@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { DocumentUpload } from '../../components/DocumentUpload'
 import { registerVendor } from '../../services/vendorApi'
+import { PhoneInput } from '../../../../components/PhoneInput'
+import { validatePhoneNumber } from '../../../../utils/phoneValidation'
 
 export function VendorRegistration({ onBack, onRegistered }) {
   const [form, setForm] = useState({
@@ -37,6 +39,13 @@ export function VendorRegistration({ onBack, onRegistered }) {
     event.preventDefault()
     setError(null)
 
+    // Validate phone number
+    const validation = validatePhoneNumber(form.phone)
+    if (!validation.isValid) {
+      setError(validation.error)
+      return
+    }
+
     // Validate required documents
     if (!form.aadhaarCard?.url) {
       setError('Please upload Aadhaar card document')
@@ -66,7 +75,7 @@ export function VendorRegistration({ onBack, onRegistered }) {
       const result = await registerVendor({
         name: form.name,
         email: form.email,
-        phone: form.phone,
+        phone: validation.normalized,
         location,
         aadhaarCard: form.aadhaarCard,
         panCard: form.panCard,
@@ -135,15 +144,13 @@ export function VendorRegistration({ onBack, onRegistered }) {
             <label className="text-xs font-semibold text-muted-foreground" htmlFor="phone">
               Mobile Number
             </label>
-            <input
+            <PhoneInput
               id="phone"
               name="phone"
-              type="tel"
               required
               value={form.phone}
               onChange={handleChange}
-              className="w-full rounded-2xl border border-muted/60 bg-surface px-4 py-3 text-sm text-surface-foreground focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
-              placeholder="+91 90000 00000"
+              placeholder="Mobile"
             />
           </div>
 
@@ -228,7 +235,7 @@ export function VendorRegistration({ onBack, onRegistered }) {
               required
               disabled={submitting}
             />
-            
+
             <DocumentUpload
               label="PAN Card"
               value={form.panCard}

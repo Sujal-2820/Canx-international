@@ -12,6 +12,8 @@ const initialState = {
     location: null,
     coverageRadius: 20,
   },
+  cart: [],
+  favourites: [],
   notifications: [],
   dashboard: {
     overview: null,
@@ -270,6 +272,64 @@ function reducer(state, action) {
       return {
         ...state,
         notifications: action.payload || [],
+      }
+    case 'ADD_TO_CART': {
+      const { productId, variantAttributes, quantity } = action.payload
+      const existingItem = state.cart.find((item) =>
+        item.productId === productId &&
+        JSON.stringify(item.variantAttributes) === JSON.stringify(variantAttributes)
+      )
+      if (existingItem) {
+        return {
+          ...state,
+          cart: state.cart.map((item) =>
+            item.productId === productId &&
+              JSON.stringify(item.variantAttributes) === JSON.stringify(variantAttributes)
+              ? { ...item, quantity: item.quantity + (quantity || 1) }
+              : item,
+          ),
+        }
+      }
+      return {
+        ...state,
+        cart: [...state.cart, action.payload],
+      }
+    }
+    case 'UPDATE_CART_ITEM':
+      return {
+        ...state,
+        cart: state.cart.map((item) =>
+          item.productId === action.payload.productId &&
+            JSON.stringify(item.variantAttributes) === JSON.stringify(action.payload.variantAttributes)
+            ? { ...item, quantity: action.payload.quantity }
+            : item,
+        ),
+      }
+    case 'REMOVE_FROM_CART':
+      return {
+        ...state,
+        cart: state.cart.filter((item) =>
+          !(item.productId === action.payload.productId &&
+            JSON.stringify(item.variantAttributes) === JSON.stringify(action.payload.variantAttributes))
+        ),
+      }
+    case 'CLEAR_CART':
+      return {
+        ...state,
+        cart: [],
+      }
+    case 'ADD_TO_FAVOURITES':
+      if (state.favourites.includes(action.payload.productId)) {
+        return state
+      }
+      return {
+        ...state,
+        favourites: [...state.favourites, action.payload.productId],
+      }
+    case 'REMOVE_FROM_FAVOURITES':
+      return {
+        ...state,
+        favourites: state.favourites.filter((id) => id !== action.payload.productId),
       }
     case 'SET_REALTIME_CONNECTED':
       return {

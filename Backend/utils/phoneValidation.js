@@ -3,6 +3,29 @@
  * Handles cross-role phone number validation and special bypass numbers
  */
 
+/**
+ * Normalize phone number to +91XXXXXXXXXX format
+ * @param {string} phone - Raw phone number
+ * @returns {string} - Normalized phone number
+ */
+function normalizePhoneNumber(phone) {
+    if (!phone) return '';
+
+    // Remove all spaces, hyphens, and other non-digit characters except +
+    let cleaned = phone.replace(/[\s\-()]/g, '');
+
+    // Remove + if it exists, we'll add it back later
+    cleaned = cleaned.replace(/^\+/, '');
+
+    // If it starts with 91 and has more than 10 digits, it's already got the country code
+    if (cleaned.startsWith('91') && cleaned.length > 10) {
+        cleaned = cleaned.substring(2);
+    }
+
+    // Return in standardized format
+    return `+91${cleaned.slice(-10)}`;
+}
+
 const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const Seller = require('../models/Seller');
@@ -34,9 +57,11 @@ function isSpecialBypassNumber(phone) {
  */
 async function checkPhoneExists(phone, excludeRole = null) {
     try {
+        const normalizedPhone = normalizePhoneNumber(phone);
+
         // Check in User collection
         if (excludeRole !== 'user') {
-            const user = await User.findOne({ phone });
+            const user = await User.findOne({ phone: normalizedPhone });
             if (user) {
                 return {
                     exists: true,
@@ -48,7 +73,7 @@ async function checkPhoneExists(phone, excludeRole = null) {
 
         // Check in Vendor collection
         if (excludeRole !== 'vendor') {
-            const vendor = await Vendor.findOne({ phone });
+            const vendor = await Vendor.findOne({ phone: normalizedPhone });
             if (vendor) {
                 return {
                     exists: true,
@@ -60,7 +85,7 @@ async function checkPhoneExists(phone, excludeRole = null) {
 
         // Check in Seller collection
         if (excludeRole !== 'seller') {
-            const seller = await Seller.findOne({ phone });
+            const seller = await Seller.findOne({ phone: normalizedPhone });
             if (seller) {
                 return {
                     exists: true,
@@ -89,17 +114,18 @@ async function checkPhoneExists(phone, excludeRole = null) {
  */
 async function checkPhoneInRole(phone, role) {
     try {
+        const normalizedPhone = normalizePhoneNumber(phone);
         let data = null;
 
         switch (role) {
             case 'user':
-                data = await User.findOne({ phone });
+                data = await User.findOne({ phone: normalizedPhone });
                 break;
             case 'vendor':
-                data = await Vendor.findOne({ phone });
+                data = await Vendor.findOne({ phone: normalizedPhone });
                 break;
             case 'seller':
-                data = await Seller.findOne({ phone });
+                data = await Seller.findOne({ phone: normalizedPhone });
                 break;
             default:
                 throw new Error(`Invalid role: ${role}`);
@@ -116,6 +142,7 @@ async function checkPhoneInRole(phone, role) {
 }
 
 module.exports = {
+    normalizePhoneNumber,
     checkPhoneExists,
     checkPhoneInRole,
     isSpecialBypassNumber,

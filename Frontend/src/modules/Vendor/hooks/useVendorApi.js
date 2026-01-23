@@ -194,6 +194,8 @@ export function useVendorApi() {
 
   const getCreditHistory = useCallback((params) => callApi(vendorApi.getCreditHistory, params), [callApi])
 
+  const getRepaymentRules = useCallback(() => callApi(vendorApi.getRepaymentRules), [callApi])
+
   // Credit Repayment APIs
   const createRepaymentIntent = useCallback(
     (repaymentData) => {
@@ -365,6 +367,7 @@ export function useVendorApi() {
     createRepaymentIntent,
     confirmRepayment,
     getRepaymentHistory,
+    getRepaymentRules,
     // Earnings
     getEarningsSummary,
     getEarningsHistory,

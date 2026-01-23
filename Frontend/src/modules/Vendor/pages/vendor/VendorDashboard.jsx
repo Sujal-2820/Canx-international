@@ -42,59 +42,58 @@ import { RepaymentCalculator } from '../../components/RepaymentCalculator'
 import { CreditSummaryWidget } from '../../components/CreditSummaryWidget'
 import { RewardsWidget } from '../../components/RewardsWidget'
 
+// New Catalog Views
+import { VendorHomeView } from './views/VendorHomeView'
+import { VendorProductDetailView } from './views/VendorProductDetailView'
+import { VendorCartView } from './views/VendorCartView'
+import { VendorCheckoutView } from './views/VendorCheckoutView'
+import { VendorCategoryProductsView } from './views/VendorCategoryProductsView'
+import { VendorFavouritesView } from './views/VendorFavouritesView'
+
 const NAV_ITEMS = [
   {
-    id: 'overview',
-    label: <Trans>Overview</Trans>,
-    description: <Trans>Orders, sales, and reminders</Trans>,
+    id: 'home',
+    label: <Trans>Catalog</Trans>,
+    description: <Trans>Order from Admin</Trans>,
     icon: HomeIcon,
   },
   {
     id: 'inventory',
-    label: <Trans>Stock Manager</Trans>,
-    description: <Trans>Current stock status</Trans>,
+    label: <Trans>Inventory</Trans>,
+    description: <Trans>Your stock</Trans>,
     icon: BoxIcon,
   },
   {
     id: 'orders',
-    label: <Trans>Orders</Trans>,
-    description: <Trans>Confirm availability and delivery</Trans>,
-    icon: CartIcon,
+    label: <Trans>Cust Orders</Trans>,
+    description: <Trans>Customer fulfillments</Trans>,
+    icon: TruckIcon,
   },
   {
     id: 'credit',
-    label: <Trans>Credit Status</Trans>,
-    description: <Trans>Credit limit, fines, payment</Trans>,
-    icon: CreditIcon,
-  },
-  {
-    id: 'earnings',
-    label: <Trans>Earnings</Trans>,
-    description: <Trans>Earnings, balance, withdrawals</Trans>,
+    label: <Trans>Dues/Wallet</Trans>,
+    description: <Trans>Credit & Pay</Trans>,
     icon: WalletIcon,
   },
   {
-    id: 'reports',
-    label: <Trans>Summary</Trans>,
-    description: <Trans>Weekly / monthly summary</Trans>,
-    icon: ReportIcon,
-  },
-  {
-    id: 'rewards',
-    label: <Trans>Rewards</Trans>,
-    description: <Trans>Milestones & gifts</Trans>,
-    icon: GiftIcon,
+    id: 'menu',
+    label: <Trans>Menu</Trans>,
+    description: <Trans>Profile & More</Trans>,
+    icon: MenuIcon,
   },
 ]
 
 export function VendorDashboard({ onLogout }) {
-  const { profile, dashboard, notifications } = useVendorState()
+  const { profile, dashboard, notifications, cart, favourites } = useVendorState()
   const dispatch = useVendorDispatch()
   const navigate = useNavigate()
   const location = useLocation()
-  const { tab: urlTab } = useParams()
+  const { tab: urlTab, id: urlId } = useParams()
   const { acceptOrder, confirmOrderAcceptance, cancelOrderAcceptance, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getOrders, requestWithdrawal, getEarningsSummary, getBankAccounts, createRepaymentIntent, confirmRepayment, getCreditInfo, getNotifications, markNotificationAsRead, markAllNotificationsAsRead, getOrderDetails } = useVendorApi()
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('home')
+  const [selectedProduct, setSelectedProduct] = useState(null)
+  const [selectedCategory, setSelectedCategory] = useState(null)
+  const [showCheckout, setShowCheckout] = useState(false)
   const [showAllOrders, setShowAllOrders] = useState(false)
   const [showOrderDetails, setShowOrderDetails] = useState(false)
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null)
@@ -113,19 +112,90 @@ export function VendorDashboard({ onLogout }) {
   const [selectedOrderForEscalation, setSelectedOrderForEscalation] = useState(null)
   const [escalationType, setEscalationType] = useState('items') // 'items' or 'quantities'
 
+  // Valid tabs for navigation
+  const validTabs = ['home', 'inventory', 'orders', 'credit', 'menu', 'product-detail', 'catalog-cart', 'checkout', 'category-products', 'favourites']
+
+  // Navigate function that updates both state and URL
+  const navigateToTab = useCallback((tab, id = null) => {
+    if (validTabs.includes(tab)) {
+      setActiveTab(tab)
+      const path = id ? `/vendor/dashboard/${tab}/${id}` : `/vendor/dashboard/${tab}`
+      navigate(path, { replace: false })
+      // Close modals/panels when navigating to a different tab
+      if (tab !== 'orders' || !showOrderDetails) {
+        setShowOrderDetails(false)
+        setSelectedOrderForDetails(null)
+      }
+      closePanel()
+    }
+  }, [navigate, closePanel, showOrderDetails, validTabs])
+
   // Confirmation modal states
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false)
   const [confirmationData, setConfirmationData] = useState(null)
   const [confirmationLoading, setConfirmationLoading] = useState(false)
 
-  // Valid tabs for navigation
-  const validTabs = ['overview', 'inventory', 'orders', 'credit', 'earnings', 'reports', 'rewards']
+  const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
+  const favouritesCount = favourites.length
+  const unreadNotificationCount = useMemo(() => (notifications || []).filter((n) => !n.read).length, [notifications])
+
+  // Catalog Handlers
+  const handleAddToCart = useCallback((productId, quantity, variantAttributes) => {
+    dispatch({
+      type: 'ADD_TO_CART',
+      payload: { productId, quantity, variantAttributes, timestamp: new Date().toISOString() },
+    })
+    success('Product added to catalog cart')
+  }, [dispatch, success])
+
+  const handleUpdateCartQuantity = useCallback((productId, variantAttributes, quantity) => {
+    dispatch({
+      type: 'UPDATE_CART_ITEM',
+      payload: { productId, variantAttributes, quantity },
+    })
+  }, [dispatch])
+
+  const handleRemoveFromCart = useCallback((productId, variantAttributes) => {
+    dispatch({
+      type: 'REMOVE_FROM_CART',
+      payload: { productId, variantAttributes },
+    })
+    info('Item removed from cart')
+  }, [dispatch, info])
+
+  const handleProceedToCheckout = useCallback(() => {
+    navigateToTab('checkout')
+  }, [navigateToTab])
+
+  const handleOrderPlaced = useCallback((order) => {
+    success('Wholesale order request submitted successfully!')
+    navigateToTab('credit')
+  }, [navigateToTab, success])
+
+  const handleToggleFavourite = useCallback((productId) => {
+    if (favourites.includes(productId)) {
+      dispatch({ type: 'REMOVE_FROM_FAVOURITES', payload: { productId } })
+      info('Removed from catalog favourites')
+    } else {
+      dispatch({ type: 'ADD_TO_FAVOURITES', payload: { productId } })
+      success('Added to catalog favourites')
+    }
+  }, [dispatch, favourites, info, success])
+
+  const navigateToProductDetail = useCallback((productId) => {
+    setSelectedProduct(productId)
+    navigateToTab('product-detail', productId)
+  }, [navigateToTab])
+
 
   // Initialize tab from URL parameter on mount or when URL changes
   useEffect(() => {
     const tab = urlTab || 'overview'
     if (validTabs.includes(tab)) {
       setActiveTab(tab)
+      if (tab === 'product-detail' && urlId) {
+        setSelectedProduct(urlId)
+      }
       // Close modals/panels when navigating to a different tab
       if (tab !== 'orders' || !showOrderDetails) {
         setShowOrderDetails(false)
@@ -136,21 +206,8 @@ export function VendorDashboard({ onLogout }) {
       // Invalid tab, redirect to overview
       navigate('/vendor/dashboard/overview', { replace: true })
     }
-  }, [urlTab, navigate, closePanel, showOrderDetails])
+  }, [urlTab, urlId, navigate, closePanel, showOrderDetails])
 
-  // Navigate function that updates both state and URL
-  const navigateToTab = useCallback((tab) => {
-    if (validTabs.includes(tab)) {
-      setActiveTab(tab)
-      navigate(`/vendor/dashboard/${tab}`, { replace: false })
-      // Close modals/panels when navigating to a different tab
-      if (tab !== 'orders' || !showOrderDetails) {
-        setShowOrderDetails(false)
-        setSelectedOrderForDetails(null)
-      }
-      closePanel()
-    }
-  }, [navigate, closePanel, showOrderDetails])
 
   // Listen for navigation events from children
   useEffect(() => {
@@ -360,10 +417,6 @@ export function VendorDashboard({ onLogout }) {
     navigateToTab(target)
   }
 
-  // Calculate unread notification count
-  const unreadNotificationCount = useMemo(() => {
-    return (notifications || []).filter((n) => !n.read).length
-  }, [notifications])
 
   // Play notification sound
   const playNotificationSound = useCallback(() => {
@@ -570,11 +623,15 @@ export function VendorDashboard({ onLogout }) {
   return (
     <>
       <MobileShell
+        isHome={activeTab === 'home'}
         title={<><Trans>Welcome</Trans> {welcomeName}</>}
         subtitle={profile?.location?.city ? `${profile.location.city}${profile.location.state ? `, ${profile.location.state}` : ''}` : <Trans>Location not set</Trans>}
         onSearchClick={openSearch}
         onNotificationClick={handleNotificationClick}
         notificationCount={unreadNotificationCount}
+        favouritesCount={favouritesCount}
+        cartCount={cartCount}
+        onNavigate={navigateToTab}
         isNotificationAnimating={isNotificationAnimating}
         navigation={NAV_ITEMS.map((item) => (
           <BottomNavItem
@@ -583,11 +640,76 @@ export function VendorDashboard({ onLogout }) {
             active={activeTab === item.id}
             onClick={() => navigateToTab(item.id)}
             icon={<item.icon active={activeTab === item.id} className="h-5 w-5" />}
+            badge={item.id === 'home' && cartCount > 0 ? cartCount : undefined}
           />
         ))}
         menuContent={({ close }) => <MenuList items={buildMenuItems(close)} active={activeTab} />}
       >
         <section className="space-y-6">
+          {activeTab === 'home' && (
+            <VendorHomeView
+              onProductClick={(productId) => {
+                if (productId === 'all') {
+                  navigateToTab('category-products')
+                } else {
+                  navigateToProductDetail(productId)
+                }
+              }}
+              onCategoryClick={(catId) => {
+                setSelectedCategory(catId)
+                navigateToTab('category-products')
+              }}
+              onAddToCart={handleAddToCart}
+              onToggleFavourite={handleToggleFavourite}
+              favourites={favourites}
+              onSearchClick={openSearch}
+              onCartClick={() => navigateToTab('catalog-cart')}
+              cartCount={cartCount}
+            />
+          )}
+
+          {activeTab === 'category-products' && (
+            <VendorCategoryProductsView
+              categoryId={selectedCategory || 'all'}
+              onProductClick={navigateToProductDetail}
+              onAddToCart={handleAddToCart}
+              onBack={() => navigateToTab('home')}
+              onToggleFavourite={handleToggleFavourite}
+              favourites={favourites}
+            />
+          )}
+
+          {activeTab === 'favourites' && (
+            <VendorFavouritesView
+              onProductClick={navigateToProductDetail}
+              onAddToCart={handleAddToCart}
+              onRemoveFromFavourites={handleToggleFavourite}
+            />
+          )}
+          {activeTab === 'product-detail' && selectedProduct && (
+            <VendorProductDetailView
+              productId={selectedProduct}
+              onAddToCart={handleAddToCart}
+              onToggleFavourite={handleToggleFavourite}
+              favourites={favourites}
+              onBack={() => navigateToTab('home')}
+              onCartClick={() => navigateToTab('catalog-cart')}
+            />
+          )}
+          {activeTab === 'catalog-cart' && (
+            <VendorCartView
+              onUpdateQuantity={handleUpdateCartQuantity}
+              onRemove={handleRemoveFromCart}
+              onCheckout={handleProceedToCheckout}
+              onNavigateToProduct={navigateToProductDetail}
+            />
+          )}
+          {activeTab === 'checkout' && (
+            <VendorCheckoutView
+              onBack={() => navigateToTab('catalog-cart')}
+              onOrderPlaced={handleOrderPlaced}
+            />
+          )}
           {activeTab === 'overview' && <OverviewView onNavigate={navigateTo} welcomeName={welcomeName} openPanel={openPanel} />}
           {activeTab === 'inventory' && <InventoryView onNavigate={navigateTo} openPanel={openPanel} />}
           {activeTab === 'orders' && !showAllOrders && !showOrderDetails && (
@@ -3598,7 +3720,9 @@ function InventoryView({ openPanel, onNavigate }) {
                     {/* Price */}
                     <div className="pt-2 flex flex-col gap-3">
                       <p className="text-sm font-bold text-purple-600">
-                        ₹{product.pricePerUnit || product.priceToVendor || 0} per {product.unit || 'kg'}
+                        ₹{(product.attributeStocks && product.attributeStocks.length > 0)
+                          ? Math.min(...product.attributeStocks.map(a => a.vendorPrice)).toLocaleString('en-IN')
+                          : (product.pricePerUnit || product.priceToVendor || 0).toLocaleString('en-IN')} per {product.unit || 'kg'}
                       </p>
                       <p className="text-xs text-gray-500">
                         {vendorStockStatus.helper}

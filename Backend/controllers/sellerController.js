@@ -17,7 +17,7 @@ const { sendOTP } = require('../utils/otp');
 const { getTestOTPInfo } = require('../services/smsIndiaHubService');
 const { generateToken } = require('../middleware/auth');
 const { OTP_EXPIRY_MINUTES, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
-const { checkPhoneExists, checkPhoneInRole, isSpecialBypassNumber, SPECIAL_BYPASS_OTP } = require('../utils/phoneValidation');
+const { checkPhoneExists, checkPhoneInRole, isSpecialBypassNumber, SPECIAL_BYPASS_OTP, normalizePhoneNumber } = require('../utils/phoneValidation');
 const { generateUniqueId } = require('../utils/generateUniqueId');
 const { createPaymentHistory, createBankAccount } = require('../utils/createWithId');
 const adminTaskController = require('./adminTaskController');
@@ -38,10 +38,12 @@ exports.register = async (req, res, next) => {
       });
     }
 
+    const normalizedPhone = normalizePhoneNumber(phone);
+
     // Special bypass number - skip all validation and checks, proceed to OTP
-    if (isSpecialBypassNumber(phone)) {
+    if (isSpecialBypassNumber(normalizedPhone)) {
       // Find or create seller
-      let seller = await Seller.findOne({ phone });
+      let seller = await Seller.findOne({ phone: normalizedPhone });
 
       if (!seller) {
         // Generate unique sellerId
@@ -63,7 +65,7 @@ exports.register = async (req, res, next) => {
         seller = new Seller({
           sellerId: `SLR-${nextNumber}`,
           name: name || 'Special Bypass Seller',
-          phone: phone,
+          phone: normalizedPhone,
           area: area || '',
           status: 'pending',
         });
@@ -98,7 +100,7 @@ exports.register = async (req, res, next) => {
     }
 
     // Check if phone exists in other roles (user, vendor)
-    const phoneCheck = await checkPhoneExists(phone, 'seller');
+    const phoneCheck = await checkPhoneExists(normalizedPhone, 'seller');
     if (phoneCheck.exists) {
       return res.status(400).json({
         success: false,
@@ -107,7 +109,7 @@ exports.register = async (req, res, next) => {
     }
 
     // Check if seller already exists in seller collection
-    const existingSeller = await Seller.findOne({ phone });
+    const existingSeller = await Seller.findOne({ phone: normalizedPhone });
 
     if (existingSeller) {
       return res.status(400).json({
@@ -172,7 +174,7 @@ exports.register = async (req, res, next) => {
     const sellerData = {
       sellerId: finalSellerId,
       name,
-      phone,
+      phone: normalizedPhone,
       area: area || '',
       status: 'pending', // Requires admin approval
     };
@@ -193,7 +195,7 @@ exports.register = async (req, res, next) => {
     seller.clearOTP();
 
     // Check if this is a test phone number - use default OTP 123456
-    const testOTPInfo = getTestOTPInfo(phone);
+    const testOTPInfo = getTestOTPInfo(normalizedPhone);
     let otpCode;
     if (testOTPInfo.isTest) {
       // For test numbers, set OTP directly to 123456
@@ -210,7 +212,7 @@ exports.register = async (req, res, next) => {
 
     // Send OTP via SMS
     try {
-      await sendOTP(phone, otpCode, 'registration');
+      await sendOTP(normalizedPhone, otpCode, 'registration');
     } catch (error) {
       console.error('Failed to send OTP:', error);
     }
@@ -265,10 +267,12 @@ exports.requestOTP = async (req, res, next) => {
       });
     }
 
+    const normalizedPhone = normalizePhoneNumber(phone);
+
     // Special bypass number - skip all checks and proceed to OTP
-    if (isSpecialBypassNumber(phone)) {
+    if (isSpecialBypassNumber(normalizedPhone)) {
       // Find or create seller
-      let seller = await Seller.findOne({ phone });
+      let seller = await Seller.findOne({ phone: normalizedPhone });
 
       if (!seller) {
         // Generate unique sellerId
@@ -289,7 +293,7 @@ exports.requestOTP = async (req, res, next) => {
 
         seller = new Seller({
           sellerId: `SLR-${nextNumber}`,
-          phone: phone,
+          phone: normalizedPhone,
           name: 'Special Bypass Seller', // Placeholder name
           status: 'pending',
         });
@@ -363,7 +367,7 @@ exports.requestOTP = async (req, res, next) => {
     seller.clearOTP();
 
     // Check if this is a test phone number - use default OTP 123456
-    const testOTPInfo = getTestOTPInfo(phone);
+    const testOTPInfo = getTestOTPInfo(normalizedPhone);
     let otpCode;
     if (testOTPInfo.isTest) {
       // For test numbers, set OTP directly to 123456
@@ -483,7 +487,7 @@ exports.verifyOTP = async (req, res, next) => {
     }
 
     // Check if phone exists in other roles first
-    const phoneCheck = await checkPhoneExists(phone, 'seller');
+    const phoneCheck = await checkPhoneExists(normalizedPhone, 'seller');
     if (phoneCheck.exists) {
       return res.status(400).json({
         success: false,
@@ -492,7 +496,7 @@ exports.verifyOTP = async (req, res, next) => {
     }
 
     // Check if phone exists in seller role
-    const sellerCheck = await checkPhoneInRole(phone, 'seller');
+    const sellerCheck = await checkPhoneInRole(normalizedPhone, 'seller');
     let seller = sellerCheck.data;
 
     if (!seller) {

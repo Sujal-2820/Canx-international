@@ -8,11 +8,14 @@ import { cn } from '../../../lib/cn'
  */
 export function VendorMap({ vendor, className }) {
   const { location, region, name, coverageRadius, serviceArea, coverageConflicts } = vendor || {}
-  
+
+  const lat = location?.coordinates?.lat || location?.lat
+  const lng = location?.coordinates?.lng || location?.lng
+
   // If we have lat/lng, we can use Google Maps Static API or similar
   // For now, we'll show a placeholder with region info
-  const mapUrl = location?.lat && location?.lng
-    ? `https://maps.googleapis.com/maps/api/staticmap?center=${location.lat},${location.lng}&zoom=12&size=600x300&markers=color:red%7C${location.lat},${location.lng}&key=YOUR_API_KEY`
+  const mapUrl = lat && lng
+    ? `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=12&size=600x300&markers=color:red%7C${lat},${lng}&key=YOUR_API_KEY`
     : null
 
   return (
@@ -41,9 +44,9 @@ export function VendorMap({ vendor, className }) {
         <div className="space-y-1 text-center">
           <p className="text-sm font-bold text-gray-900">{name || 'Vendor Location'}</p>
           <p className="text-xs text-gray-600">{region || 'Location not available'}</p>
-          {location?.lat && location?.lng ? (
+          {lat && lng ? (
             <p className="text-xs text-gray-500">
-              {location.lat.toFixed(4)}, {location.lng.toFixed(4)}
+              {lat.toFixed(4)}, {lng.toFixed(4)}
             </p>
           ) : (
             <p className="text-xs text-gray-500">Geo coordinates missing</p>

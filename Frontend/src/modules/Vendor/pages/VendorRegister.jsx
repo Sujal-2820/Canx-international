@@ -7,25 +7,62 @@ import { DocumentUpload } from '../components/DocumentUpload'
 import { GoogleMapsLocationPicker } from '../../../components/GoogleMapsLocationPicker'
 import * as vendorApi from '../services/vendorApi'
 import { PhoneInput } from '../../../components/PhoneInput'
+import { cn } from '../../../lib/cn'
+import { validatePhoneNumber } from '../../../utils/phoneValidation'
 
 export function VendorRegister({ onSuccess, onSwitchToLogin }) {
   const navigate = useNavigate()
   const dispatch = useVendorDispatch()
-  const [step, setStep] = useState('register') // 'register' | 'otp' | 'pending' | 'rejected'
+
+  // Registration Flow: 'step1' | 'step2' | 'otp' | 'pending' | 'rejected'
+  const [step, setStep] = useState('step1')
+
   const [form, setForm] = useState({
-    fullName: '',
+    // Step 1: Info
+    firstName: '',
+    lastName: '',
     email: '',
-    contact: '',
-    location: null, // Will contain { address, city, state, pincode, coordinates: { lat, lng } }
-    aadhaarCard: null,
-    panCard: null,
+    phone: '',
+    agentName: '',
+    shopName: '',
+    shopAddress: '',
+    location: null,
+    gstNumber: '',
+    panNumber: '',
+    aadhaarNumber: '',
+
+    // Step 2: Documents
+    aadhaarFront: null,
+    aadhaarBack: null,
+    pesticideLicense: null,
+    securityChecks: null,
+    dealershipForm: null,
+    termsAccepted: false,
   })
-  const [otp, setOtp] = useState('')
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [vendorId, setVendorId] = useState(null)
 
   const handleChange = (e) => {
-    const { name, value } = e.target
+    const { name, value, type, checked } = e.target
+
+    let processedValue = value
+    if (type === 'checkbox') {
+      processedValue = checked
+    } else if (['gstNumber', 'panNumber'].includes(name)) {
+      processedValue = value.toUpperCase()
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: processedValue
+    }))
+    setError(null)
+  }
+
+  // Handle value-only changes for components like PhoneInput
+  const handleValueChange = (name, value) => {
     setForm((prev) => ({ ...prev, [name]: value }))
     setError(null)
   }
@@ -35,118 +72,91 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
       ...prev,
       [documentType]: documentData,
     }))
+    setError(null)
   }
 
-  const handleRequestOtp = async (e) => {
+  // --- Validations ---
+  const validateStep1 = () => {
+    const { firstName, lastName, phone, email, shopName, shopAddress, location, gstNumber, panNumber, aadhaarNumber } = form
+
+    if (!firstName.trim() || !lastName.trim()) return 'First and last name are required'
+
+    // Indian Mobile Number Validation using utility
+    const validation = validatePhoneNumber(phone)
+    if (!validation.isValid) return validation.error
+
+    if (!shopName.trim()) return 'Shop name is required'
+    if (!shopAddress.trim()) return 'Shop address is required'
+    if (!location?.coordinates) return 'Please select shop location on map'
+
+    // GST Validation
+    const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/
+    if (!gstRegex.test(gstNumber)) return 'Invalid GST number format (e.g. 22AAAAA0000A1Z5)'
+
+    // PAN Validation
+    const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/
+    if (!panRegex.test(panNumber)) return 'Invalid PAN card format (e.g. ABCDE1234F)'
+
+    // Aadhaar Validation
+    const aadhaarRegex = /^[0-9]{12}$/
+    if (!aadhaarRegex.test(aadhaarNumber)) return 'Aadhaar number must be exactly 12 digits'
+
+    return null
+  }
+
+  const validateStep2 = () => {
+    const { aadhaarFront, aadhaarBack, pesticideLicense, securityChecks, dealershipForm, termsAccepted } = form
+
+    if (!aadhaarFront?.url) return 'Aadhaar front image is required'
+    if (!aadhaarBack?.url) return 'Aadhaar back image is required'
+    if (!pesticideLicense?.url) return 'Pesticide license is required'
+    if (!securityChecks?.url) return 'Security checks document is required'
+    if (!dealershipForm?.url) return 'Dealership form is required'
+    if (!termsAccepted) return 'You must accept the terms and conditions'
+
+    return null
+  }
+
+  const handleGoToStep2 = (e) => {
+    e.preventDefault()
+    const errorMsg = validateStep1()
+    if (errorMsg) {
+      setError(errorMsg)
+      return
+    }
+    setStep('step2')
+    window.scrollTo(0, 0)
+  }
+
+  const handleFinalSubmit = async (e) => {
     e.preventDefault()
     setError(null)
+
+    const errorMsg = validateStep2()
+    if (errorMsg) {
+      setError(errorMsg)
+      return
+    }
+
     setLoading(true)
-
     try {
-      // Validate form
-      if (!form.fullName.trim()) {
-        setError('Full name is required')
-        setLoading(false)
-        return
-      }
-      if (!form.contact.trim()) {
-        setError('Contact number is required')
-        setLoading(false)
-        return
-      }
-      if (form.contact.length < 10) {
-        setError('Please enter a valid contact number')
-        setLoading(false)
-        return
-      }
-      // Validate location - coordinates are required (Google Maps provides this)
-      if (!form.location || !form.location.coordinates) {
-        setError('Please select your location using the map or live location button')
-        setLoading(false)
-        return
-      }
-      // Validate coordinates are valid (not 0,0)
-      if (!form.location.coordinates.lat || !form.location.coordinates.lng ||
-        form.location.coordinates.lat === 0 || form.location.coordinates.lng === 0) {
-        setError('Please select a valid location. Coordinates are required.')
-        setLoading(false)
-        return
-      }
-      // Address is required (Google Maps provides formatted_address)
-      if (!form.location.address || !form.location.address.trim()) {
-        setError('Please select a valid address from the location picker')
-        setLoading(false)
-        return
-      }
-      // Validate documents - must be uploaded
-      if (!form.aadhaarCard?.url) {
-        setError('Please upload Aadhaar card image. Image is required and must be less than 2MB.')
-        setLoading(false)
-        return
-      }
-      if (!form.panCard?.url) {
-        setError('Please upload PAN card image. Image is required and must be less than 2MB.')
-        setLoading(false)
-        return
+      // Normalize phone number for API request
+      const validation = validatePhoneNumber(form.phone)
+      const normalizedForm = {
+        ...form,
+        phone: validation.normalized
       }
 
-      // Validate document formats - must be images
-      const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
-      const aadhaarFormat = form.aadhaarCard.format?.toLowerCase()
-      const panFormat = form.panCard.format?.toLowerCase()
-
-      if (!aadhaarFormat || !imageFormats.includes(aadhaarFormat)) {
-        setError('Aadhaar card must be an image file (JPG, PNG, GIF, etc.). PDF files are not accepted.')
-        setLoading(false)
-        return
-      }
-      if (!panFormat || !imageFormats.includes(panFormat)) {
-        setError('PAN card must be an image file (JPG, PNG, GIF, etc.). PDF files are not accepted.')
-        setLoading(false)
-        return
-      }
-
-      // Validate document sizes - must be less than 2MB
-      const maxSize = 2000000 // 2MB in bytes
-      if (form.aadhaarCard.size && form.aadhaarCard.size > maxSize) {
-        setError(`Aadhaar card image size (${(form.aadhaarCard.size / 1024 / 1024).toFixed(2)}MB) exceeds 2MB limit. Please upload a smaller image.`)
-        setLoading(false)
-        return
-      }
-      if (form.panCard.size && form.panCard.size > maxSize) {
-        setError(`PAN card image size (${(form.panCard.size / 1024 / 1024).toFixed(2)}MB) exceeds 2MB limit. Please upload a smaller image.`)
-        setLoading(false)
-        return
-      }
-
-      // Register vendor (creates vendor and sends OTP)
-      const location = {
-        address: form.location.address,
-        city: form.location.city,
-        state: form.location.state,
-        pincode: form.location.pincode,
-        coordinates: {
-          lat: form.location.coordinates.lat,
-          lng: form.location.coordinates.lng,
-        },
-      }
-
-      const result = await vendorApi.registerVendor({
-        name: form.fullName,
-        email: form.email || undefined,
-        phone: form.contact,
-        location: location,
-        aadhaarCard: form.aadhaarCard,
-        panCard: form.panCard,
-      })
-
+      const result = await vendorApi.registerVendor(normalizedForm)
       if (result.success || result.data) {
+        // Update form with normalized phone for further steps
+        setForm(prev => ({ ...prev, phone: validation.normalized }))
         setStep('otp')
       } else {
-        setError(result.error?.message || 'Failed to send OTP. Please try again.')
+        setError(result.error?.message || 'Failed to initiate registration. Please try again.')
       }
     } catch (err) {
-      setError(err.message || 'Failed to send OTP. Please try again.')
+      setError(err.message || 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -157,55 +167,35 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
     setLoading(true)
 
     try {
-      // Verify OTP to complete registration
-      const result = await vendorApi.loginVendorWithOtp({ phone: form.contact, otp: otpCode })
+      const result = await vendorApi.loginVendorWithOtp({ phone: form.phone, otp: otpCode })
 
       if (result.success || result.data) {
         const responseData = result.data?.data || result.data
         const vendorData = responseData?.vendor || result.data?.vendor
         const status = responseData?.status || vendorData?.status
 
-        // Check status
         if (status === 'pending') {
-          // Show pending message
+          setVendorId(vendorData?.vendorId || responseData?.vendorId || 'Pending')
           setStep('pending')
-          // Update vendor context with profile (but no token)
-          if (vendorData) {
-            dispatch({
-              type: 'AUTH_LOGIN',
-              payload: {
-                id: vendorData.id || vendorData._id,
-                name: vendorData.name || form.fullName,
-                phone: vendorData.phone || form.contact,
-                email: vendorData.email,
-                location: vendorData.location,
-                status: vendorData.status,
-                isActive: vendorData.isActive,
-              },
-            })
-          }
           return
         }
 
         if (status === 'rejected') {
-          // Show rejected message
           setStep('rejected')
           return
         }
 
-        // Vendor is approved - proceed to dashboard
         if (responseData?.token || result.data?.token) {
           localStorage.setItem('vendor_token', responseData?.token || result.data?.token)
         }
 
-        // Update vendor context with profile
         if (vendorData) {
           dispatch({
             type: 'AUTH_LOGIN',
             payload: {
               id: vendorData.id || vendorData._id,
-              name: vendorData.name || form.fullName,
-              phone: vendorData.phone || form.contact,
+              name: vendorData.name,
+              phone: vendorData.phone,
               email: vendorData.email,
               location: vendorData.location,
               status: vendorData.status,
@@ -214,49 +204,268 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
           })
         }
 
-        onSuccess?.(vendorData || { name: form.fullName, phone: form.contact })
+        onSuccess?.(vendorData)
         navigate('/vendor/dashboard')
       } else {
-        // Check for rejected status in error response
-        if (result.error?.status === 'rejected' || result.error?.message?.includes('rejected')) {
-          setStep('rejected')
-        } else {
-          setError(result.error?.message || 'Invalid OTP. Please try again.')
-        }
+        setError(result.error?.message || 'Invalid OTP. Please try again.')
       }
     } catch (err) {
-      // Check for rejected status in error response
-      if (err.error?.status === 'rejected' || err.message?.includes('rejected')) {
-        setStep('rejected')
-      } else {
-        setError(err.error?.message || err.message || 'Verification failed. Please try again.')
-      }
+      setError(err.message || 'Verification failed. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   const handleResendOtp = async () => {
-    setLoading(true)
     try {
-      await vendorApi.requestVendorOTP({ phone: form.contact })
+      await vendorApi.requestVendorOTP({ phone: form.phone })
     } catch (err) {
-      setError('Failed to resend OTP. Please try again.')
-    } finally {
-      setLoading(false)
+      setError('Failed to resend OTP.')
     }
   }
 
+  // --- Step 1: Info ---
+  if (step === 'step1') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+        <div className="w-full max-w-2xl space-y-5">
+          <RegistrationHeader currentStep={1} />
+
+          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-5 md:p-6 shadow-xl backdrop-blur-sm">
+            <form onSubmit={handleGoToStep2} className="space-y-5">
+              {error && <ErrorAlert error={error} />}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <FormInput
+                  label="First Name"
+                  name="firstName"
+                  value={form.firstName}
+                  onChange={handleChange}
+                  placeholder="e.g. Rajesh"
+                  required
+                />
+                <FormInput
+                  label="Last Name"
+                  name="lastName"
+                  value={form.lastName}
+                  onChange={handleChange}
+                  placeholder="e.g. Kumar"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-700">Mobile Number *</label>
+                  <PhoneInput
+                    name="phone"
+                    value={form.phone}
+                    onChange={(e) => handleValueChange('phone', e.target.value)}
+                    required
+                    placeholder="90000 00000"
+                  />
+                </div>
+                <FormInput
+                  label="Email (Optional)"
+                  name="email"
+                  type="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  placeholder="rajesh@example.com"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <FormInput
+                  label="Shop Name"
+                  name="shopName"
+                  value={form.shopName}
+                  onChange={handleChange}
+                  placeholder="e.g. Kisan Seva Kendra"
+                  required
+                />
+                <FormInput
+                  label="Agent Name (If any)"
+                  name="agentName"
+                  value={form.agentName}
+                  onChange={handleChange}
+                  placeholder="Referrer name"
+                />
+              </div>
+
+              <div className="space-y-4 border-t border-gray-100 pt-5">
+                <h3 className="text-sm font-bold text-gray-900">Shop Location & Address</h3>
+                <FormInput
+                  label="Complete Shop Address"
+                  name="shopAddress"
+                  value={form.shopAddress}
+                  onChange={handleChange}
+                  placeholder="Building, Street, Landmark..."
+                  required
+                />
+                <GoogleMapsLocationPicker
+                  onLocationSelect={(location) => handleValueChange('location', location)}
+                  initialLocation={form.location}
+                  required={true}
+                  label="Pin Shop Location on Map"
+                />
+              </div>
+
+              <div className="space-y-4 border-t border-gray-100 pt-5">
+                <h3 className="text-sm font-bold text-gray-900">KYC Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <FormInput
+                    label="GST Number"
+                    name="gstNumber"
+                    value={form.gstNumber}
+                    onChange={handleChange}
+                    placeholder="22AAAAA0000A1Z5"
+                    required
+                  />
+                  <FormInput
+                    label="PAN Number"
+                    name="panNumber"
+                    value={form.panNumber}
+                    onChange={handleChange}
+                    placeholder="ABCDE1234F"
+                    required
+                  />
+                  <FormInput
+                    label="Aadhaar Number"
+                    name="aadhaarNumber"
+                    value={form.aadhaarNumber}
+                    onChange={handleChange}
+                    placeholder="12 Digit Number"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={onSwitchToLogin}
+                  className="flex-1 rounded-full border border-gray-200 px-5 py-3.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-all"
+                >
+                  Back to Login
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all"
+                >
+                  Next Step
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // --- Step 2: Documents ---
+  if (step === 'step2') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+        <div className="w-full max-w-2xl space-y-5">
+          <RegistrationHeader currentStep={2} />
+
+          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-5 md:p-6 shadow-xl backdrop-blur-sm">
+            <form onSubmit={handleFinalSubmit} className="space-y-5">
+              {error && <ErrorAlert error={error} />}
+
+              <div className="space-y-6">
+                <h3 className="text-sm font-bold text-gray-900 border-b border-gray-100 pb-2">Required Documents</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <DocumentUpload
+                    label="Aadhaar Front"
+                    value={form.aadhaarFront}
+                    onChange={handleDocumentChange('aadhaarFront')}
+                    required
+                    disabled={loading}
+                  />
+                  <DocumentUpload
+                    label="Aadhaar Back"
+                    value={form.aadhaarBack}
+                    onChange={handleDocumentChange('aadhaarBack')}
+                    required
+                    disabled={loading}
+                  />
+                  <DocumentUpload
+                    label="Pesticide License"
+                    value={form.pesticideLicense}
+                    onChange={handleDocumentChange('pesticideLicense')}
+                    required
+                    disabled={loading}
+                  />
+                  <DocumentUpload
+                    label="Security Checks"
+                    value={form.securityChecks}
+                    onChange={handleDocumentChange('securityChecks')}
+                    required
+                    disabled={loading}
+                  />
+                  <DocumentUpload
+                    label="Dealership Form"
+                    value={form.dealershipForm}
+                    onChange={handleDocumentChange('dealershipForm')}
+                    required
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="termsAccepted"
+                    checked={form.termsAccepted}
+                    onChange={handleChange}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                  <span className="text-xs text-gray-600 leading-relaxed">
+                    I hereby certify that the information provided above is true to the best of my knowledge. I agree to the <button type="button" className="text-green-600 font-semibold hover:underline">Terms & Conditions</button> and <button type="button" className="text-green-600 font-semibold hover:underline">Privacy Policy</button> of Satpura Bio Organic.
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setStep('step1')}
+                  disabled={loading}
+                  className="flex-1 rounded-full border border-gray-200 px-5 py-3.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50"
+                >
+                  Previous Step
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
+                >
+                  {loading ? 'Submitting...' : 'Register Now'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // --- Step: OTP ---
   if (step === 'otp') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-6 py-12">
-        <div className="w-full max-w-md space-y-6">
-          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+        <div className="w-full max-w-md space-y-5">
+          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm">
             <OtpVerification
-              phone={form.contact}
+              phone={form.phone}
               onVerify={handleVerifyOtp}
               onResend={handleResendOtp}
-              onBack={() => setStep('register')}
+              onBack={() => setStep('step2')}
               loading={loading}
               error={error}
               userType="vendor"
@@ -267,139 +476,88 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
     )
   }
 
+  // --- Step: Pending/Rejected ---
   if (step === 'pending' || step === 'rejected') {
-    return <VendorStatusMessage status={step} onBack={() => navigate('/vendor/login')} />
+    return <VendorStatusMessage status={step} vendorId={vendorId} onBack={() => navigate('/vendor/login')} />
   }
 
+  return null
+}
+
+// --- Helper Components ---
+
+function RegistrationHeader({ currentStep }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-6 py-12">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
-            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-          </div>
-          <p className="text-xs uppercase tracking-wide text-green-600 font-semibold">Create Account</p>
-          <h1 className="text-3xl font-bold text-gray-900">Register as Vendor</h1>
-          <p className="text-sm text-gray-600">Start your journey to better farming</p>
+    <div className="text-center space-y-3 mb-2">
+      {/* Brand Identity */}
+      <div className="flex flex-col items-center mb-6">
+        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-2 shadow-sm border border-green-100 p-2 overflow-hidden">
+          <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="w-full h-full object-contain" />
         </div>
-
-        <div className="rounded-3xl border border-green-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm">
-          <form onSubmit={handleRequestOtp} className="space-y-5">
-            {error && (
-              <div className="rounded-2xl bg-red-50 border border-red-200 p-4">
-                <p className="text-sm text-red-600">{error}</p>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <label htmlFor="register-fullName" className="text-xs font-semibold text-gray-700">
-                Full Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="register-fullName"
-                name="fullName"
-                type="text"
-                required
-                value={form.fullName}
-                onChange={handleChange}
-                placeholder="Enter your full name"
-                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="register-contact" className="text-xs font-semibold text-gray-700">
-                Contact Number <span className="text-red-500">*</span>
-              </label>
-              <PhoneInput
-                id="register-contact"
-                name="contact"
-                value={form.contact}
-                onChange={handleChange}
-                required
-                placeholder="90000 00000"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="register-email" className="text-xs font-semibold text-gray-700">
-                Email <span className="text-gray-400 text-xs">(Optional)</span>
-              </label>
-              <input
-                id="register-email"
-                name="email"
-                type="email"
-                value={form.email}
-                onChange={handleChange}
-                placeholder="vendor@email.com"
-                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
-              />
-            </div>
-
-            <div className="border-t border-gray-200 pt-5 mt-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Address & Location</h3>
-
-              <div className="space-y-4">
-                <GoogleMapsLocationPicker
-                  onLocationSelect={(location) => {
-                    setForm((prev) => ({ ...prev, location }))
-                    setError(null)
-                  }}
-                  initialLocation={form.location}
-                  required={true}
-                  label="Select Your Business Location"
-                />
-              </div>
-            </div>
-
-            {/* Document Uploads */}
-            <div className="border-t border-gray-200 pt-5 mt-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Verification Documents</h3>
-              <p className="text-xs text-gray-600 mb-4">
-                Please upload clear images or PDFs of your Aadhaar Card and PAN Card for verification.
-              </p>
-
-              <div className="space-y-4">
-                <DocumentUpload
-                  label="Aadhaar Card"
-                  value={form.aadhaarCard}
-                  onChange={handleDocumentChange('aadhaarCard')}
-                  required
-                  disabled={loading}
-                />
-
-                <DocumentUpload
-                  label="PAN Card"
-                  value={form.panCard}
-                  onChange={handleDocumentChange('panCard')}
-                  required
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Sending OTP...' : 'Continue'}
-            </button>
-
-            <div className="text-center text-sm">
-              <span className="text-gray-600">Already have an account? </span>
-              <button
-                type="button"
-                onClick={onSwitchToLogin}
-                className="text-green-600 font-semibold hover:underline"
-              >
-                Sign in
-              </button>
-            </div>
-          </form>
+        <div className="flex flex-col -space-y-1">
+          <span className="text-lg font-black text-slate-900 tracking-tighter uppercase">Satpura <span className="text-green-600">Bio</span></span>
+          <span className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">Organic Solutions</span>
         </div>
+      </div>
+
+      <div className="flex justify-center items-center gap-2 mb-2">
+        <StepIndicator active={currentStep === 1} completed={currentStep > 1} label="1" />
+        <div className={cn("w-12 h-0.5 rounded-full", currentStep > 1 ? "bg-green-600" : "bg-gray-200")} />
+        <StepIndicator active={currentStep === 2} completed={currentStep > 2} label="2" />
+        <div className={cn("w-12 h-0.5 rounded-full", currentStep > 2 ? "bg-green-600" : "bg-gray-200")} />
+        <StepIndicator active={currentStep === 3} completed={false} label="3" />
+      </div>
+      <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Step {currentStep} of 2</p>
+      <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">
+        {currentStep === 1 ? 'Business & KYC' : 'Verify Documents'}
+      </h1>
+      <p className="text-xs md:text-sm text-gray-500 max-w-sm mx-auto">
+        {currentStep === 1
+          ? 'Enter your shop details and identity numbers for verification.'
+          : 'Upload clear scans of your documents to complete registration.'}
+      </p>
+    </div>
+  )
+}
+
+function StepIndicator({ active, completed, label }) {
+  return (
+    <div className={cn(
+      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300",
+      completed ? "bg-green-600 text-white" :
+        active ? "bg-green-100 text-green-700 ring-2 ring-green-600 ring-offset-2" :
+          "bg-gray-100 text-gray-400"
+    )}>
+      {completed ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> : label}
+    </div>
+  )
+}
+
+function FormInput({ label, name, type = 'text', value, onChange, placeholder, required = false }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-semibold text-gray-700">{label} {required && '*'}</label>
+      <input
+        name={name}
+        type={type}
+        required={required}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all font-medium"
+      />
+    </div>
+  )
+}
+
+function ErrorAlert({ error }) {
+  return (
+    <div className="rounded-2xl bg-red-50 border border-red-200 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="flex gap-3">
+        <svg className="h-5 w-5 text-red-400 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+        </svg>
+        <p className="text-sm text-red-600 font-medium">{error}</p>
       </div>
     </div>
   )

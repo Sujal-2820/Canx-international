@@ -82,33 +82,53 @@ export async function requestVendorOTP(data) {
  * Register Vendor with OTP
  * POST /vendors/auth/register
  * 
- * @param {Object} data - { name, email, phone, location, aadhaarCard, panCard }
+ * @param {Object} data - Enhanced registration data
  * @returns {Promise<Object>} - { message, vendorId, requiresApproval, expiresIn }
  */
 export async function registerVendor(data) {
   return apiRequest('/vendors/auth/register', {
     method: 'POST',
     body: JSON.stringify({
-      name: data.fullName || data.name,
+      // Personal Info
+      firstName: data.firstName,
+      lastName: data.lastName,
+      name: `${data.firstName} ${data.lastName}`, // For backward compatibility
       email: data.email,
       phone: data.phone,
+      agentName: data.agentName,
+
+      // Business Info
+      shopName: data.shopName,
+      shopAddress: data.shopAddress,
+
+      // KYC Numbers
+      gstNumber: data.gstNumber,
+      aadhaarNumber: data.aadhaarNumber,
+      panNumber: data.panNumber,
+
+      // Location
       location: data.location || {
-        address: data.address || '',
+        address: data.shopAddress || '', // Fallback to shop address
         city: data.location?.city || '',
         state: data.location?.state || '',
         pincode: data.location?.pincode || '',
         coordinates: data.location?.coordinates || data.coordinates || { lat: data.lat, lng: data.lng },
       },
-      aadhaarCard: data.aadhaarCard ? {
-        url: data.aadhaarCard.url,
-        publicId: data.aadhaarCard.publicId,
-        format: data.aadhaarCard.format,
-      } : undefined,
-      panCard: data.panCard ? {
-        url: data.panCard.url,
-        publicId: data.panCard.publicId,
-        format: data.panCard.format,
-      } : undefined,
+
+      // Verification Documents
+      aadhaarFront: data.aadhaarFront,
+      aadhaarBack: data.aadhaarBack,
+      pesticideLicense: data.pesticideLicense,
+      securityChecks: data.securityChecks,
+      dealershipForm: data.dealershipForm,
+
+      // (Legacy support for documents)
+      aadhaarCard: data.aadhaarFront || data.aadhaarCard,
+      panCard: data.panCard,
+
+      // Terms
+      termsAccepted: data.termsAccepted,
+      termsAcceptedAt: data.termsAccepted ? new Date().toISOString() : undefined,
     }),
   })
 }
@@ -571,6 +591,14 @@ export async function getRepaymentHistory(params = {}) {
   return apiRequest(`/vendors/credit/repayment/history?${queryParams}`)
 }
 
+/**
+ * Get Repayment Rules (Tiers)
+ * GET /vendors/credit/repayment/rules
+ */
+export async function getRepaymentRules() {
+  return apiRequest('/vendors/credit/repayment/rules')
+}
+
 // ============================================================================
 // REPORTS & ANALYTICS APIs
 // ============================================================================
@@ -765,10 +793,10 @@ export async function getNotifications(params = {}) {
   if (params.limit) queryParams.append('limit', params.limit)
   if (params.read !== undefined) queryParams.append('read', params.read)
   if (params.type) queryParams.append('type', params.type)
+  if (params.priority) queryParams.append('priority', params.priority)
 
-  return apiRequest(`/vendors/notifications${queryParams.toString() ? `?${queryParams.toString()}` : ''}`, {
-    method: 'GET',
-  })
+  const query = queryParams.toString() ? `?${queryParams.toString()}` : ''
+  return apiRequest(`/vendors/notifications${query}`)
 }
 
 /**
@@ -959,5 +987,16 @@ export async function claimIncentiveReward(claimId, data) {
     method: 'POST',
     body: JSON.stringify(data),
   })
+}
+
+
+/**
+ * Get Credit-Related Notifications
+ * Filtered helper for credit repayment reminders
+ * 
+ * @returns {Promise<Object>} - { notifications: Array }
+ */
+export async function getCreditNotifications() {
+  return apiRequest('/vendors/notifications?type=repayment_due_reminder,repayment_overdue_alert,admin_announcement')
 }
 

@@ -1,21 +1,37 @@
 import { Clock, XCircle, CheckCircle } from 'lucide-react'
 
-export function VendorStatusMessage({ status, onBack }) {
+export function VendorStatusMessage({ status, vendorId, onBack }) {
   const isPending = status === 'pending'
   const isRejected = status === 'rejected'
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-6 py-12">
-      <div className="w-full max-w-md space-y-6">
-        <div className="rounded-3xl border border-green-200/60 bg-white/90 p-8 shadow-xl backdrop-blur-sm text-center">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+      <div className="w-full max-w-md space-y-5">
+        <div className="rounded-3xl border border-green-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm text-center">
+          {/* Brand Identity */}
+          <div className="flex flex-col items-center mb-8 border-b border-green-50 pb-6">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-2 shadow-sm border border-green-100 p-2 overflow-hidden">
+              <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="w-full h-full object-contain" />
+            </div>
+            <div className="flex flex-col -space-y-1">
+              <span className="text-lg font-black text-slate-900 tracking-tighter uppercase">Satpura <span className="text-green-600">Bio</span></span>
+              <span className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">Organic Solutions</span>
+            </div>
+          </div>
+
           {isPending && (
             <>
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-yellow-100 mb-6">
                 <Clock className="w-10 h-10 text-yellow-600" />
               </div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-3">Waiting for Approval</h1>
-              <p className="text-gray-600 mb-6">
-                Wait for Admin to Approve your Request. You can access your Dashboard After Admin approves you.
+              <h1 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">Waiting for Approval</h1>
+              {vendorId && (
+                <p className="text-sm text-gray-500 mb-4">
+                  Your Satpura Partner ID: <span className="font-bold text-green-600">{vendorId}</span>
+                </p>
+              )}
+              <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+                Thank you for joining us! Your application is currently under review. You can access the partner dashboard once approved.
               </p>
             </>
           )}
@@ -25,9 +41,9 @@ export function VendorStatusMessage({ status, onBack }) {
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-100 mb-6">
                 <XCircle className="w-10 h-10 text-red-600" />
               </div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-3">Profile Rejected</h1>
-              <p className="text-gray-600 mb-6">
-                Your profile was rejected by the Admin. You can't access your Dashboard.
+              <h1 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight">Application Status</h1>
+              <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+                We regret to inform you that your profile was not approved by the administrative team at this time.
               </p>
             </>
           )}

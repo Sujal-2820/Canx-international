@@ -44,8 +44,9 @@ class TierValidationService {
 
             if (current.periodEnd >= next.periodStart) {
                 errors.push(
-                    `Overlap detected: Tier "${current.tierName || i + 1}" (${current.periodStart}-${current.periodEnd} days) ` +
-                    `overlaps with Tier "${next.tierName || i + 2}" (${next.periodStart}-${next.periodEnd} days)`
+                    `Overlap detected: Tier "${current.tierName || i + 1}" ends at day ${current.periodEnd}, ` +
+                    `but Tier "${next.tierName || i + 2}" starts at day ${next.periodStart}. ` +
+                    `The next tier should start at day ${current.periodEnd + 1} to prevent overlapping.`
                 );
             }
         }

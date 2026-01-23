@@ -19,10 +19,12 @@ const adminIncentiveRoutes = require('./routes/adminIncentive');
 const vendorIncentiveRoutes = require('./routes/vendorIncentive');
 const categoryRoutes = require('./routes/category');
 const adminCategoryRoutes = require('./routes/adminCategory');
+const adminCreditManagementRoutes = require('./routes/adminCreditManagement');
 
 // Import config
 const { connectDB } = require('./config/database');
 const { initializeRealtimeServer } = require('./config/realtime');
+const CreditNotificationScheduler = require('./schedulers/creditNotificationScheduler');
 
 const app = express();
 
@@ -95,6 +97,7 @@ app.use('/api/admin/incentives', adminIncentiveRoutes);
 app.use('/api/vendors/incentives', vendorIncentiveRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/admin/categories', adminCategoryRoutes);
+app.use('/api/admin/credit', adminCreditManagementRoutes);
 
 // 404 handler (must come before error handler)
 app.use((req, res) => {
@@ -126,9 +129,17 @@ connectDB()
     // This will be implemented when push notifications are added
     initializeRealtimeServer(server);
 
+    // Initialize credit notification scheduler
+    CreditNotificationScheduler.initializeScheduledJobs();
+    console.log('✅ Credit notification scheduler initialized');
+
     // Graceful shutdown
     process.on('SIGTERM', () => {
       console.log('SIGTERM received, shutting down gracefully...');
+
+      // Stop scheduled jobs
+      CreditNotificationScheduler.stopAllJobs();
+
       server.close(() => {
         console.log('HTTP server closed');
         mongoose.connection.close(false, () => {

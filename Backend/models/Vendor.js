@@ -33,6 +33,56 @@ const vendorSchema = new mongoose.Schema({
     trim: true,
     match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
   },
+
+  // ============================================================================
+  // ENHANCED REGISTRATION FIELDS
+  // ============================================================================
+
+  firstName: {
+    type: String,
+    trim: true,
+    maxlength: [50, 'First name cannot exceed 50 characters'],
+  },
+  lastName: {
+    type: String,
+    trim: true,
+    maxlength: [50, 'Last name cannot exceed 50 characters'],
+  },
+  agentName: {
+    type: String,
+    trim: true,
+    // Seller/Agent who referred this vendor
+  },
+  shopName: {
+    type: String,
+    trim: true,
+    maxlength: [200, 'Shop name cannot exceed 200 characters'],
+  },
+  shopAddress: {
+    type: String,
+    trim: true,
+    // Detailed shop address (can be different from location.address)
+  },
+  gstNumber: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    match: [/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Please provide a valid GST number'],
+    // Format: 22AAAAA0000A1Z5
+  },
+  aadhaarNumber: {
+    type: String,
+    trim: true,
+    match: [/^[0-9]{12}$/, 'Aadhaar number must be 12 digits'],
+  },
+  panNumber: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    match: [/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/, 'Please provide a valid PAN number'],
+    // Format: ABCDE1234F
+  },
+
   location: {
     address: {
       type: String,
@@ -63,7 +113,7 @@ const vendorSchema = new mongoose.Schema({
   },
   creditLimit: {
     type: Number,
-    default: 0,
+    default: 100000, // Default ₹1,00,000 credit limit for new vendors
   },
   creditUsed: {
     type: Number,
@@ -266,7 +316,7 @@ const vendorSchema = new mongoose.Schema({
     },
     format: {
       type: String,
-      enum: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'],
+      enum: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf'],
     },
     size: {
       type: Number, // File size in bytes
@@ -276,6 +326,126 @@ const vendorSchema = new mongoose.Schema({
       default: Date.now,
     },
   },
+
+  // ============================================================================
+  // ADDITIONAL DOCUMENT UPLOADS
+  // ============================================================================
+
+  aadhaarFront: {
+    url: {
+      type: String,
+      trim: true,
+    },
+    publicId: {
+      type: String,
+      trim: true,
+    },
+    format: {
+      type: String,
+      enum: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf'],
+    },
+    size: {
+      type: Number,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  aadhaarBack: {
+    url: {
+      type: String,
+      trim: true,
+    },
+    publicId: {
+      type: String,
+      trim: true,
+    },
+    format: {
+      type: String,
+      enum: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf'],
+    },
+    size: {
+      type: Number,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  pesticideLicense: {
+    url: {
+      type: String,
+      trim: true,
+    },
+    publicId: {
+      type: String,
+      trim: true,
+    },
+    format: {
+      type: String,
+      enum: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf'],
+    },
+    size: {
+      type: Number,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  securityChecks: {
+    url: {
+      type: String,
+      trim: true,
+    },
+    publicId: {
+      type: String,
+      trim: true,
+    },
+    format: {
+      type: String,
+      enum: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf'],
+    },
+    size: {
+      type: Number,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  dealershipForm: {
+    url: {
+      type: String,
+      trim: true,
+    },
+    publicId: {
+      type: String,
+      trim: true,
+    },
+    format: {
+      type: String,
+      enum: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf'],
+    },
+    size: {
+      type: Number,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+
+  // Terms and conditions acceptance
+  termsAccepted: {
+    type: Boolean,
+    default: false,
+  },
+  termsAcceptedAt: {
+    type: Date,
+  },
+
 }, {
   timestamps: true,
 });

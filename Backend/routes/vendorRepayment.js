@@ -28,6 +28,13 @@ router.post('/calculate', authorizeVendor, vendorRepaymentController.calculateRe
  */
 router.get('/:purchaseId/projection', authorizeVendor, vendorRepaymentController.getRepaymentProjection);
 
+/**
+ * @route   GET /api/vendors/credit/repayment/rules
+ * @desc    Get current repayment rules (tiers)
+ * @access  Private (Vendor)
+ */
+router.get('/rules', authorizeVendor, vendorRepaymentController.getRepaymentRules);
+
 // ============================================================================
 // REPAYMENT SUBMISSION
 // ============================================================================

@@ -4,6 +4,8 @@ import { OtpVerification } from '../../../components/auth/OtpVerification'
 import { useVendorDispatch } from '../context/VendorContext'
 import { VendorStatusMessage } from '../components/VendorStatusMessage'
 import * as vendorApi from '../services/vendorApi'
+import { validatePhoneNumber } from '../../../utils/phoneValidation'
+import { PhoneInput } from '../../../components/PhoneInput'
 
 export function VendorLogin({ onSuccess, onSwitchToRegister }) {
   const navigate = useNavigate()
@@ -19,6 +21,12 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
     setError(null)
   }
 
+  // Handle value-only changes for components like PhoneInput
+  const handleValueChange = (name, value) => {
+    setForm((prev) => ({ ...prev, [name]: value }))
+    setError(null)
+  }
+
   const handleRequestOtp = async (e) => {
     e.preventDefault()
     setError(null)
@@ -30,22 +38,27 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
         setLoading(false)
         return
       }
-      if (form.phone.length < 10) {
-        setError('Please enter a valid contact number')
+
+      // Validate and normalize phone number
+      const validation = validatePhoneNumber(form.phone)
+      if (!validation.isValid) {
+        setError(validation.error)
         setLoading(false)
         return
       }
 
-      const result = await vendorApi.requestVendorOTP({ phone: form.phone })
-      
+      const result = await vendorApi.requestVendorOTP({ phone: validation.normalized })
+
       if (result.success || result.data) {
+        // Update form with normalized phone for further steps
+        setForm(prev => ({ ...prev, phone: validation.normalized }))
         setStep('otp')
       } else {
         // Check for rejected status
         if (result.error?.status === 'rejected' || result.error?.message?.includes('rejected')) {
           setStep('rejected')
-      } else {
-        setError(result.error?.message || 'Failed to send OTP. Please try again.')
+        } else {
+          setError(result.error?.message || 'Failed to send OTP. Please try again.')
         }
       }
     } catch (err) {
@@ -99,7 +112,7 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
         if (responseData?.token || result.data?.token) {
           localStorage.setItem('vendor_token', responseData?.token || result.data?.token)
         }
-        
+
         // Update vendor context with profile
         if (vendorData) {
           dispatch({
@@ -115,7 +128,7 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
             },
           })
         }
-        
+
         onSuccess?.(vendorData || { phone: form.phone })
         navigate('/vendor/dashboard')
       } else {
@@ -133,8 +146,8 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
           setError(result.error?.message || 'Your account has been banned. Please contact admin.')
         } else if (result.error?.message?.includes('inactive')) {
           setError('Your account is inactive. Please contact admin.')
-      } else {
-        setError(result.error?.message || 'Invalid OTP. Please try again.')
+        } else {
+          setError(result.error?.message || 'Invalid OTP. Please try again.')
         }
       }
     } catch (err) {
@@ -210,16 +223,13 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
               <label htmlFor="login-phone" className="text-xs font-semibold text-gray-700">
                 Contact Number <span className="text-red-500">*</span>
               </label>
-              <input
+              <PhoneInput
                 id="login-phone"
                 name="phone"
-                type="tel"
                 required
                 value={form.phone}
                 onChange={handleChange}
-                placeholder="+91 90000 00000"
-                maxLength={15}
-                className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all"
+                placeholder="Mobile"
               />
             </div>
 

@@ -1,4 +1,4 @@
-import { Building2, MapPin, IndianRupee, Calendar, TrendingUp, AlertTriangle, History } from 'lucide-react'
+import { Building2, MapPin, IndianRupee, Calendar, TrendingUp, AlertTriangle, History, User, Phone, Mail, Store, Info, FileText, CheckCircle, XCircle, Eye, ExternalLink } from 'lucide-react'
 import { Modal } from './Modal'
 import { StatusBadge } from './StatusBadge'
 import { Timeline } from './Timeline'
@@ -17,8 +17,8 @@ export function VendorDetailModal({ isOpen, onClose, vendor, onUpdateCreditPolic
     return `₹${value.toLocaleString('en-IN')}`
   }
 
-  const creditLimit = typeof vendor.creditLimit === 'number' 
-    ? vendor.creditLimit 
+  const creditLimit = typeof vendor.creditLimit === 'number'
+    ? vendor.creditLimit
     : parseFloat(vendor.creditLimit?.replace(/[₹,\sL]/g, '') || '0') * 100000
 
   const dues = typeof vendor.dues === 'number'
@@ -161,6 +161,117 @@ export function VendorDetailModal({ isOpen, onClose, vendor, onUpdateCreditPolic
                 </button>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* Business & Contact Information */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Personal & Contact Details */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-gray-50 pb-3">
+              <User className="h-5 w-5 text-purple-600" />
+              <h4 className="text-sm font-bold text-gray-900">Contact Details</h4>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] uppercase font-bold text-gray-500">First Name</p>
+                <p className="text-sm font-semibold text-gray-800">{vendor.firstName || vendor.name?.split(' ')[0] || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase font-bold text-gray-500">Last Name</p>
+                <p className="text-sm font-semibold text-gray-800">{vendor.lastName || vendor.name?.split(' ').slice(1).join(' ') || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase font-bold text-gray-500">Phone</p>
+                <p className="text-sm font-semibold text-gray-800">{vendor.phone}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase font-bold text-gray-500">Email</p>
+                <p className="text-sm font-semibold text-gray-800">{vendor.email || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Shop Details */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-gray-50 pb-3">
+              <Store className="h-5 w-5 text-orange-600" />
+              <h4 className="text-sm font-bold text-gray-900">Shop Details</h4>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <p className="text-[10px] uppercase font-bold text-gray-500">Shop Name</p>
+                <p className="text-sm font-semibold text-gray-800">{vendor.shopName || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase font-bold text-gray-500">Shop Address</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{vendor.shopAddress || vendor.location?.address || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* KYC Numbers */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 lg:col-span-2">
+            <div className="flex items-center gap-2 border-b border-gray-50 pb-3 mb-4">
+              <Info className="h-5 w-5 text-blue-600" />
+              <h4 className="text-sm font-bold text-gray-900">KYC Identifiers</h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div className="rounded-xl bg-gray-50 p-3 border border-gray-100">
+                <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">GST Number</p>
+                <p className="text-sm font-black text-gray-900">{vendor.gstNumber || 'N/A'}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3 border border-gray-100">
+                <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">PAN Number</p>
+                <p className="text-sm font-black text-gray-900">{vendor.panNumber || 'N/A'}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3 border border-gray-100">
+                <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Aadhaar Number</p>
+                <p className="text-sm font-black text-gray-900 tracking-widest">{vendor.aadhaarNumber || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Documents */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-bold text-gray-900">Verification Documents</h4>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              { key: 'aadhaarFront', label: 'Aadhaar Front' },
+              { key: 'aadhaarBack', label: 'Aadhaar Back' },
+              { key: 'pesticideLicense', label: 'Pesticide License' },
+              { key: 'securityChecks', label: 'Security Checks' },
+              { key: 'dealershipForm', label: 'Dealership Form' }
+            ].map((doc) => {
+              const docData = vendor[doc.key] || (doc.key === 'aadhaarFront' ? vendor.aadhaarCard : (doc.key === 'dealershipForm' ? vendor.panCard : null));
+              const hasDoc = docData?.url;
+
+              return (
+                <div key={doc.key} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-semibold text-gray-700">{doc.label}</p>
+                    {hasDoc ? <CheckCircle className="h-4 w-4 text-green-600" /> : <XCircle className="h-4 w-4 text-red-600" />}
+                  </div>
+                  {hasDoc ? (
+                    <div className="space-y-2">
+                      <a
+                        href={docData.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-1 rounded-lg bg-white border border-gray-200 px-3 py-2 text-[0.7rem] text-blue-600 hover:text-blue-800 font-bold shadow-sm"
+                      >
+                        <Eye className="h-3 w-3" />
+                        View Document
+                        <ExternalLink className="h-2 w-2" />
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-[0.7rem] text-gray-400 uppercase font-bold text-center">Not Provided</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 

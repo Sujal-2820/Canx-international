@@ -116,6 +116,7 @@ function App() {
             <Route path="register" element={<VendorRegisterPage />} />
             <Route path="dashboard" element={<Navigate to="/vendor/dashboard/overview" replace />} />
             <Route path="dashboard/:tab" element={<VendorDashboardPage />} />
+            <Route path="dashboard/:tab/:id" element={<VendorDashboardPage />} />
           </Route>
           <Route path="/seller/login" element={<SellerLoginRoute />} />
           <Route path="/seller/register" element={<SellerRegisterRoute />} />

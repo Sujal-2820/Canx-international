@@ -11,6 +11,8 @@ const mongoose = require('mongoose');
 const Vendor = require('../models/Vendor');
 const CreditPurchase = require('../models/CreditPurchase');
 const CreditRepayment = require('../models/CreditRepayment');
+const RepaymentDiscount = require('../models/RepaymentDiscount');
+const RepaymentInterest = require('../models/RepaymentInterest');
 const RepaymentCalculationService = require('../services/repaymentCalculationService');
 const { generateUniqueId } = require('../utils/generateUniqueId');
 
@@ -426,6 +428,43 @@ exports.getCreditSummary = async (req, res, next) => {
                 },
                 totalRepayments: repaymentCount,
             },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @desc    Get current repayment rules (tiers)
+ * @route   GET /api/vendors/credit/repayment/rules
+ * @access  Private (Vendor)
+ */
+exports.getRepaymentRules = async (req, res, next) => {
+    try {
+        const discountTiers = await RepaymentDiscount.find({ isActive: true }).sort({ periodStart: 1 });
+        const interestTiers = await RepaymentInterest.find({ isActive: true }).sort({ periodStart: 1 });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                discountTiers: discountTiers.map(t => ({
+                    id: t._id,
+                    name: t.tierName,
+                    start: t.periodStart,
+                    end: t.periodEnd,
+                    rate: t.discountRate,
+                    description: t.description
+                })),
+                interestTiers: interestTiers.map(t => ({
+                    id: t._id,
+                    name: t.tierName,
+                    start: t.periodStart,
+                    end: t.isOpenEnded ? 365 : t.periodEnd, // Max range for slider
+                    rate: t.interestRate,
+                    description: t.description,
+                    isOpenEnded: t.isOpenEnded
+                }))
+            }
         });
     } catch (error) {
         next(error);

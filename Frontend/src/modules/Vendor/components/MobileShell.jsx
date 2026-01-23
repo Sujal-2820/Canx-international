@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { cn } from '../../../lib/cn'
-import { CloseIcon, MenuIcon, SearchIcon, BellIcon } from './icons'
+import { CloseIcon, MenuIcon, SearchIcon, BellIcon, HeartIcon, CartIcon } from './icons'
 
 import { MapPinIcon } from './icons'
 import { LanguageToggle } from '../../../components/LanguageToggle'
@@ -8,27 +8,49 @@ import { Trans } from '../../../components/Trans'
 import { useTranslation } from '../../../context/TranslationContext'
 import { TransText } from '../../../components/TransText'
 
-export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick, onNotificationClick, notificationCount = 0, isNotificationAnimating = false }) {
+export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick, onNotificationClick, notificationCount = 0, favouritesCount = 0, cartCount = 0, isNotificationAnimating = false, isHome = false, onNavigate }) {
   const [open, setOpen] = useState(false)
   const [compact, setCompact] = useState(false)
+  const [hideSecondRow, setHideSecondRow] = useState(false)
   const { language } = useTranslation() // Force re-render on language change
 
   useEffect(() => {
     let ticking = false
-    let lastScrollY = 0
+    let lastScrollY = window.scrollY
+    let lastDecisiveScrollY = window.scrollY
+    let scrollDirection = 0
+    const scrollThreshold = 30
+    const hideThreshold = 80
+    const showThreshold = 30
+    const stateChangeMinDistance = 40
 
     const handleScroll = () => {
       if (!ticking) {
         window.requestAnimationFrame(() => {
           const currentScrollY = window.scrollY
-          // Use hysteresis: different thresholds for expanding vs collapsing to prevent flickering
-          if (currentScrollY > lastScrollY) {
-            // Scrolling down - collapse at 30px
-            setCompact(currentScrollY > 30)
-          } else {
-            // Scrolling up - expand at 20px
-            setCompact(currentScrollY > 20)
+          const scrollDelta = currentScrollY - lastScrollY
+          const distanceFromLastChange = Math.abs(currentScrollY - lastDecisiveScrollY)
+
+          if (Math.abs(scrollDelta) > scrollThreshold) {
+            scrollDirection = scrollDelta > 0 ? 1 : -1
           }
+
+          if (scrollDirection === 1) {
+            if (currentScrollY > 30) {
+              setCompact(true)
+            }
+            if (currentScrollY > hideThreshold && distanceFromLastChange > stateChangeMinDistance) {
+              setHideSecondRow(true)
+              lastDecisiveScrollY = currentScrollY
+            }
+          } else if (scrollDirection === -1) {
+            if (currentScrollY < showThreshold || distanceFromLastChange > stateChangeMinDistance) {
+              setCompact(false)
+              setHideSecondRow(false)
+              lastDecisiveScrollY = currentScrollY
+            }
+          }
+
           lastScrollY = currentScrollY
           ticking = false
         })
@@ -47,44 +69,52 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
         <div className="vendor-shell-header__glow" />
         <div className="vendor-shell-header__controls">
           <div className="vendor-shell-header__brand">
-            <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="vendor-logo" />
+            <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="h-11 w-auto transition-transform duration-200" />
+            <span className="vendor-logo-text-large">satpura</span>
           </div>
-          <div className="vendor-shell-header__actions">
+          <div className="vendor-shell-header__actions-redesigned">
             <button
               type="button"
-              onClick={onSearchClick}
-              className="vendor-icon-button"
-              aria-label="Search"
+              onClick={onNotificationClick}
+              className="vendor-icon-button-redesigned"
+              aria-label="Notifications"
             >
-              <SearchIcon className="h-5 w-5" />
+              <BellIcon className="h-6 w-6" />
+              {notificationCount > 0 && (
+                <span className="vendor-badge-redesigned">
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </span>
+              )}
             </button>
-            {onNotificationClick && (
-              <button
-                type="button"
-                onClick={onNotificationClick}
-                className={cn('vendor-icon-button vendor-icon-button--notification', isNotificationAnimating && 'is-animating')}
-                aria-label="Notifications"
-                style={{ position: 'relative' }}
-              >
-                <BellIcon className="h-5 w-5" />
-                {notificationCount > 0 && (
-                  <span className="vendor-notification-badge">
-                    {notificationCount > 3 ? '3+' : notificationCount}
-                  </span>
-                )}
-              </button>
-            )}
             <button
               type="button"
-              onClick={() => setOpen(true)}
-              className="vendor-icon-button"
-              aria-label="Open menu"
+              onClick={() => onNavigate?.('favourites')}
+              className="vendor-icon-button-redesigned"
+              aria-label="Favourites"
             >
-              <MenuIcon className="h-5 w-5" />
+              <HeartIcon className="h-6 w-6" />
+              {favouritesCount > 0 && (
+                <span className="vendor-badge-redesigned">
+                  {favouritesCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('catalog-cart')}
+              className="vendor-icon-button-redesigned"
+              aria-label="Cart"
+            >
+              <CartIcon className="h-6 w-6" />
+              {cartCount > 0 && (
+                <span className="vendor-badge-redesigned">
+                  {cartCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
-        <div className={cn('vendor-shell-header__info', compact && 'is-compact')}>
+        <div className={cn('vendor-shell-header__info', compact && 'is-compact', hideSecondRow && 'is-hidden')}>
           {title ? <span className="vendor-brand-title"><TransText>{title}</TransText></span> : null}
           <div className="vendor-shell-header__hint">
             <MapPinIcon className="mr-2 inline h-3.5 w-3.5" />
@@ -93,7 +123,27 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
         </div>
       </header>
 
-      <main className="vendor-shell-content">
+      {/* Mobile Search Bar - Separated from Header - Only shown on Home Screen */}
+      {isHome && (
+        <div className={cn('home-search-section', compact && 'is-compact')}>
+          <div className="home-search-bar">
+            <div className="home-search-input-wrapper">
+              <input
+                type="text"
+                placeholder="Search Product..."
+                className="home-search-input"
+                onClick={onSearchClick}
+                readOnly
+              />
+            </div>
+            <button className="home-search-button" onClick={onSearchClick} aria-label="Search">
+              <SearchIcon className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className={cn('vendor-shell-content', !isHome && 'vendor-shell-content--subpage', compact && 'is-compact')}>
         <div className="space-y-6">{children}</div>
       </main>
 

@@ -136,7 +136,17 @@ repaymentInterestSchema.statics.validateNoOverlap = async function (periodStart,
         const conflicts = overlapping.map(t =>
             `${t.tierName} (${t.periodStart}-${t.isOpenEnded ? '∞' : t.periodEnd} days)`
         ).join(', ');
-        throw new Error(`Period overlaps with existing tier(s): ${conflicts}`);
+
+        const firstConflict = overlapping[0];
+        let advice = '';
+
+        if (!firstConflict.isOpenEnded && periodStart <= firstConflict.periodEnd && periodStart >= firstConflict.periodStart) {
+            advice = ` Please start this tier at day ${firstConflict.periodEnd + 1}.`;
+        } else if (firstConflict.isOpenEnded && periodStart >= firstConflict.periodStart) {
+            advice = ` An open-ended tier already exists starting at day ${firstConflict.periodStart}.`;
+        }
+
+        throw new Error(`Period overlaps with existing tier(s): ${conflicts}.${advice}`);
     }
 
     return true;

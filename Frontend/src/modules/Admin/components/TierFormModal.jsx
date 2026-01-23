@@ -10,7 +10,7 @@ import { X, AlertCircle, CheckCircle, Loader } from 'lucide-react'
 import { useAdminApi } from '../hooks/useAdminApi'
 import { useToast } from './ToastNotification'
 
-export function TierFormModal({ type, tier, onClose, onSuccess }) {
+export function TierFormModal({ type, tier, existingTiers, onClose, onSuccess }) {
     const isDiscount = type === 'discounts'
     const isEdit = !!tier
 
@@ -46,6 +46,8 @@ export function TierFormModal({ type, tier, onClose, onSuccess }) {
 
     const validate = () => {
         const newErrors = {}
+        const start = parseInt(formData.periodStart)
+        const end = formData.isOpenEnded ? 999999 : parseInt(formData.periodEnd)
 
         if (!formData.tierName.trim()) {
             newErrors.tierName = 'Tier name is required'
@@ -53,15 +55,35 @@ export function TierFormModal({ type, tier, onClose, onSuccess }) {
 
         if (formData.periodStart === '') {
             newErrors.periodStart = 'Period start is required'
-        } else if (parseInt(formData.periodStart) < 0) {
+        } else if (start < 0) {
             newErrors.periodStart = 'Must be >= 0'
         }
 
         if (!formData.isOpenEnded) {
             if (formData.periodEnd === '') {
                 newErrors.periodEnd = 'Period end is required'
-            } else if (parseInt(formData.periodEnd) <= parseInt(formData.periodStart)) {
+            } else if (end <= start) {
                 newErrors.periodEnd = 'Must be greater than period start'
+            }
+        }
+
+        // Proactive overlap check
+        if (existingTiers && existingTiers.length > 0 && !newErrors.periodStart) {
+            const currentId = tier?._id
+            const overlapping = existingTiers.find(t => {
+                if (t._id === currentId) return false
+                if (!t.isActive) return false
+
+                const tStart = t.periodStart
+                const tEnd = t.isOpenEnded ? 999999 : t.periodEnd
+
+                // standard overlap check: (StartA <= EndB) and (EndA >= StartB)
+                return start <= tEnd && end >= tStart
+            })
+
+            if (overlapping) {
+                const oEnd = overlapping.isOpenEnded ? '∞' : overlapping.periodEnd
+                newErrors.periodStart = `Overlaps with ${overlapping.tierName} (${overlapping.periodStart}-${oEnd}). Suggest starting at ${overlapping.periodEnd + 1}.`
             }
         }
 
@@ -195,8 +217,8 @@ export function TierFormModal({ type, tier, onClose, onSuccess }) {
                             onChange={(e) => handleChange('tierName', e.target.value)}
                             placeholder="e.g., 0-30 Days Super Early Bird"
                             className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.tierName
-                                    ? 'border-red-300 focus:ring-red-500'
-                                    : 'border-gray-300 focus:ring-blue-500'
+                                ? 'border-red-300 focus:ring-red-500'
+                                : 'border-gray-300 focus:ring-blue-500'
                                 }`}
                             disabled={isSubmitting}
                         />
@@ -218,8 +240,8 @@ export function TierFormModal({ type, tier, onClose, onSuccess }) {
                                 placeholder="0"
                                 min="0"
                                 className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.periodStart
-                                        ? 'border-red-300 focus:ring-red-500'
-                                        : 'border-gray-300 focus:ring-blue-500'
+                                    ? 'border-red-300 focus:ring-red-500'
+                                    : 'border-gray-300 focus:ring-blue-500'
                                     }`}
                                 disabled={isSubmitting}
                             />
@@ -239,8 +261,8 @@ export function TierFormModal({ type, tier, onClose, onSuccess }) {
                                 placeholder="30"
                                 min={parseInt(formData.periodStart) + 1 || 1}
                                 className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 ${errors.periodEnd
-                                        ? 'border-red-300 focus:ring-red-500'
-                                        : 'border-gray-300 focus:ring-blue-500'
+                                    ? 'border-red-300 focus:ring-red-500'
+                                    : 'border-gray-300 focus:ring-blue-500'
                                     }`}
                                 disabled={isSubmitting || formData.isOpenEnded}
                             />
@@ -282,8 +304,8 @@ export function TierFormModal({ type, tier, onClose, onSuccess }) {
                                 max="100"
                                 step="0.1"
                                 className={`w-full px-3 py-2 pr-8 border rounded-lg focus:outline-none focus:ring-2 ${errors.rate
-                                        ? 'border-red-300 focus:ring-red-500'
-                                        : 'border-gray-300 focus:ring-blue-500'
+                                    ? 'border-red-300 focus:ring-red-500'
+                                    : 'border-gray-300 focus:ring-blue-500'
                                     }`}
                                 disabled={isSubmitting}
                             />
@@ -351,8 +373,8 @@ export function TierFormModal({ type, tier, onClose, onSuccess }) {
                         <button
                             type="submit"
                             className={`flex-1 px-4 py-2 text-white rounded-lg transition-colors flex items-center justify-center gap-2 ${isDiscount
-                                    ? 'bg-green-600 hover:bg-green-700'
-                                    : 'bg-red-600 hover:bg-red-700'
+                                ? 'bg-green-600 hover:bg-green-700'
+                                : 'bg-red-600 hover:bg-red-700'
                                 } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
                             disabled={isSubmitting}
                         >

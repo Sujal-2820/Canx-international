@@ -112,7 +112,14 @@ repaymentDiscountSchema.statics.validateNoOverlap = async function (periodStart,
 
     if (overlapping.length > 0) {
         const conflicts = overlapping.map(t => `${t.tierName} (${t.periodStart}-${t.periodEnd} days)`).join(', ');
-        throw new Error(`Period overlaps with existing tier(s): ${conflicts}`);
+        const firstConflict = overlapping[0];
+        let advice = '';
+
+        if (periodStart <= firstConflict.periodEnd && periodStart >= firstConflict.periodStart) {
+            advice = ` Please start this tier at day ${firstConflict.periodEnd + 1}.`;
+        }
+
+        throw new Error(`Period overlaps with existing tier(s): ${conflicts}.${advice}`);
     }
 
     return true;

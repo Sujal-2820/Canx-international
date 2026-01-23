@@ -69,17 +69,17 @@ export function DocumentUpload({
     setUploading(true)
     setError(null)
 
-    // Cloudinary Upload Widget options for images only
+    // Cloudinary Upload Widget options for images and PDFs
     const options = {
       cloudName: CLOUDINARY_CONFIG.cloudName,
       uploadPreset: uploadPreset, // Use the configured preset
       sources: ['local', 'camera', 'url'], // Support file upload, camera, and web URL
       multiple: false,
-      clientAllowedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'], // Images only, no PDF
-      maxFileSize: 2000000, // 2MB max file size
+      clientAllowedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf'], // Support PDF
+      maxFileSize: 5000000, // 5MB max file size
       cropping: false, // No cropping for documents
       folder: 'satpura-bio/vendor-documents', // Organize documents in folder
-      resourceType: 'image', // Images only
+      resourceType: 'auto', // Auto detect resource type (image or raw/pdf)
       showAdvancedOptions: false,
       showCompletedButton: true,
       styles: {
@@ -118,26 +118,26 @@ export function DocumentUpload({
             errorMessage.includes('Upload preset must be specified')) {
             setError('Upload preset not configured. Please create the preset "ira-sathi-products" in Cloudinary Dashboard: Settings → Upload → Add upload preset → Name: "ira-sathi-products" → Signing mode: "Unsigned" → Save')
           } else if (errorString.includes('file size') || errorString.includes('size') || errorString.includes('too large')) {
-            setError('Image size exceeds 2MB limit. Please upload a smaller image.')
+            setError('File size exceeds 5MB limit. Please upload a smaller document.')
           } else if (errorString.includes('format') || errorString.includes('type') || errorString.includes('not allowed') || errorString.includes('invalid')) {
-            setError('Invalid file type. Please upload an image file (JPG, PNG, GIF, etc.). PDF files are not accepted.')
+            setError('Invalid file type. Please upload an image file or PDF.')
           } else {
-            setError(error.message || error.statusText || error.status || 'Failed to upload image. Please try again.')
+            setError(error.message || error.statusText || error.status || 'Failed to upload document. Please try again.')
           }
           return
         }
 
         if (result && result.event === 'success') {
-          // Validate file size (2MB = 2000000 bytes)
-          if (result.info.bytes > 2000000) {
-            setError('Image size exceeds 2MB limit. Please upload a smaller image.')
+          // Validate file size (5MB = 5000000 bytes)
+          if (result.info.bytes > 5000000) {
+            setError('File size exceeds 5MB limit. Please upload a smaller document.')
             return
           }
 
-          // Validate it's an image format
-          const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
-          if (!imageFormats.includes(result.info.format?.toLowerCase())) {
-            setError('Invalid file type. Please upload an image file.')
+          // Validate formats
+          const allowedFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf']
+          if (!allowedFormats.includes(result.info.format?.toLowerCase())) {
+            setError('Invalid file type. Please upload an image or PDF.')
             return
           }
 
@@ -171,13 +171,14 @@ export function DocumentUpload({
     setError(null)
   }
 
-  const isImage = value?.url && value?.format
+  const isPDF = value?.format?.toLowerCase() === 'pdf'
+  const isImage = value?.url && value?.format && !isPDF
 
   return (
     <div className="space-y-2">
       <label className="text-xs font-semibold text-muted-foreground">
         {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
+        {required && <span className="text-red-500 ml-1 font-bold">*</span>}
       </label>
 
       {error && (
@@ -189,30 +190,31 @@ export function DocumentUpload({
       {value?.url ? (
         <div className="relative rounded-2xl border border-muted/60 bg-surface p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 overflow-hidden">
-              <img
-                src={value.url}
-                alt={label}
-                className="h-12 w-12 object-cover rounded-xl"
-                onError={(e) => {
-                  e.target.style.display = 'none'
-                  const fallback = e.target.nextElementSibling
-                  if (fallback) fallback.style.display = 'flex'
-                }}
-              />
-              <div className="hidden h-12 w-12 items-center justify-center">
-                <FileText className="h-6 w-6 text-blue-600" />
-              </div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 overflow-hidden border border-gray-200">
+              {isPDF ? (
+                <FileText className="h-6 w-6 text-red-500" />
+              ) : (
+                <img
+                  src={value.url}
+                  alt={label}
+                  className="h-12 w-12 object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none'
+                    const fallback = e.target.nextElementSibling
+                    if (fallback) fallback.style.display = 'flex'
+                  }}
+                />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                <p className="text-sm font-semibold text-surface-foreground truncate">
-                  Image uploaded
+                <p className="text-sm font-bold text-surface-foreground truncate uppercase">
+                  {isPDF ? 'PDF Document' : 'Image uploaded'}
                 </p>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {value.size ? `Size: ${(value.size / 1024).toFixed(1)} KB` : 'Image Document'}
+              <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                {value.size ? `Size: ${(value.size / 1024).toFixed(1)} KB` : ''} • {value.format?.toUpperCase()}
               </p>
             </div>
             {!disabled && (
@@ -260,9 +262,9 @@ export function DocumentUpload({
           ) : (
             <>
               <Upload className="h-5 w-5 text-muted-foreground" />
-              <span className="font-semibold">Click to upload {label}</span>
-              <span className="text-[0.65rem] text-muted-foreground/80">
-                Images only (JPG, PNG, GIF, etc.) • Max 2MB
+              <span className="font-bold text-gray-700">Upload {label}</span>
+              <span className="text-[0.65rem] text-muted-foreground/80 font-medium">
+                JPG, PNG or PDF • Max 5MB
               </span>
               <span className="text-[0.65rem] text-muted-foreground/60 mt-1">
                 Upload from device, camera, or web URL

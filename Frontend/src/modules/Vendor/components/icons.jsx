@@ -177,6 +177,19 @@ export function CheckCircleIcon({ className = 'h-5 w-5' }) {
   )
 }
 
+export function HeartIcon({ className = 'h-5 w-5', filled = false }) {
+  return (
+    <svg className={className} fill={filled ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+        d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"
+      />
+    </svg>
+  )
+}
+
 export function BellIcon({ active = false, className = 'h-5 w-5' }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -202,6 +215,29 @@ export function ChevronUpIcon({ className = 'h-5 w-5' }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+    </svg>
+  )
+}
+
+export function ChevronLeftIcon({ className = 'h-5 w-5' }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m15 18-6-6 6-6" />
+    </svg>
+  )
+}
+
+export function FilterIcon({ className = 'h-5 w-5' }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M4 8h16M4 16h16"
+      />
+      <circle cx="18" cy="8" r="2" fill="currentColor" />
+      <circle cx="6" cy="16" r="2" fill="currentColor" />
     </svg>
   )
 }

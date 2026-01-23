@@ -23,7 +23,7 @@ const { sendOTP } = require('../utils/otp');
 const { getTestOTPInfo } = require('../services/smsIndiaHubService');
 const { generateToken } = require('../middleware/auth');
 const { OTP_EXPIRY_MINUTES, MIN_VENDOR_PURCHASE, MAX_VENDOR_PURCHASE, VENDOR_COVERAGE_RADIUS_KM, DELIVERY_TIMELINE_HOURS, ORDER_STATUS, PAYMENT_STATUS } = require('../utils/constants');
-const { checkPhoneExists, checkPhoneInRole, isSpecialBypassNumber, SPECIAL_BYPASS_OTP } = require('../utils/phoneValidation');
+const { checkPhoneExists, checkPhoneInRole, isSpecialBypassNumber, SPECIAL_BYPASS_OTP, normalizePhoneNumber } = require('../utils/phoneValidation');
 const { generateUniqueId } = require('../utils/generateUniqueId');
 const { createPaymentHistory, createBankAccount } = require('../utils/createWithId');
 const adminTaskController = require('./adminTaskController');
@@ -194,36 +194,94 @@ async function deductStockFromInventory(order, vendorId) {
  */
 exports.register = async (req, res, next) => {
   try {
-    const { name, email, phone, location, aadhaarCard, panCard } = req.body;
+    const {
+      // Personal & Business Details
+      firstName,
+      lastName,
+      email,
+      phone,
+      agentName,
+      shopName,
+      shopAddress,
 
-    if (!name || !phone || !location) {
+      // KYC Numbers
+      gstNumber,
+      panNumber,
+      aadhaarNumber,
+
+      // Location
+      location,
+
+      // Documents (KYC)
+      aadhaarFront,
+      aadhaarBack,
+      pesticideLicense,
+      securityChecks,
+      dealershipForm,
+
+      // Terms
+      termsAccepted
+    } = req.body;
+
+    // Normalize phone number early
+    const normalizedPhone = normalizePhoneNumber(phone);
+
+    // Backward compatibility for legacy requests
+    const name = req.body.name || (firstName && lastName ? `${firstName} ${lastName}` : undefined);
+    // Map legacy card objects from new document fields if not explicitly provided
+    const aadhaarCardLegacy = req.body.aadhaarCard || aadhaarFront;
+    const panCardLegacy = req.body.panCard || dealershipForm; // Mapping dealership form to legacy panCard as a placeholder if needed
+
+    if (!firstName || !lastName || !phone || !shopName || !shopAddress || !location) {
       return res.status(400).json({
         success: false,
-        message: 'Name, phone, and location are required',
+        message: 'First name, last name, phone, shop name, shop address, and location are required',
+      });
+    }
+
+    // Validate KYC Numbers
+    if (!gstNumber || !panNumber || !aadhaarNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'GST, PAN, and Aadhaar numbers are required',
       });
     }
 
     // Special bypass number - skip all validation and checks, proceed to OTP
-    if (isSpecialBypassNumber(phone)) {
+    if (isSpecialBypassNumber(normalizedPhone)) {
       // Create vendor with minimal data, set OTP to 123456
-      let vendor = await Vendor.findOne({ phone });
+      let vendor = await Vendor.findOne({ phone: normalizedPhone });
 
       if (!vendor) {
         const vendorId = await generateUniqueId(Vendor, 'VND', 'vendorId', 101);
         vendor = new Vendor({
           vendorId,
-          name: name || 'Special Bypass Vendor',
-          phone: phone,
+          firstName,
+          lastName,
+          name: name || `${firstName} ${lastName}`,
+          phone: normalizedPhone,
           email: email || undefined,
+          agentName,
+          shopName,
+          shopAddress,
+          gstNumber,
+          panNumber,
+          aadhaarNumber,
           location: location || {
-            address: '',
+            address: shopAddress || '',
             city: '',
             state: '',
             pincode: '',
           },
           status: 'pending',
-          aadhaarCard: aadhaarCard || { url: '', format: 'jpg' },
-          panCard: panCard || { url: '', format: 'jpg' },
+          aadhaarFront: aadhaarFront || { url: '', format: 'jpg' },
+          aadhaarBack: aadhaarBack || { url: '', format: 'jpg' },
+          pesticideLicense: pesticideLicense || { url: '', format: 'jpg' },
+          securityChecks: securityChecks || { url: '', format: 'jpg' },
+          dealershipForm: dealershipForm || { url: '', format: 'jpg' },
+          aadhaarCard: aadhaarCardLegacy || { url: '', format: 'jpg' },
+          panCard: panCardLegacy || { url: '', format: 'jpg' },
+          termsAccepted: termsAccepted || false,
         });
       }
 
@@ -244,58 +302,53 @@ exports.register = async (req, res, next) => {
       });
     }
 
-    // Validate documents - must be uploaded
-    if (!aadhaarCard || !aadhaarCard.url) {
-      return res.status(400).json({
-        success: false,
-        message: 'Aadhaar card image is required. Please upload an image file (max 2MB).',
-      });
+    // Validate Documents - All 5 are required
+    const requiredDocs = [
+      { key: 'aadhaarFront', label: 'Aadhaar Front', data: aadhaarFront },
+      { key: 'aadhaarBack', label: 'Aadhaar Back', data: aadhaarBack },
+      { key: 'pesticideLicense', label: 'Pesticide License', data: pesticideLicense },
+      { key: 'securityChecks', label: 'Security Checks', data: securityChecks },
+      { key: 'dealershipForm', label: 'Dealership Form', data: dealershipForm }
+    ];
+
+    for (const doc of requiredDocs) {
+      if (!doc.data || !doc.data.url) {
+        return res.status(400).json({
+          success: false,
+          message: `${doc.label} image is required. Please upload an image file (max 2MB).`,
+        });
+      }
     }
 
-    if (!panCard || !panCard.url) {
-      return res.status(400).json({
-        success: false,
-        message: 'PAN card image is required. Please upload an image file (max 2MB).',
-      });
+    // Validate document formats & sizes
+    const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'pdf'];
+    const maxSize = 2000000; // 2MB
+
+    for (const doc of requiredDocs) {
+      const format = doc.data.format?.toLowerCase();
+      if (!format || !imageFormats.includes(format)) {
+        return res.status(400).json({
+          success: false,
+          message: `${doc.label} must be an image file or PDF.`,
+        });
+      }
+      if (doc.data.size && doc.data.size > maxSize) {
+        return res.status(400).json({
+          success: false,
+          message: `${doc.label} size exceeds 2MB limit.`,
+        });
+      }
     }
 
-    // Validate document formats - must be images only (no PDF)
-    const imageFormats = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
-    const aadhaarFormat = aadhaarCard.format?.toLowerCase();
-    const panFormat = panCard.format?.toLowerCase();
-
-    if (!aadhaarFormat || !imageFormats.includes(aadhaarFormat)) {
+    if (!termsAccepted) {
       return res.status(400).json({
         success: false,
-        message: 'Aadhaar card must be an image file (JPG, PNG, GIF, etc.). PDF files are not accepted.',
-      });
-    }
-
-    if (!panFormat || !imageFormats.includes(panFormat)) {
-      return res.status(400).json({
-        success: false,
-        message: 'PAN card must be an image file (JPG, PNG, GIF, etc.). PDF files are not accepted.',
-      });
-    }
-
-    // Validate document sizes - must be less than 2MB
-    const maxSize = 2000000; // 2MB in bytes
-    if (aadhaarCard.size && aadhaarCard.size > maxSize) {
-      return res.status(400).json({
-        success: false,
-        message: `Aadhaar card image size (${(aadhaarCard.size / 1024 / 1024).toFixed(2)}MB) exceeds 2MB limit. Please upload a smaller image.`,
-      });
-    }
-
-    if (panCard.size && panCard.size > maxSize) {
-      return res.status(400).json({
-        success: false,
-        message: `PAN card image size (${(panCard.size / 1024 / 1024).toFixed(2)}MB) exceeds 2MB limit. Please upload a smaller image.`,
+        message: 'You must accept the terms and conditions to register.',
       });
     }
 
     // Check if phone exists in other roles (user, seller)
-    const phoneCheck = await checkPhoneExists(phone, 'vendor');
+    const phoneCheck = await checkPhoneExists(normalizedPhone, 'vendor');
     if (phoneCheck.exists) {
       return res.status(400).json({
         success: false,
@@ -304,7 +357,7 @@ exports.register = async (req, res, next) => {
     }
 
     // Check if vendor already exists
-    const existingVendor = await Vendor.findOne({ phone });
+    const existingVendor = await Vendor.findOne({ phone: normalizedPhone });
 
     if (existingVendor) {
       return res.status(400).json({
@@ -323,7 +376,7 @@ exports.register = async (req, res, next) => {
 
       // Check if another vendor exists in the same region (city + state)
       const existingVendorInRegion = await Vendor.findOne({
-        phone: { $ne: phone }, // Exclude current vendor if exists
+        phone: { $ne: normalizedPhone }, // Exclude current vendor if exists
         status: { $in: ['pending', 'approved'] }, // Check both pending and approved
         isActive: true,
         'banInfo.isBanned': false,
@@ -364,7 +417,7 @@ exports.register = async (req, res, next) => {
           // Check if another approved vendor exists within 20km
           // Using MongoDB geospatial query with 2dsphere index
           const nearbyVendors = await Vendor.find({
-            phone: { $ne: phone }, // Exclude current vendor if exists
+            phone: { $ne: normalizedPhone }, // Exclude current vendor if exists
             status: 'approved', // Only check approved vendors
             isActive: true, // Only check active vendors
             'banInfo.isBanned': false, // Exclude banned vendors
@@ -389,7 +442,7 @@ exports.register = async (req, res, next) => {
         if (error.message.startsWith('VENDOR_EXISTS:')) {
           // Get vendor details for error message (outside transaction)
           const nearbyVendor = await Vendor.findOne({
-            phone: { $ne: phone },
+            phone: { $ne: normalizedPhone },
             status: 'approved',
             isActive: true,
             'banInfo.isBanned': false,
@@ -429,9 +482,17 @@ exports.register = async (req, res, next) => {
     // Create vendor - Status set to pending (requires admin approval)
     const vendor = new Vendor({
       vendorId,
-      name,
+      firstName,
+      lastName,
+      name: name || `${firstName} ${lastName}`,
       email: email || undefined,
-      phone,
+      phone: normalizedPhone,
+      agentName,
+      shopName,
+      shopAddress,
+      gstNumber,
+      panNumber,
+      aadhaarNumber,
       location: {
         address: location.address,
         city: location.city,
@@ -443,20 +504,59 @@ exports.register = async (req, res, next) => {
         },
         coverageRadius: VENDOR_COVERAGE_RADIUS_KM,
       },
-      aadhaarCard: aadhaarCard ? {
-        url: aadhaarCard.url,
-        publicId: aadhaarCard.publicId,
-        format: aadhaarCard.format,
-        size: aadhaarCard.size,
+      // KYC Documents
+      aadhaarFront: {
+        url: aadhaarFront?.url,
+        publicId: aadhaarFront?.publicId,
+        format: aadhaarFront?.format,
+        size: aadhaarFront?.size,
         uploadedAt: new Date(),
-      } : undefined,
-      panCard: panCard ? {
-        url: panCard.url,
-        publicId: panCard.publicId,
-        format: panCard.format,
-        size: panCard.size,
+      },
+      aadhaarBack: {
+        url: aadhaarBack?.url,
+        publicId: aadhaarBack?.publicId,
+        format: aadhaarBack?.format,
+        size: aadhaarBack?.size,
         uploadedAt: new Date(),
-      } : undefined,
+      },
+      pesticideLicense: {
+        url: pesticideLicense?.url,
+        publicId: pesticideLicense?.publicId,
+        format: pesticideLicense?.format,
+        size: pesticideLicense?.size,
+        uploadedAt: new Date(),
+      },
+      securityChecks: {
+        url: securityChecks?.url,
+        publicId: securityChecks?.publicId,
+        format: securityChecks?.format,
+        size: securityChecks?.size,
+        uploadedAt: new Date(),
+      },
+      dealershipForm: {
+        url: dealershipForm?.url,
+        publicId: dealershipForm?.publicId,
+        format: dealershipForm?.format,
+        size: dealershipForm?.size,
+        uploadedAt: new Date(),
+      },
+      // Legacy compatibility
+      aadhaarCard: {
+        url: aadhaarCardLegacy?.url,
+        publicId: aadhaarCardLegacy?.publicId,
+        format: aadhaarCardLegacy?.format,
+        size: aadhaarCardLegacy?.size,
+        uploadedAt: new Date(),
+      },
+      panCard: {
+        url: panCardLegacy?.url,
+        publicId: panCardLegacy?.publicId,
+        format: panCardLegacy?.format,
+        size: panCardLegacy?.size,
+        uploadedAt: new Date(),
+      },
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
       status: 'pending', // Requires admin approval
       isActive: false, // Inactive until approved
     });
@@ -491,6 +591,7 @@ exports.register = async (req, res, next) => {
       data: {
         message: 'Registration successful. OTP sent to phone.',
         vendorId: vendor._id,
+        vendorIdCode: vendor.vendorId,
         expiresIn: OTP_EXPIRY_MINUTES * 60, // seconds
       },
     });
@@ -506,7 +607,7 @@ exports.register = async (req, res, next) => {
         relatedId: vendor._id,
         metadata: {
           vendorName: name,
-          phone: phone,
+          phone: normalizedPhone,
           city: location.city
         }
       });
@@ -534,16 +635,18 @@ exports.requestOTP = async (req, res, next) => {
       });
     }
 
+    const normalizedPhone = normalizePhoneNumber(phone);
+
     // Special bypass number - skip all checks and proceed to OTP
-    if (isSpecialBypassNumber(phone)) {
+    if (isSpecialBypassNumber(normalizedPhone)) {
       // Find or create vendor
-      let vendor = await Vendor.findOne({ phone });
+      let vendor = await Vendor.findOne({ phone: normalizedPhone });
 
       if (!vendor) {
         const vendorId = await generateUniqueId(Vendor, 'VND', 'vendorId', 101);
         vendor = new Vendor({
           vendorId,
-          phone: phone,
+          phone: normalizedPhone,
           name: 'Special Bypass Vendor',
           status: 'pending',
           location: {
@@ -572,7 +675,7 @@ exports.requestOTP = async (req, res, next) => {
     }
 
     // Check if phone exists in other roles (user, seller)
-    const phoneCheck = await checkPhoneExists(phone, 'vendor');
+    const phoneCheck = await checkPhoneExists(normalizedPhone, 'vendor');
     if (phoneCheck.exists) {
       return res.status(400).json({
         success: false,
@@ -581,7 +684,7 @@ exports.requestOTP = async (req, res, next) => {
     }
 
     // Check if vendor exists - requestOTP is only for existing vendors
-    const vendorCheck = await checkPhoneInRole(phone, 'vendor');
+    const vendorCheck = await checkPhoneInRole(normalizedPhone, 'vendor');
     const vendor = vendorCheck.data;
 
     if (!vendor) {
@@ -648,8 +751,9 @@ exports.requestOTP = async (req, res, next) => {
 exports.verifyOTP = async (req, res, next) => {
   try {
     const { phone, otp } = req.body;
+    const normalizedPhone = normalizePhoneNumber(phone);
 
-    if (!phone || !otp) {
+    if (!normalizedPhone || !otp) {
       return res.status(400).json({
         success: false,
         message: 'Phone number and OTP are required',
@@ -657,7 +761,7 @@ exports.verifyOTP = async (req, res, next) => {
     }
 
     // Special bypass number - accept OTP 123456 and create/find vendor
-    if (isSpecialBypassNumber(phone)) {
+    if (isSpecialBypassNumber(normalizedPhone)) {
       if (otp !== SPECIAL_BYPASS_OTP) {
         return res.status(401).json({
           success: false,
@@ -666,13 +770,13 @@ exports.verifyOTP = async (req, res, next) => {
       }
 
       // Find or create vendor
-      let vendor = await Vendor.findOne({ phone });
+      let vendor = await Vendor.findOne({ phone: normalizedPhone });
 
       if (!vendor) {
         const vendorId = await generateUniqueId(Vendor, 'VND', 'vendorId', 101);
         vendor = new Vendor({
           vendorId,
-          phone: phone,
+          phone: normalizedPhone,
           name: 'Special Bypass Vendor',
           status: 'pending',
           location: {
@@ -683,7 +787,7 @@ exports.verifyOTP = async (req, res, next) => {
           },
         });
         await vendor.save();
-        console.log(`✅ Special bypass vendor created: ${phone} with ID: ${vendorId}`);
+        console.log(`✅ Special bypass vendor created: ${normalizedPhone} with ID: ${vendorId}`);
       }
 
       vendor.lastLogin = new Date();
@@ -845,6 +949,7 @@ exports.verifyOTP = async (req, res, next) => {
         status: 'approved',
         vendor: {
           id: vendor._id,
+          vendorId: vendor.vendorId,
           name: vendor.name,
           phone: vendor.phone,
           status: vendor.status,
@@ -890,6 +995,7 @@ exports.getProfile = async (req, res, next) => {
       data: {
         vendor: {
           id: vendor._id,
+          vendorId: vendor.vendorId,
           name: vendor.name,
           phone: vendor.phone,
           email: vendor.email,

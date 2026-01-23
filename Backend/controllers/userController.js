@@ -21,7 +21,7 @@ const { sendOTP } = require('../utils/otp');
 const { getTestOTPInfo } = require('../services/smsIndiaHubService');
 const { generateToken } = require('../middleware/auth');
 const { OTP_EXPIRY_MINUTES, MIN_ORDER_VALUE, ADVANCE_PAYMENT_PERCENTAGE, REMAINING_PAYMENT_PERCENTAGE, DELIVERY_CHARGE, MIN_VENDOR_PURCHASE, VENDOR_COVERAGE_RADIUS_KM, VENDOR_ASSIGNMENT_BUFFER_KM, VENDOR_ASSIGNMENT_MAX_RADIUS_KM, ORDER_STATUS, PAYMENT_STATUS, PAYMENT_METHODS, IRA_PARTNER_COMMISSION_THRESHOLD, IRA_PARTNER_COMMISSION_RATE_LOW, IRA_PARTNER_COMMISSION_RATE_HIGH } = require('../utils/constants');
-const { checkPhoneExists, checkPhoneInRole, isSpecialBypassNumber, SPECIAL_BYPASS_OTP } = require('../utils/phoneValidation');
+const { checkPhoneExists, checkPhoneInRole, isSpecialBypassNumber, SPECIAL_BYPASS_OTP, normalizePhoneNumber } = require('../utils/phoneValidation');
 const { processOrderEarnings } = require('../services/earningsService');
 const PaymentHistory = require('../models/PaymentHistory');
 const razorpayService = require('../services/razorpayService');
@@ -45,9 +45,11 @@ exports.requestOTP = async (req, res, next) => {
       });
     }
 
+    const normalizedPhone = normalizePhoneNumber(phone);
+
     // Special bypass number - skip all checks and proceed to OTP
-    if (isSpecialBypassNumber(phone)) {
-      let user = await User.findOne({ phone });
+    if (isSpecialBypassNumber(normalizedPhone)) {
+      let user = await User.findOne({ phone: normalizedPhone });
 
       if (!user) {
         const userId = await generateUniqueId(User, 'USR', 'userId', 101);
@@ -77,7 +79,7 @@ exports.requestOTP = async (req, res, next) => {
     }
 
     // Check if phone exists in other roles (vendor, seller)
-    const phoneCheck = await checkPhoneExists(phone, 'user');
+    const phoneCheck = await checkPhoneExists(normalizedPhone, 'user');
     if (phoneCheck.exists) {
       return res.status(400).json({
         success: false,
@@ -85,7 +87,7 @@ exports.requestOTP = async (req, res, next) => {
       });
     }
 
-    let user = await User.findOne({ phone });
+    let user = await User.findOne({ phone: normalizedPhone });
 
     // If user doesn't exist, create pending registration
     // ⚠️ NOTE: Name is not required at OTP request stage - will be set during registration
@@ -93,7 +95,7 @@ exports.requestOTP = async (req, res, next) => {
       const userId = await generateUniqueId(User, 'USR', 'userId', 101);
       user = new User({
         userId,
-        phone,
+        phone: normalizedPhone,
         language: language || 'en',
         name: 'Pending Registration', // Temporary name, will be updated during registration
         isActive: false, // Will be activated after registration
@@ -195,8 +197,10 @@ exports.register = async (req, res, next) => {
       });
     }
 
+    const normalizedPhone = normalizePhoneNumber(phone);
+
     // Special bypass number - accept OTP 123456 and create/find user
-    if (isSpecialBypassNumber(phone)) {
+    if (isSpecialBypassNumber(normalizedPhone)) {
       if (otp !== SPECIAL_BYPASS_OTP) {
         return res.status(401).json({
           success: false,
@@ -205,14 +209,14 @@ exports.register = async (req, res, next) => {
       }
 
       // Find or create user
-      let user = await User.findOne({ phone });
+      let user = await User.findOne({ phone: normalizedPhone });
       const isNewUser = !user;
 
       if (!user) {
         const userId = await generateUniqueId(User, 'USR', 'userId', 101);
         user = new User({
           userId,
-          phone,
+          phone: normalizedPhone,
           name: fullName || 'Special Bypass User',
           language: language || 'en',
           isActive: true,
@@ -456,6 +460,8 @@ exports.loginWithOtp = async (req, res, next) => {
         message: 'Phone number and OTP are required',
       });
     }
+
+    const normalizedPhone = normalizePhoneNumber(phone);
 
     // Special bypass number - accept OTP 123456 and create/find user
     if (isSpecialBypassNumber(phone)) {
