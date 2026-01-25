@@ -15,13 +15,13 @@ export default function IncentiveForm({ incentiveId, onCancel, onSuccess }) {
         description: '',
         rewardType: 'voucher',
         rewardValue: '',
-        rewardUnit: '',
+        rewardUnit: 'description', // Must match backend enum: 'percentage', 'fixed_amount', 'description'
         minPurchaseAmount: 50000,
         validFrom: new Date().toISOString().split('T')[0],
         validUntil: '',
         isActive: true,
         conditions: {
-            requiresOrderCount: 0,
+            minOrderCount: 1, // Changed from requiresOrderCount to match backend schema
             maxRedemptionsPerVendor: 1,
             requiresApproval: true
         }
@@ -71,15 +71,27 @@ export default function IncentiveForm({ incentiveId, onCancel, onSuccess }) {
         setIsSaving(true)
 
         try {
+            // Prepare data for backend
+            const preparedData = { ...formData }
+
+            // Remove empty validUntil to prevent validation error
+            if (!preparedData.validUntil || preparedData.validUntil === '') {
+                delete preparedData.validUntil
+            }
+
+            console.log('[IncentiveForm] Submitting preparedData:', preparedData)
+
             if (isEditing) {
-                await api.updateIncentive(incentiveId, formData)
+                await api.updateIncentive(incentiveId, preparedData)
                 toast.success('Incentive updated successfully')
             } else {
-                await api.createIncentive(formData)
+                const result = await api.createIncentive(preparedData)
+                console.log('[IncentiveForm] Create result:', result)
                 toast.success('New incentive scheme created')
             }
             onSuccess()
         } catch (error) {
+            console.error('[IncentiveForm] Error:', error)
             toast.error(error.message || 'Failed to save incentive')
         } finally {
             setIsSaving(false)
@@ -212,15 +224,17 @@ export default function IncentiveForm({ incentiveId, onCancel, onSuccess }) {
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-xs font-bold text-gray-500 uppercase">Unit / Detail</label>
-                                <input
+                                <label className="text-xs font-bold text-gray-500 uppercase">Unit Type</label>
+                                <select
                                     required
-                                    type="text"
                                     value={formData.rewardUnit}
                                     onChange={(e) => setFormData({ ...formData, rewardUnit: e.target.value })}
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all outline-none font-bold"
-                                    placeholder={formData.rewardType === 'voucher' ? '₹' : '1 Unit'}
-                                />
+                                >
+                                    <option value="description">Description</option>
+                                    <option value="fixed_amount">Fixed Amount (₹)</option>
+                                    <option value="percentage">Percentage (%)</option>
+                                </select>
                             </div>
                         </div>
                     </div>

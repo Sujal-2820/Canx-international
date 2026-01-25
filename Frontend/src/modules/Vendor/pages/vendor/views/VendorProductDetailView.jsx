@@ -65,6 +65,17 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                     const productData = productResult.data.product || productResult.data
                     setProduct(productData)
 
+                    // Track recently viewed
+                    try {
+                        const KEY = 'vendor_recently_viewed'
+                        const existing = JSON.parse(localStorage.getItem(KEY) || '[]')
+                        // Remove if exists, then add to front
+                        const updated = [productId, ...existing.filter(id => id !== productId)].slice(0, 10)
+                        localStorage.setItem(KEY, JSON.stringify(updated))
+                    } catch (e) {
+                        console.error('Error tracking recently viewed:', e)
+                    }
+
                     if (productData.attributeStocks?.length > 0) {
                         const first = productData.attributeStocks[0]
                         setSelectedAttributeStock(first)
@@ -293,7 +304,31 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                         </div>
 
                         {/* Timeline Slider */}
-                        <div className="relative pt-6 px-1">
+                        <div className="relative pt-8 px-1">
+                            {/* Dynamic Tooltip */}
+                            <div
+                                className="absolute top-0 -translate-x-1/2 pointer-events-none transition-all duration-75 z-10"
+                                style={{ left: `${sliderProgress}%` }}
+                            >
+                                <div className={cn(
+                                    "px-2.5 py-1 rounded-lg shadow-xl text-[10px] font-bold text-white whitespace-nowrap flex items-center gap-1 border border-white/20",
+                                    calculation.type === 'discount' ? "bg-blue-600" : calculation.type === 'interest' ? "bg-red-600" : "bg-green-700"
+                                )}>
+                                    {calculation.type === 'discount' ? (
+                                        <><span>-</span>{calculation.rate}% <span className="text-[8px] opacity-70">DISC</span></>
+                                    ) : calculation.type === 'interest' ? (
+                                        <><span>+</span>{calculation.rate}% <span className="text-[8px] opacity-70">INT</span></>
+                                    ) : (
+                                        <><span className="text-[8px] opacity-70">WINDOW</span> 0%</>
+                                    )}
+                                </div>
+                                {/* Tooltip Arrow */}
+                                <div className={cn(
+                                    "w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] mx-auto -mt-0.5",
+                                    calculation.type === 'discount' ? "border-t-blue-600" : calculation.type === 'interest' ? "border-t-red-600" : "border-t-green-700"
+                                )}></div>
+                            </div>
+
                             <input
                                 type="range"
                                 min="0"
@@ -302,7 +337,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                                 value={sliderProgress}
                                 onChange={(e) => setSliderProgress(e.target.value)}
                                 className={cn(
-                                    "w-full h-2 rounded-lg appearance-none cursor-pointer transition-colors shadow-inner",
+                                    "w-full h-2 rounded-lg appearance-none cursor-pointer transition-colors shadow-inner relative z-0",
                                     calculation.type === 'interest' ? "accent-red-500 bg-red-100" : calculation.type === 'discount' ? "accent-blue-500 bg-blue-100" : "accent-green-700 bg-green-100"
                                 )}
                             />
@@ -430,7 +465,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                     <span className="text-[10px] font-bold"><Trans>Wishlist</Trans></span>
                 </button>
                 <button
-                    onClick={() => onAddToCart?.(productId, quantity, selectedAttributes)}
+                    onClick={() => onAddToCart?.(productId, quantity, selectedAttributes, currentPrice)}
                     className="flex-[2] bg-green-800 text-white flex items-center justify-center gap-2 active:bg-green-900 transition-colors"
                 >
                     <CartIcon className="h-5 w-5" />

@@ -31,14 +31,28 @@ exports.getAllIncentives = async (req, res) => {
  */
 exports.createIncentive = async (req, res) => {
     try {
+        console.log('[IncentiveAdmin] Create Request Body:', JSON.stringify(req.body, null, 2));
+
         const incentive = new PurchaseIncentive({
             ...req.body,
             createdBy: req.admin._id
         });
+
         await incentive.save();
+        console.log('[IncentiveAdmin] Incentive created successfully:', incentive.incentiveId);
+
         res.status(201).json({ success: true, data: incentive });
     } catch (error) {
-        res.status(400).json({ success: false, error: { message: error.message } });
+        console.error('[IncentiveAdmin] Create Error:', error.message);
+        console.error('[IncentiveAdmin] Validation Errors:', error.errors);
+
+        res.status(400).json({
+            success: false,
+            error: {
+                message: error.message,
+                details: error.errors // Include validation details
+            }
+        });
     }
 };
 

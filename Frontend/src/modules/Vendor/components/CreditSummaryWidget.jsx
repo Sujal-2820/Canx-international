@@ -1,241 +1,185 @@
 /**
- * Credit Summary Widget
+ * Premium Credit Summary Widget
  * 
- * Dashboard widget showing vendor's credit overview:
- * - Credit limit, used, available
- * - Credit score (0-100)
- * - Performance tier
- * - Quick stats
- * - Quick link to repayment calculator
+ * Re-envisioned for high visual impact and utility.
  */
 
-import { Wallet, TrendingUp, Award, Clock, DollarSign, Calculator, ChevronRight } from 'lucide-react'
+import { Wallet, TrendingUp, Award, Clock, DollarSign, Calculator, ChevronRight, Zap, Target, Star } from 'lucide-react'
+import { cn } from '../../../lib/cn'
+import { Trans } from '../../../components/Trans'
 
 export function CreditSummaryWidget({ creditData, onNavigateToCalculator }) {
-    // Mock data - replace with actual API data
     const data = creditData || {
-        creditLimit: 200000,
-        creditUsed: 50000,
-        creditAvailable: 150000,
-        creditScore: 92,
-        performanceTier: 'Platinum',
+        creditLimit: 100000,
+        creditUsed: 25000,
+        creditAvailable: 75000,
+        creditScore: 85,
+        performanceTier: 'Gold',
         stats: {
-            totalDiscountsEarned: 12000,
-            totalInterestPaid: 500,
-            avgRepaymentDays: 25,
-            onTimeRate: 90
+            totalDiscountsEarned: 1250,
+            totalInterestPaid: 0,
+            avgRepaymentDays: 14,
+            onTimeRate: 98
         },
         outstandingPurchases: 1
     }
 
-    const creditUtilization = (data.creditUsed / data.creditLimit) * 100
+    if (!data.stats) {
+        data.stats = { totalDiscountsEarned: 0, totalInterestPaid: 0, avgRepaymentDays: 0, onTimeRate: 0 }
+    }
 
-    const getTierColor = (tier) => {
-        switch (tier) {
-            case 'Platinum': return 'from-purple-500 to-purple-700'
-            case 'Gold': return 'from-yellow-500 to-yellow-700'
-            case 'Silver': return 'from-gray-400 to-gray-600'
-            case 'Bronze': return 'from-orange-600 to-orange-800'
-            default: return 'from-gray-500 to-gray-700'
+    const creditUtilization = data.creditLimit > 0 ? (data.creditUsed / data.creditLimit) * 100 : 0
+
+    const getTierConfig = (tier) => {
+        switch (tier?.toUpperCase()) {
+            case 'PLATINUM': return { color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', icon: <Star className="w-3 h-3" /> }
+            case 'GOLD': return { color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', icon: <Star className="w-3 h-3" /> }
+            default: return { color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', icon: <Star className="w-3 h-3" /> }
         }
     }
 
-    const getScoreColor = (score) => {
-        if (score >= 90) return 'text-green-600'
-        if (score >= 75) return 'text-blue-600'
-        if (score >= 60) return 'text-yellow-600'
-        return 'text-red-600'
-    }
-
-    const formatCurrency = (amount) => `₹${amount.toLocaleString('en-IN')}`
+    const tier = getTierConfig(data.performanceTier)
+    const formatCurrency = (amount) => `₹${(Number(amount) || 0).toLocaleString('en-IN')}`
 
     return (
-        <div className="bg-white rounded-lg border-2 border-gray-200 overflow-hidden">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                            <Wallet className="w-5 h-5" />
-                            Your Credit Summary
-                        </h3>
-                        <p className="text-blue-100 text-sm mt-1">
-                            Track your credit usage and performance
-                        </p>
+        <div className="relative group overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm transition-all duration-300">
+            {/* Header Area - Balanced & Refined */}
+            <div className="relative px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-green-600 flex items-center justify-center text-white shadow-sm">
+                        <Wallet className="w-5 h-5" />
                     </div>
+                    <div>
+                        <h3 className="text-gray-900 text-base font-semibold tracking-tight leading-none"><Trans>Capital Limit</Trans></h3>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-1"><Trans>Verified Credit Line</Trans></p>
+                    </div>
+                </div>
+                <div className={cn(
+                    "flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold uppercase border shadow-sm",
+                    tier.color, tier.bg, tier.border
+                )}>
+                    {tier.icon}
+                    <span>{(data.performanceTier || 'STANDARD').replace(/_/g, ' ')}</span>
                 </div>
             </div>
 
-            <div className="p-6 space-y-6">
-                {/* Credit Limit Overview */}
-                <div>
-                    <div className="flex justify-between items-baseline mb-2">
-                        <span className="text-sm text-gray-600">Credit Limit</span>
-                        <span className="text-2xl font-bold text-gray-900">{formatCurrency(data.creditLimit)}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline mb-3">
-                        <span className="text-sm text-gray-600">Credit Used</span>
-                        <span className="text-lg font-semibold text-red-600">{formatCurrency(data.creditUsed)}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline mb-2">
-                        <span className="text-sm font-medium text-gray-700">Credit Available</span>
-                        <span className="text-xl font-bold text-green-600">{formatCurrency(data.creditAvailable)}</span>
-                    </div>
+            <div className="relative p-5 space-y-6">
+                {/* Main Content Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-                    {/* Progress Bar */}
-                    <div className="mt-3">
-                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>Utilization</span>
-                            <span>{creditUtilization.toFixed(1)}%</span>
+                    {/* Left Column: Metrics */}
+                    <div className="lg:col-span-7 space-y-5">
+                        <div>
+                            <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-1 px-1"><Trans>Total Available Capital</Trans></p>
+                            <h2 className="text-3xl font-semibold text-gray-900 tracking-tight flex items-baseline gap-1">
+                                {formatCurrency(data.creditAvailable)}
+                                <span className="text-sm font-normal text-gray-300 tracking-normal ml-2">/ {formatCurrency(data.creditLimit)}</span>
+                            </h2>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                            <div
-                                className={`h-full rounded-full transition-all ${creditUtilization >= 80
-                                        ? 'bg-red-500'
-                                        : creditUtilization >= 60
-                                            ? 'bg-yellow-500'
-                                            : 'bg-green-500'
-                                    }`}
-                                style={{ width: `${Math.min(creditUtilization, 100)}%` }}
-                            />
-                        </div>
-                    </div>
-                </div>
 
-                {/* Credit Score & Performance Tier */}
-                <div className="border-t pt-6">
-                    <div className="grid grid-cols-2 gap-4">
-                        {/* Credit Score */}
-                        <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                            <div className="flex items-center justify-center gap-2 mb-2">
-                                <TrendingUp className="w-5 h-5 text-blue-600" />
-                                <span className="text-sm font-medium text-gray-700">Credit Score</span>
+                        {/* Visual Utilization Track */}
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-end px-1">
+                                <div>
+                                    <span className="text-[10px] font-semibold text-gray-900 uppercase tracking-widest"><Trans>Usage Impact</Trans></span>
+                                    <p className="text-[9px] text-gray-400"><Trans>Maintains score health</Trans></p>
+                                </div>
+                                <span className={cn(
+                                    "text-base font-semibold",
+                                    creditUtilization > 80 ? "text-red-500" : "text-green-600"
+                                )}>{creditUtilization.toFixed(0)}%</span>
                             </div>
-                            <div className={`text-4xl font-bold ${getScoreColor(data.creditScore)}`}>
-                                {data.creditScore}
-                                <span className="text-lg text-gray-500">/100</span>
-                            </div>
-                            <div className="mt-2 flex justify-center">
-                                {[...Array(10)].map((_, i) => (
-                                    <div
-                                        key={i}
-                                        className={`h-1 w-3 mx-0.5 rounded-full ${i < Math.floor(data.creditScore / 10)
-                                                ? data.creditScore >= 90
-                                                    ? 'bg-green-500'
-                                                    : data.creditScore >= 75
-                                                        ? 'bg-blue-500'
-                                                        : data.creditScore >= 60
-                                                            ? 'bg-yellow-500'
-                                                            : 'bg-red-500'
-                                                : 'bg-gray-300'
-                                            }`}
-                                    />
-                                ))}
+                            <div className="relative h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                    className={cn(
+                                        "h-full rounded-full transition-all duration-1000",
+                                        creditUtilization > 80 ? 'bg-red-500' : 'bg-green-500'
+                                    )}
+                                    style={{ width: `${Math.min(creditUtilization + 1, 100)}%` }}
+                                />
                             </div>
                         </div>
 
-                        {/* Performance Tier */}
-                        <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200">
-                            <div className="flex items-center justify-center gap-2 mb-2">
-                                <Award className="w-5 h-5 text-purple-600" />
-                                <span className="text-sm font-medium text-gray-700">Performance Tier</span>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                                <p className="text-[9px] text-gray-400 uppercase tracking-widest mb-1"><Trans>Current Used</Trans></p>
+                                <p className="text-base font-semibold text-gray-900 leading-none">{formatCurrency(data.creditUsed)}</p>
                             </div>
-                            <div className={`inline-block px-4 py-2 rounded-full bg-gradient-to-r ${getTierColor(data.performanceTier)} text-white font-bold text-lg shadow-md`}>
-                                {data.performanceTier}
+                            <div className="p-3 rounded-xl bg-green-50/50 border border-green-100">
+                                <p className="text-[9px] text-green-600 uppercase tracking-widest mb-1"><Trans>Safe Balance</Trans></p>
+                                <p className="text-base font-semibold text-green-700 leading-none">{formatCurrency(data.creditAvailable)}</p>
                             </div>
-                            <p className="text-xs text-gray-600 mt-2">
-                                {data.performanceTier === 'Platinum' && 'Elite performance!'}
-                                {data.performanceTier === 'Gold' && 'Great track record'}
-                                {data.performanceTier === 'Silver' && 'Good performance'}
-                                {data.performanceTier === 'Bronze' && 'Keep improving'}
-                            </p>
                         </div>
                     </div>
-                </div>
 
-                {/* Performance Stats */}
-                <div className="border-t pt-6">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                        <DollarSign className="w-4 h-4" />
-                        Performance Stats
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-                            <div className="p-2 bg-green-100 rounded-lg">
-                                <TrendingUp className="w-4 h-4 text-green-600" />
+                    {/* Right Column: Score Engine - Made more compact */}
+                    <div className="lg:col-span-5">
+                        <div className="h-full bg-gray-50/50 rounded-2xl border border-gray-100 p-5 flex flex-col items-center justify-center text-center relative shadow-sm overflow-hidden">
+                            <div className="relative mb-3">
+                                <div className="h-24 w-24 rounded-full border-[6px] border-white shadow-md flex flex-col items-center justify-center bg-white relative z-10">
+                                    <span className="text-3xl font-semibold text-gray-900 tracking-tight leading-none mb-0.5">{data.creditScore}</span>
+                                    <span className="text-[10px] font-semibold text-green-600 uppercase tracking-widest">Score</span>
+                                </div>
+                                <div className="absolute inset-0 bg-green-100 rounded-full blur-xl opacity-20 -z-10"></div>
                             </div>
-                            <div>
-                                <p className="text-xs text-gray-600">Total Discounts</p>
-                                <p className="font-bold text-green-600">{formatCurrency(data.stats.totalDiscountsEarned)}</p>
-                            </div>
-                        </div>
 
-                        <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg">
-                            <div className="p-2 bg-red-100 rounded-lg">
-                                <TrendingUp className="w-4 h-4 text-red-600" />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-600">Total Interest</p>
-                                <p className="font-bold text-red-600">{formatCurrency(data.stats.totalInterestPaid)}</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                            <div className="p-2 bg-blue-100 rounded-lg">
-                                <Clock className="w-4 h-4 text-blue-600" />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-600">Avg Repayment</p>
-                                <p className="font-bold text-blue-600">{data.stats.avgRepaymentDays} days</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
-                            <div className="p-2 bg-purple-100 rounded-lg">
-                                <Award className="w-4 h-4 text-purple-600" />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-600">On-time Rate</p>
-                                <p className="font-bold text-purple-600">{data.stats.onTimeRate}%</p>
+                            <div className="space-y-0.5">
+                                <h4 className="text-[11px] font-semibold text-gray-900 uppercase tracking-widest leading-none"><Trans>Reputation Engine</Trans></h4>
+                                <p className="text-[10px] text-gray-400 px-2 leading-tight"><Trans>Trust rating based on fulfillment</Trans></p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Outstanding Purchases Alert */}
+                {/* Secondary Stats Strip - Tightened */}
+                <div className="pt-5 border-t border-gray-50 flex flex-wrap gap-x-6 gap-y-4">
+                    <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-lg bg-orange-50 flex items-center justify-center text-orange-600">
+                            <Zap className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                            <p className="text-[9px] text-gray-400 uppercase tracking-widest"><Trans>Early Pays</Trans></p>
+                            <p className="text-xs font-semibold text-gray-900">{formatCurrency(data.stats.totalDiscountsEarned)}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
+                            <Target className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                            <p className="text-[9px] text-gray-400 uppercase tracking-widest"><Trans>Reliability</Trans></p>
+                            <p className="text-xs font-semibold text-gray-900">{data.stats.onTimeRate}%</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600">
+                            <Clock className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                            <p className="text-[9px] text-gray-400 uppercase tracking-widest"><Trans>Avg Repay</Trans></p>
+                            <p className="text-xs font-semibold text-gray-900">{data.stats.avgRepaymentDays} d</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Intelligent Action Banner - Reduced padding */}
                 {data.outstandingPurchases > 0 && (
-                    <div className="border-t pt-6">
-                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <div className="flex items-start gap-3">
-                                <div className="p-2 bg-yellow-100 rounded-lg">
-                                    <Clock className="w-5 h-5 text-yellow-600" />
-                                </div>
-                                <div className="flex-1">
-                                    <p className="font-semibold text-yellow-900">
-                                        {data.outstandingPurchases} Outstanding Purchase{data.outstandingPurchases > 1 ? 's' : ''}
-                                    </p>
-                                    <p className="text-sm text-yellow-700 mt-1">
-                                        You have pending repayments. Pay early to earn discounts!
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Quick Action */}
-                <div className="border-t pt-6">
                     <button
                         onClick={onNavigateToCalculator}
-                        className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-md hover:shadow-lg"
+                        className="group w-full bg-green-600 p-4 rounded-xl flex items-center justify-between transition-all hover:bg-green-700 active:scale-[0.98] shadow-sm"
                     >
                         <div className="flex items-center gap-3">
-                            <Calculator className="w-5 h-5" />
-                            <span className="font-semibold">Calculate Repayment</span>
+                            <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center border border-white/20">
+                                <Zap className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="text-left text-white">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide"><Trans>Settle Outstanding Capital</Trans></p>
+                                <p className="text-[9px] text-green-100/70 uppercase"><Trans>Maintain your reliability score</Trans></p>
+                            </div>
                         </div>
-                        <ChevronRight className="w-5 h-5" />
+                        <ChevronRight className="w-4 h-4 text-white group-hover:translate-x-0.5 transition-transform" />
                     </button>
-                </div>
+                )}
             </div>
         </div>
     )

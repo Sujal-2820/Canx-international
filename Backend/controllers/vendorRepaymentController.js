@@ -334,11 +334,15 @@ exports.getRepaymentHistory = async (req, res, next) => {
 
         res.status(200).json({
             success: true,
-            count: repayments.length,
-            total,
-            page: Number(page),
-            pages: Math.ceil(total / limit),
-            data: repayments,
+            data: {
+                repayments,
+                pagination: {
+                    currentPage: Number(page),
+                    totalPages: Math.ceil(total / limit),
+                    totalItems: total,
+                    itemsPerPage: Number(limit),
+                }
+            }
         });
     } catch (error) {
         next(error);
@@ -411,21 +415,21 @@ exports.getCreditSummary = async (req, res, next) => {
         res.status(200).json({
             success: true,
             data: {
-                creditLimit: vendor.creditLimit,
-                creditUsed: vendor.creditUsed,
-                creditAvailable: vendor.creditLimit - vendor.creditUsed,
-                creditHistory: vendor.creditHistory,
-                performanceTier: vendor.performanceTier,
-                outstandingPurchases: {
-                    count: outstandingPurchases.length,
-                    totalAmount: outstandingPurchases.reduce((sum, p) => sum + p.totalAmount, 0),
-                    purchases: outstandingPurchases.map(p => ({
-                        id: p._id,
-                        amount: p.totalAmount,
-                        date: p.createdAt,
-                        status: p.status,
-                    })),
+                creditLimit: vendor.creditLimit || 100000,
+                creditUsed: vendor.creditUsed || 0,
+                creditAvailable: (vendor.creditLimit || 100000) - (vendor.creditUsed || 0),
+                creditScore: vendor.creditHistory?.creditScore || 100,
+                // Map performance tier from lowercase to Title Case for frontend component mapping
+                performanceTier: vendor.performanceTier ? (vendor.performanceTier.charAt(0).toUpperCase() + vendor.performanceTier.slice(1)) : 'Not Rated',
+                stats: {
+                    totalDiscountsEarned: vendor.creditHistory?.totalDiscountsEarned || 0,
+                    totalInterestPaid: vendor.creditHistory?.totalInterestPaid || 0,
+                    avgRepaymentDays: vendor.creditHistory?.avgRepaymentDays || 0,
+                    onTimeRate: vendor.creditHistory?.totalRepaymentCount > 0
+                        ? Math.round((vendor.creditHistory.onTimeRepaymentCount / vendor.creditHistory.totalRepaymentCount) * 100)
+                        : 0
                 },
+                outstandingPurchases: outstandingPurchases.length,
                 totalRepayments: repaymentCount,
             },
         });

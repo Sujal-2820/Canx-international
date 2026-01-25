@@ -101,7 +101,13 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
 
         cart.forEach((item) => {
             const product = cartProducts[item.productId]
-            const unitPrice = item.unitPrice || item.price || (product ? (product.priceToVendor || product.price || 0) : 0)
+
+            // Robust unit price calculation
+            let unitPrice = item.unitPrice || item.price || 0
+            if (!unitPrice && product) {
+                unitPrice = product.priceToVendor || product.price || 0
+            }
+            if (isNaN(unitPrice)) unitPrice = 0
 
             const variantAttrs = item.variantAttributes || {}
             const hasVariants = variantAttrs && typeof variantAttrs === 'object' && Object.keys(variantAttrs).length > 0
@@ -121,7 +127,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
             const variantItem = {
                 ...item,
                 id: `${item.productId}-${JSON.stringify(variantAttrs)}`,
-                unitPrice,
+                unitPrice: Number(unitPrice),
                 variantAttributes: variantAttrs,
                 hasVariants,
             }
@@ -140,24 +146,28 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
         const subtotal = groupedCartItems.reduce((sum, group) => {
             return sum + group.variants.reduce((variantSum, variant) => {
                 const variantId = variant.id
-                const quantity = optimisticQuantities[variantId] !== undefined
+                const rawQty = optimisticQuantities[variantId] !== undefined
                     ? optimisticQuantities[variantId]
                     : variant.quantity
-                return variantSum + (variant.unitPrice * quantity)
+
+                const quantity = Number(rawQty) || 0
+                const price = Number(variant.unitPrice) || 0
+
+                return variantSum + (price * quantity)
             }, 0)
         }, 0)
 
         // Vendor specific delivery or handling logic
         const delivery = 0
         const total = subtotal + delivery
-        const meetsMinimum = total >= MIN_VENDOR_PURCHASE
+        const meetsMinimum = (Number(total) || 0) >= MIN_VENDOR_PURCHASE
 
         return {
-            subtotal,
-            delivery,
-            total,
+            subtotal: Number(subtotal) || 0,
+            delivery: Number(delivery) || 0,
+            total: Number(total) || 0,
             meetsMinimum,
-            shortfall: meetsMinimum ? 0 : MIN_VENDOR_PURCHASE - total,
+            shortfall: meetsMinimum ? 0 : MIN_VENDOR_PURCHASE - (Number(total) || 0),
         }
     }, [groupedCartItems, optimisticQuantities, MIN_VENDOR_PURCHASE])
 
@@ -323,9 +333,9 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                 {!totals.meetsMinimum && (
                     <div className="p-3 rounded-xl bg-amber-50 border border-amber-100">
                         <p className="text-xs font-semibold text-amber-700 text-center">
-                            <Trans>Min purchase of ₹{MIN_VENDOR_PURCHASE.toLocaleString('en-IN')} required for wholesale orders.</Trans>
+                            Min purchase of ₹{MIN_VENDOR_PURCHASE.toLocaleString('en-IN')} required for wholesale orders.
                             <br />
-                            <Trans>Add ₹{totals.shortfall.toLocaleString('en-IN')} more to proceed.</Trans>
+                            Add ₹{totals.shortfall.toLocaleString('en-IN')} more to proceed.
                         </p>
                     </div>
                 )}
@@ -343,7 +353,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                     onClick={onCheckout}
                     disabled={!totals.meetsMinimum}
                 >
-                    {totals.meetsMinimum ? <Trans>Proceed to Checkout</Trans> : <Trans>Add ₹{totals.shortfall.toLocaleString('en-IN')} more</Trans>}
+                    {totals.meetsMinimum ? <Trans>Proceed to Checkout</Trans> : `Add ₹${totals.shortfall.toLocaleString('en-IN')} more`}
                 </button>
             </div>
 

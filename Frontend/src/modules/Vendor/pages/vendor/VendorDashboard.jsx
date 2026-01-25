@@ -20,6 +20,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   GiftIcon,
+  UserIcon,
 } from '../../components/icons'
 import { RewardsView } from './RewardsView'
 import { cn } from '../../../../lib/cn'
@@ -41,6 +42,7 @@ import { playNotificationSoundIfEnabled } from '../../../../utils/notificationSo
 import { RepaymentCalculator } from '../../components/RepaymentCalculator'
 import { CreditSummaryWidget } from '../../components/CreditSummaryWidget'
 import { RewardsWidget } from '../../components/RewardsWidget'
+import * as userApi from '../../../User/services/userApi'
 
 // New Catalog Views
 import { VendorHomeView } from './views/VendorHomeView'
@@ -49,6 +51,8 @@ import { VendorCartView } from './views/VendorCartView'
 import { VendorCheckoutView } from './views/VendorCheckoutView'
 import { VendorCategoryProductsView } from './views/VendorCategoryProductsView'
 import { VendorFavouritesView } from './views/VendorFavouritesView'
+import { VendorProfileView } from './views/VendorProfileView'
+import { VendorVyapaarView } from './views/VendorVyapaarView'
 
 const NAV_ITEMS = [
   {
@@ -58,10 +62,10 @@ const NAV_ITEMS = [
     icon: HomeIcon,
   },
   {
-    id: 'inventory',
-    label: <Trans>Inventory</Trans>,
-    description: <Trans>Your stock</Trans>,
-    icon: BoxIcon,
+    id: 'vyapaar',
+    label: <Trans>Vyapaar</Trans>,
+    description: <Trans>Credit & Rewards</Trans>,
+    icon: WalletIcon,
   },
   {
     id: 'orders',
@@ -70,16 +74,10 @@ const NAV_ITEMS = [
     icon: TruckIcon,
   },
   {
-    id: 'credit',
-    label: <Trans>Dues/Wallet</Trans>,
-    description: <Trans>Credit & Pay</Trans>,
-    icon: WalletIcon,
-  },
-  {
-    id: 'menu',
-    label: <Trans>Menu</Trans>,
-    description: <Trans>Profile & More</Trans>,
-    icon: MenuIcon,
+    id: 'profile',
+    label: <Trans>Profile</Trans>,
+    description: <Trans>Your information</Trans>,
+    icon: UserIcon,
   },
 ]
 
@@ -89,7 +87,7 @@ export function VendorDashboard({ onLogout }) {
   const navigate = useNavigate()
   const location = useLocation()
   const { tab: urlTab, id: urlId } = useParams()
-  const { acceptOrder, confirmOrderAcceptance, cancelOrderAcceptance, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, fetchDashboardData, getOrders, requestWithdrawal, getEarningsSummary, getBankAccounts, createRepaymentIntent, confirmRepayment, getCreditInfo, getNotifications, markNotificationAsRead, markAllNotificationsAsRead, getOrderDetails } = useVendorApi()
+  const { acceptOrder, confirmOrderAcceptance, cancelOrderAcceptance, acceptOrderPartially, rejectOrder, updateInventoryStock, requestCreditPurchase, updateOrderStatus, fetchProfile, updateVendorProfile, fetchDashboardData, getOrders, getProducts, getProductDetails, requestWithdrawal, getEarningsSummary, getBankAccounts, createRepaymentIntent, confirmRepayment, getCreditInfo, getNotifications, markNotificationAsRead, markAllNotificationsAsRead, getOrderDetails } = useVendorApi()
   const [activeTab, setActiveTab] = useState('home')
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState(null)
@@ -113,7 +111,7 @@ export function VendorDashboard({ onLogout }) {
   const [escalationType, setEscalationType] = useState('items') // 'items' or 'quantities'
 
   // Valid tabs for navigation
-  const validTabs = ['home', 'inventory', 'orders', 'credit', 'menu', 'product-detail', 'catalog-cart', 'checkout', 'category-products', 'favourites']
+  const validTabs = ['home', 'orders', 'profile', 'product-detail', 'catalog-cart', 'checkout', 'category-products', 'favourites', 'reports', 'earnings', 'rewards', 'vyapaar']
 
   // Navigate function that updates both state and URL
   const navigateToTab = useCallback((tab, id = null) => {
@@ -140,13 +138,62 @@ export function VendorDashboard({ onLogout }) {
   const unreadNotificationCount = useMemo(() => (notifications || []).filter((n) => !n.read).length, [notifications])
 
   // Catalog Handlers
-  const handleAddToCart = useCallback((productId, quantity, variantAttributes) => {
+  const handleAddToCart = useCallback(async (productId, quantity = 1, variantAttributes = null, exactUnitPrice = null) => {
+    // If variantAttributes not provided, find the smallest/cheapest one
+    let targetAttributes = variantAttributes
+    let unitPrice = exactUnitPrice !== null ? Number(exactUnitPrice) : 0
+    let productName = ''
+    let productImage = ''
+
+    // Always fetch product details to get name and image
+    try {
+      const result = await getProductDetails(productId)
+      if (result.data?.product) {
+        const product = result.data.product
+        productName = product.name || 'Product'
+        productImage = product.primaryImage || product.images?.[0]?.url || ''
+
+        // Only calculate unitPrice if it wasn't explicitly provided
+        if (exactUnitPrice === null) {
+          if (!targetAttributes && product.attributeStocks?.length > 0) {
+            // Find one with smallest vendorPrice
+            const smallest = [...product.attributeStocks]
+              .sort((a, b) => (a.vendorPrice || 0) - (b.vendorPrice || 0))[0]
+
+            if (smallest) {
+              targetAttributes = smallest.attributes instanceof Map ? Object.fromEntries(smallest.attributes) : smallest.attributes
+              unitPrice = smallest.vendorPrice || product.priceToVendor || 0
+            }
+          } else if (targetAttributes && product.attributeStocks?.length > 0) {
+            // Find the exact variant matching the provided attributes
+            const matchingVariant = product.attributeStocks.find(stock => {
+              const stockAttrs = stock.attributes instanceof Map ? Object.fromEntries(stock.attributes) : stock.attributes
+              return JSON.stringify(stockAttrs) === JSON.stringify(targetAttributes)
+            })
+            unitPrice = matchingVariant?.vendorPrice || product.priceToVendor || 0
+          } else {
+            unitPrice = product.priceToVendor || product.price || 0
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch product details:', err)
+    }
+
     dispatch({
       type: 'ADD_TO_CART',
-      payload: { productId, quantity, variantAttributes, timestamp: new Date().toISOString() },
+      payload: {
+        productId,
+        name: productName,
+        image: productImage,
+        quantity: Number(quantity) || 1,
+        variantAttributes: targetAttributes || {},
+        unitPrice: Number(unitPrice) || 0,
+        timestamp: new Date().toISOString()
+      },
     })
     success('Product added to catalog cart')
-  }, [dispatch, success])
+  }, [dispatch, success, getProductDetails])
 
   const handleUpdateCartQuantity = useCallback((productId, variantAttributes, quantity) => {
     dispatch({
@@ -244,13 +291,8 @@ export function VendorDashboard({ onLogout }) {
             dispatch({
               type: 'AUTH_LOGIN',
               payload: {
-                id: profileResult.data.vendor.id,
-                name: profileResult.data.vendor.name,
-                phone: profileResult.data.vendor.phone,
-                email: profileResult.data.vendor.email,
-                location: profileResult.data.vendor.location,
-                status: profileResult.data.vendor.status,
-                isActive: profileResult.data.vendor.isActive,
+                ...profileResult.data.vendor,
+                id: profileResult.data.vendor.id || profileResult.data.vendor._id,
               },
             })
           } else if (profileResult.error?.status === 401) {
@@ -404,6 +446,8 @@ export function VendorDashboard({ onLogout }) {
   const [searchMounted, setSearchMounted] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchSuggestions, setSearchSuggestions] = useState({ products: [], categories: [] })
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [pendingScroll, setPendingScroll] = useState(null)
   const searchInputRef = useRef(null)
 
@@ -573,6 +617,43 @@ export function VendorDashboard({ onLogout }) {
     return results.length ? results : searchCatalog.slice(0, 5)
   }, [searchCatalog, searchQuery])
 
+  // Fetch search suggestions with debouncing
+  useEffect(() => {
+    if (!searchQuery.trim() || !searchOpen) {
+      setSearchSuggestions({ products: [], categories: [] })
+      setLoadingSuggestions(false)
+      return
+    }
+
+    setLoadingSuggestions(true)
+    const timeoutId = setTimeout(async () => {
+      try {
+        // Fetch both products and categories
+        const [productsResult, categoriesResult] = await Promise.all([
+          getProducts({ search: searchQuery.trim(), limit: 5 }),
+          userApi.getCategories()
+        ])
+
+        const products = productsResult.data?.products || []
+        const allCategories = categoriesResult.success ? (categoriesResult.data?.categories || []) : []
+
+        // Filter categories that match search query
+        const matchingCategories = allCategories.filter(cat =>
+          cat.name.toLowerCase().includes(searchQuery.toLowerCase())
+        ).slice(0, 3)
+
+        setSearchSuggestions({ products, categories: matchingCategories })
+      } catch (error) {
+        console.error('Error fetching search suggestions:', error)
+        setSearchSuggestions({ products: [], categories: [] })
+      } finally {
+        setLoadingSuggestions(false)
+      }
+    }, 300) // 300ms debounce
+
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, searchOpen, getProducts])
+
   const openSearch = () => {
     setSearchMounted(true)
     requestAnimationFrame(() => setSearchOpen(true))
@@ -580,6 +661,8 @@ export function VendorDashboard({ onLogout }) {
 
   const closeSearch = () => {
     setSearchOpen(false)
+    setSearchSuggestions({ products: [], categories: [] })
+    setLoadingSuggestions(false)
     setTimeout(() => {
       setSearchMounted(false)
       setSearchQuery('')
@@ -639,7 +722,7 @@ export function VendorDashboard({ onLogout }) {
             label={<Trans>{item.label}</Trans>}
             active={activeTab === item.id}
             onClick={() => navigateToTab(item.id)}
-            icon={<item.icon active={activeTab === item.id} className="h-5 w-5" />}
+            icon={<item.icon active={activeTab === item.id} className="h-6 w-6" />}
             badge={item.id === 'home' && cartCount > 0 ? cartCount : undefined}
           />
         ))}
@@ -711,7 +794,7 @@ export function VendorDashboard({ onLogout }) {
             />
           )}
           {activeTab === 'overview' && <OverviewView onNavigate={navigateTo} welcomeName={welcomeName} openPanel={openPanel} />}
-          {activeTab === 'inventory' && <InventoryView onNavigate={navigateTo} openPanel={openPanel} />}
+          {activeTab === 'vyapaar' && <VendorVyapaarView />}
           {activeTab === 'orders' && !showAllOrders && !showOrderDetails && (
             <OrdersView
               openPanel={openPanel}
@@ -782,10 +865,12 @@ export function VendorDashboard({ onLogout }) {
               }}
             />
           )}
-          {activeTab === 'credit' && <CreditView openPanel={openPanel} />}
+          {activeTab === 'credit' && <VendorVyapaarView />}
           {activeTab === 'earnings' && <EarningsView openPanel={openPanel} onNavigate={navigateTo} />}
           {activeTab === 'reports' && <ReportsView onNavigate={navigateTo} />}
           {activeTab === 'rewards' && <RewardsView navigate={navigateToTab} />}
+          {activeTab === 'incentives' && <VendorVyapaarView />}
+          {activeTab === 'profile' && <VendorProfileView onNavigate={navigateToTab} onLogout={handleLogout} />}
         </section>
       </MobileShell>
 
@@ -817,20 +902,130 @@ export function VendorDashboard({ onLogout }) {
               </button>
             </div>
             <div className="vendor-search-sheet__body">
-              {searchResults.length ? (
-                searchResults.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSearchNavigate(item)}
-                    className="vendor-search-result"
-                  >
-                    <span className="vendor-search-result__label">{item.label}</span>
-                    <span className="vendor-search-result__meta">{item.tabLabel}</span>
-                  </button>
-                ))
+              {loadingSuggestions ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-gray-400"><Trans>Searching...</Trans></p>
+                </div>
+              ) : searchQuery.trim() ? (
+                <>
+                  {/* Products Section */}
+                  {searchSuggestions.products.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-2">
+                        <Trans>Products</Trans>
+                      </h3>
+                      <div className="space-y-1">
+                        {searchSuggestions.products.map((product) => {
+                          const productImage = product.images?.[0]?.url || product.primaryImage || product.image || 'https://via.placeholder.com/80'
+
+                          // Robust price calculation for vendor
+                          let displayPrice = 0
+                          if (product.attributeStocks && product.attributeStocks.length > 0) {
+                            const prices = product.attributeStocks
+                              .map(a => a.vendorPrice || a.priceToVendor || 0)
+                              .filter(p => p > 0)
+                            if (prices.length > 0) {
+                              displayPrice = Math.min(...prices)
+                            }
+                          }
+
+                          if (displayPrice === 0) {
+                            displayPrice = product.priceToVendor || product.vendorPrice || product.price || product.priceToUser || 0
+                          }
+
+                          return (
+                            <button
+                              key={product._id || product.id}
+                              type="button"
+                              onClick={() => {
+                                closeSearch()
+                                navigateToProductDetail(product._id || product.id)
+                              }}
+                              className="vendor-search-result w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                            >
+                              <img
+                                src={productImage}
+                                alt={product.name}
+                                className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-100"
+                              />
+                              <div className="flex-1 text-left min-w-0">
+                                <span className="vendor-search-result__label font-medium block truncate">
+                                  <TransText>{product.name}</TransText>
+                                </span>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-sm font-semibold text-green-600">₹{displayPrice.toLocaleString('en-IN')}</span>
+                                </div>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Categories Section */}
+                  {searchSuggestions.categories.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-2">
+                        <Trans>Categories</Trans>
+                      </h3>
+                      <div className="space-y-1">
+                        {searchSuggestions.categories.map((category) => (
+                          <button
+                            key={category._id || category.id}
+                            type="button"
+                            onClick={() => {
+                              closeSearch()
+                              setSelectedCategory(category._id || category.id)
+                              navigateToTab('category-products')
+                            }}
+                            className="vendor-search-result w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                              <BoxIcon className="w-4 h-4 text-green-600" />
+                            </div>
+                            <div className="flex-1 text-left">
+                              <span className="vendor-search-result__label font-medium block"><TransText>{category.name}</TransText></span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dashboard Sections Section (from searchCatalog) */}
+                  {searchResults.length > 0 && (
+                    <div className="mb-4">
+                      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-4 py-2">
+                        <Trans>Dashboard</Trans>
+                      </h3>
+                      <div className="space-y-1">
+                        {searchResults.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleSearchNavigate(item)}
+                            className="vendor-search-result w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                          >
+                            <span className="vendor-search-result__label font-medium">{item.label}</span>
+                            <span className="vendor-search-result__meta text-xs text-gray-400">{item.tabLabel}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No Results found in anything */}
+                  {searchResults.length === 0 && searchSuggestions.categories.length === 0 && searchSuggestions.products.length === 0 && (
+                    <div className="text-center py-12">
+                      <p className="text-sm font-medium text-gray-400"><Trans>No results found</Trans></p>
+                    </div>
+                  )}
+                </>
               ) : (
-                <p className="vendor-search-empty">No matches yet. Try another keyword.</p>
+                <div className="text-center py-12">
+                  <p className="text-sm text-gray-400"><Trans>Start typing to search...</Trans></p>
+                </div>
               )}
             </div>
           </div>
@@ -1763,7 +1958,7 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
           schemes={incentiveSchemes}
           history={incentiveHistory}
           loading={loadingRewards}
-          onNavigateToRewards={() => onNavigate('rewards')}
+          onNavigateToRewards={() => onNavigate('vyapaar')}
         />
       </section>
 

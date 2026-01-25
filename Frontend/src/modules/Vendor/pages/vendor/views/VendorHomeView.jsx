@@ -23,10 +23,10 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
     const [categories, setCategories] = useState([])
     const [products, setProducts] = useState([])
     const [popularProducts, setPopularProducts] = useState([])
-    const [categoryProducts, setCategoryProducts] = useState([])
-    const [carousels, setCarousels] = useState([])
     const [loading, setLoading] = useState(true)
     const { getProducts } = useVendorApi()
+    const [carousels, setCarousels] = useState([])
+    const [recentlyViewed, setRecentlyViewed] = useState([])
 
     useEffect(() => {
         const loadData = async () => {
@@ -39,12 +39,9 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
                     setProducts(allProducts)
                     // Use variants or default vendor price for initial items
                     setPopularProducts(allProducts.slice(0, 4))
-
-                    // Demo Recently Viewed (use some random products)
-                    setCategoryProducts(allProducts.slice(4, 8))
                 }
 
-                // Fetch real categories from API (using userApi for metadata)
+                // Fetch real categories from API
                 const categoriesResult = await userApi.getCategories()
                 if (categoriesResult.success && categoriesResult.data?.categories) {
                     setCategories(categoriesResult.data.categories)
@@ -61,6 +58,23 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
                         .filter(c => c.isActive !== false)
                         .sort((a, b) => (a.order || 0) - (b.order || 0))
                     setCarousels(activeCarousels)
+                }
+
+                // Fetch Recently Viewed products from localStorage
+                try {
+                    const viewedIds = JSON.parse(localStorage.getItem('vendor_recently_viewed') || '[]')
+                    if (viewedIds.length > 0) {
+                        const viewedResult = await getProducts({ ids: viewedIds.join(','), limit: 10 })
+                        if (viewedResult.data?.products) {
+                            // Maintain the order from viewedIds
+                            const sortedViewed = viewedIds
+                                .map(id => viewedResult.data.products.find(p => (p._id || p.id) === id))
+                                .filter(Boolean)
+                            setRecentlyViewed(sortedViewed)
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error loading recently viewed:', e)
                 }
 
             } catch (error) {
@@ -82,21 +96,36 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
         }))
         : []
 
-    const formatProductForCard = (product) => ({
-        id: product._id || product.id,
-        name: product.name,
-        price: (product.attributeStocks && product.attributeStocks.length > 0)
-            ? Math.min(...product.attributeStocks.map(a => a.vendorPrice))
-            : (product.priceToVendor || product.price || 0),
-        image: product.images?.[0]?.url || product.primaryImage || 'https://via.placeholder.com/300',
-        category: product.category,
-        stock: product.displayStock || product.stock,
-        description: product.description,
-        shortDescription: product.shortDescription || product.description,
-        isWishlisted: favourites.includes(product._id || product.id),
-        showNewBadge: true,
-        showRatingBadge: false,
-    })
+    const formatProductForCard = (product) => {
+        // Robust price calculation for vendor
+        let displayPrice = 0
+        if (product.attributeStocks && product.attributeStocks.length > 0) {
+            const prices = product.attributeStocks
+                .map(a => a.vendorPrice || a.priceToVendor || 0)
+                .filter(p => p > 0)
+            if (prices.length > 0) {
+                displayPrice = Math.min(...prices)
+            }
+        }
+
+        if (displayPrice === 0) {
+            displayPrice = product.priceToVendor || product.vendorPrice || product.price || product.priceToUser || 0
+        }
+
+        return {
+            id: product._id || product.id,
+            name: product.name,
+            price: displayPrice,
+            image: product.images?.[0]?.url || product.primaryImage || 'https://via.placeholder.com/300',
+            category: product.category,
+            stock: product.displayStock || product.stock,
+            description: product.description,
+            shortDescription: product.shortDescription || product.description,
+            isWishlisted: favourites.includes(product._id || product.id),
+            showNewBadge: true,
+            showRatingBadge: false,
+        }
+    }
 
     return (
         <div className="user-home-view vendor-home-view">
@@ -225,8 +254,8 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
                     <h3 className="home-section-title"><Trans>Recently Viewed</Trans></h3>
                 </div>
                 <div className="home-recently-viewed-rail">
-                    {categoryProducts.length > 0 ? (
-                        categoryProducts.slice(0, 3).map((product) => (
+                    {recentlyViewed.length > 0 ? (
+                        recentlyViewed.slice(0, 10).map((product) => (
                             <div
                                 key={product._id || product.id}
                                 className="home-recently-card"
@@ -242,9 +271,7 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
                                 <div className="home-recently-card__content">
                                     <h4 className="home-recently-card__name"><TransText>{product.name}</TransText></h4>
                                     <p className="home-recently-card__price">
-                                        ₹{(product.attributeStocks && product.attributeStocks.length > 0)
-                                            ? Math.min(...product.attributeStocks.map(a => a.vendorPrice))
-                                            : (product.priceToVendor || product.price || 0)}
+                                        ₹{formatProductForCard(product).price.toLocaleString('en-IN')}
                                     </p>
                                     <span className="home-recently-card__benefit"><Trans>Stock it now</Trans></span>
                                 </div>

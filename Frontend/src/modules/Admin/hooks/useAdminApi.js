@@ -880,44 +880,47 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
+
   // Incentive Management APIs (Phase 4)
-  const getIncentives = useCallback(() => callApi(adminApi.apiGet, '/admin/incentives'), [callApi])
+  // NOTE: apiGet, apiPost, apiPut, apiDelete helpers automatically prepend '/admin'
+  // So '/incentives' becomes '/admin/incentives' automatically
+  const getIncentives = useCallback(() => callApi(adminApi.apiGet, '/incentives'), [callApi])
 
   const createIncentive = useCallback(
-    (data) => callApi(adminApi.apiPost, '/admin/incentives', data),
+    (data) => callApi(adminApi.apiPost, '/incentives', data),
     [callApi]
   )
 
   const updateIncentive = useCallback(
-    (id, data) => callApi(adminApi.apiPut, `/admin/incentives/${id}`, data),
+    (id, data) => callApi(adminApi.apiPut, `/incentives/${id}`, data),
     [callApi]
   )
 
   const deleteIncentive = useCallback(
-    (id) => callApi(adminApi.apiDelete, `/admin/incentives/${id}`),
+    (id) => callApi(adminApi.apiDelete, `/incentives/${id}`),
     [callApi]
   )
 
   const getIncentiveHistory = useCallback(
     (params) => {
       const query = new URLSearchParams(params).toString()
-      return callApi(adminApi.apiGet, `/admin/incentives/history?${query}`)
+      return callApi(adminApi.apiGet, `/incentives/history?${query}`)
     },
     [callApi]
   )
 
   const approveIncentiveClaim = useCallback(
-    (id) => callApi(adminApi.apiPost, `/admin/incentives/claims/${id}/approve`),
+    (id) => callApi(adminApi.apiPost, `/incentives/claims/${id}/approve`),
     [callApi]
   )
 
   const rejectIncentiveClaim = useCallback(
-    (id, data) => callApi(adminApi.apiPost, `/admin/incentives/claims/${id}/reject`, data),
+    (id, data) => callApi(adminApi.apiPost, `/incentives/claims/${id}/reject`, data),
     [callApi]
   )
 
   const markIncentiveAsClaimed = useCallback(
-    (id, data) => callApi(adminApi.apiPost, `/admin/incentives/claims/${id}/mark-claimed`, data),
+    (id, data) => callApi(adminApi.apiPost, `/incentives/claims/${id}/mark-claimed`, data),
     [callApi]
   )
 

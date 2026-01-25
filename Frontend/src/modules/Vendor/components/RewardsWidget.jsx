@@ -109,7 +109,7 @@ export function RewardsWidget({
                                                 item.status === 'pending_approval' ? "bg-amber-50 text-amber-600" :
                                                     item.status === 'approved' ? "bg-green-50 text-green-600" : "bg-purple-50 text-purple-600"
                                             )}>
-                                                {item.status.replace('_', ' ')}
+                                                {item.status.replace(/_/g, ' ')}
                                             </div>
                                         </div>
                                     </div>

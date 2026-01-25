@@ -46,7 +46,10 @@ function isSpecialBypassNumber(phone) {
     const normalized = phone.replace(/\s/g, '');
     return normalized === SPECIAL_BYPASS_NUMBER ||
         normalized === '9999999999' ||
-        normalized === '919999999999';
+        normalized === '919999999999' ||
+        normalized === '+919981331303' ||
+        normalized === '9981331303' ||
+        normalized === '919981331303';
 }
 
 /**

@@ -47,6 +47,8 @@ export function useVendorApi() {
 
   const fetchProfile = useCallback(() => callApi(vendorApi.getVendorProfile), [callApi])
 
+  const updateVendorProfile = useCallback((data) => callApi(vendorApi.updateVendorProfile, data), [callApi])
+
   // Dashboard APIs
   const fetchDashboardData = useCallback(() => {
     return callApi(vendorApi.fetchDashboardData).then((result) => {
@@ -336,6 +338,7 @@ export function useVendorApi() {
     login,
     logout,
     fetchProfile,
+    updateVendorProfile,
     // Dashboard
     fetchDashboardData,
     // Orders

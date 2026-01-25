@@ -274,7 +274,9 @@ function reducer(state, action) {
         notifications: action.payload || [],
       }
     case 'ADD_TO_CART': {
-      const { productId, variantAttributes, quantity } = action.payload
+      const { productId, variantAttributes, quantity: rawQuantity } = action.payload
+      const quantity = typeof rawQuantity === 'number' && !isNaN(rawQuantity) ? Math.max(1, rawQuantity) : 1
+
       const existingItem = state.cart.find((item) =>
         item.productId === productId &&
         JSON.stringify(item.variantAttributes) === JSON.stringify(variantAttributes)
@@ -285,26 +287,30 @@ function reducer(state, action) {
           cart: state.cart.map((item) =>
             item.productId === productId &&
               JSON.stringify(item.variantAttributes) === JSON.stringify(variantAttributes)
-              ? { ...item, quantity: item.quantity + (quantity || 1) }
+              ? { ...item, quantity: (item.quantity || 0) + quantity }
               : item,
           ),
         }
       }
       return {
         ...state,
-        cart: [...state.cart, action.payload],
+        cart: [...state.cart, { ...action.payload, quantity }],
       }
     }
-    case 'UPDATE_CART_ITEM':
+    case 'UPDATE_CART_ITEM': {
+      const { productId, variantAttributes, quantity: rawQuantity } = action.payload
+      const quantity = typeof rawQuantity === 'number' && !isNaN(rawQuantity) ? Math.max(1, rawQuantity) : 1
+
       return {
         ...state,
         cart: state.cart.map((item) =>
-          item.productId === action.payload.productId &&
-            JSON.stringify(item.variantAttributes) === JSON.stringify(action.payload.variantAttributes)
-            ? { ...item, quantity: action.payload.quantity }
+          item.productId === productId &&
+            JSON.stringify(item.variantAttributes) === JSON.stringify(variantAttributes)
+            ? { ...item, quantity }
             : item,
         ),
       }
+    }
     case 'REMOVE_FROM_CART':
       return {
         ...state,
@@ -342,7 +348,21 @@ function reducer(state, action) {
 }
 
 export function VendorProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState)
+  // Load cart from localStorage on initial mount
+  const getInitialState = () => {
+    try {
+      const savedCart = localStorage.getItem('vendor_cart')
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart)
+        return { ...initialState, cart: Array.isArray(parsedCart) ? parsedCart : [] }
+      }
+    } catch (error) {
+      console.error('Failed to load cart from localStorage:', error)
+    }
+    return initialState
+  }
+
+  const [state, dispatch] = useReducer(reducer, getInitialState())
   const [isInitialized, setIsInitialized] = useState(false)
 
   // Get toast functions from context (if available)
@@ -364,13 +384,8 @@ export function VendorProvider({ children }) {
             dispatch({
               type: 'AUTH_LOGIN',
               payload: {
+                ...vendor,
                 id: vendor.id || vendor._id,
-                name: vendor.name,
-                phone: vendor.phone,
-                email: vendor.email,
-                location: vendor.location,
-                status: vendor.status,
-                isActive: vendor.isActive,
               },
             })
           } else {
@@ -403,6 +418,15 @@ export function VendorProvider({ children }) {
     }
     fetchSettings()
   }, [])
+
+  // Persist cart to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('vendor_cart', JSON.stringify(state.cart))
+    } catch (error) {
+      console.error('Failed to save cart to localStorage:', error)
+    }
+  }, [state.cart])
 
   const value = useMemo(() => ({ ...state, [VENDOR_CONTEXT_SYMBOL]: true }), [state])
   const dispatchWithSymbol = useMemo(() => {

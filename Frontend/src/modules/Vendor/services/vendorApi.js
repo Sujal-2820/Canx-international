@@ -196,6 +196,13 @@ export async function getVendorProfile() {
   return apiRequest('/vendors/auth/profile')
 }
 
+export async function updateVendorProfile(data) {
+  return apiRequest('/vendors/auth/profile', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+}
+
 /**
  * Get public financial settings
  * GET /users/settings/financial

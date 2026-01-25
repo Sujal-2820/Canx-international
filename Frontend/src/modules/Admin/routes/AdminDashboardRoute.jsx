@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { AdminProvider } from '../context/AdminContext'
 import { ToastProvider } from '../components/ToastNotification'
 import { AdminLayout } from '../components/AdminLayout'
@@ -47,6 +47,8 @@ const routeConfig = [
   { id: 'categories', element: CategoriesPage },
 ]
 
+const ADMIN_ROUTE_KEY = 'admin_active_route'
+
 function AdminDashboardContent({ activeRoute, setActiveRoute, onExit }) {
   const { pageId, subRoute } = useMemo(() => {
     // Parse route like 'products/add' into pageId='products' and subRoute='add'
@@ -64,11 +66,13 @@ function AdminDashboardContent({ activeRoute, setActiveRoute, onExit }) {
 
   const navigate = useCallback((route) => {
     setActiveRoute(route)
+    // Persist route to sessionStorage so it survives refresh
+    sessionStorage.setItem(ADMIN_ROUTE_KEY, route)
   }, [setActiveRoute])
 
   return (
     <AdminLayout
-      sidebar={(props) => <Sidebar active={activeRoute} onNavigate={setActiveRoute} {...props} />}
+      sidebar={(props) => <Sidebar active={activeRoute} onNavigate={navigate} {...props} />}
       onExit={onExit}
     >
       <ActivePageComponent subRoute={subRoute} navigate={navigate} />
@@ -77,7 +81,16 @@ function AdminDashboardContent({ activeRoute, setActiveRoute, onExit }) {
 }
 
 export function AdminDashboardRoute({ onExit }) {
-  const [activeRoute, setActiveRoute] = useState('dashboard')
+  // Restore last active route from sessionStorage, default to 'dashboard'
+  const [activeRoute, setActiveRoute] = useState(() => {
+    const savedRoute = sessionStorage.getItem(ADMIN_ROUTE_KEY)
+    return savedRoute || 'dashboard'
+  })
+
+  // Persist route changes to sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem(ADMIN_ROUTE_KEY, activeRoute)
+  }, [activeRoute])
 
   return (
     <AdminProvider>
@@ -91,4 +104,5 @@ export function AdminDashboardRoute({ onExit }) {
     </AdminProvider>
   )
 }
+
 

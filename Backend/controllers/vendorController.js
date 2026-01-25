@@ -808,8 +808,18 @@ exports.verifyOTP = async (req, res, next) => {
           status: vendor.status,
           vendor: {
             id: vendor._id,
+            vendorId: vendor.vendorId,
             name: vendor.name,
+            firstName: vendor.firstName,
+            lastName: vendor.lastName,
             phone: vendor.phone,
+            email: vendor.email,
+            shopName: vendor.shopName,
+            shopAddress: vendor.shopAddress,
+            gstNumber: vendor.gstNumber,
+            panNumber: vendor.panNumber,
+            aadhaarNumber: vendor.aadhaarNumber,
+            agentName: vendor.agentName,
             status: vendor.status,
             isActive: vendor.isActive,
             location: vendor.location,
@@ -873,8 +883,18 @@ exports.verifyOTP = async (req, res, next) => {
           message: 'Registration successful. Waiting for admin approval.',
           vendor: {
             id: vendor._id,
+            vendorId: vendor.vendorId,
             name: vendor.name,
+            firstName: vendor.firstName,
+            lastName: vendor.lastName,
             phone: vendor.phone,
+            email: vendor.email,
+            shopName: vendor.shopName,
+            shopAddress: vendor.shopAddress,
+            gstNumber: vendor.gstNumber,
+            panNumber: vendor.panNumber,
+            aadhaarNumber: vendor.aadhaarNumber,
+            agentName: vendor.agentName,
             status: vendor.status,
             isActive: vendor.isActive,
             location: vendor.location,
@@ -894,9 +914,14 @@ exports.verifyOTP = async (req, res, next) => {
         message: 'Your vendor profile was rejected by the admin. You cannot access the dashboard.',
         vendor: {
           id: vendor._id,
+          vendorId: vendor.vendorId,
           name: vendor.name,
+          firstName: vendor.firstName,
+          lastName: vendor.lastName,
           phone: vendor.phone,
           status: vendor.status,
+          shopName: vendor.shopName,
+          gstNumber: vendor.gstNumber,
         },
       });
     }
@@ -951,7 +976,16 @@ exports.verifyOTP = async (req, res, next) => {
           id: vendor._id,
           vendorId: vendor.vendorId,
           name: vendor.name,
+          firstName: vendor.firstName,
+          lastName: vendor.lastName,
           phone: vendor.phone,
+          email: vendor.email,
+          shopName: vendor.shopName,
+          shopAddress: vendor.shopAddress,
+          gstNumber: vendor.gstNumber,
+          panNumber: vendor.panNumber,
+          aadhaarNumber: vendor.aadhaarNumber,
+          agentName: vendor.agentName,
           status: vendor.status,
           isActive: vendor.isActive,
           location: vendor.location,
@@ -997,8 +1031,16 @@ exports.getProfile = async (req, res, next) => {
           id: vendor._id,
           vendorId: vendor.vendorId,
           name: vendor.name,
+          firstName: vendor.firstName,
+          lastName: vendor.lastName,
           phone: vendor.phone,
           email: vendor.email,
+          shopName: vendor.shopName,
+          shopAddress: vendor.shopAddress,
+          gstNumber: vendor.gstNumber,
+          panNumber: vendor.panNumber,
+          aadhaarNumber: vendor.aadhaarNumber,
+          agentName: vendor.agentName,
           location: vendor.location,
           status: vendor.status,
           isActive: vendor.isActive,
@@ -1011,6 +1053,57 @@ exports.getProfile = async (req, res, next) => {
           },
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Update vendor profile
+ * @route   PUT /api/vendors/auth/profile
+ * @access  Private (Vendor)
+ */
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const vendor = req.vendor;
+    const { name, firstName, lastName, email } = req.body;
+
+    if (name) vendor.name = name;
+    if (firstName) vendor.firstName = firstName;
+    if (lastName) vendor.lastName = lastName;
+    if (email) vendor.email = email;
+
+    // Update name if firstName and lastName are provided
+    if (firstName && lastName && !name) {
+      vendor.name = `${firstName} ${lastName}`;
+    }
+
+    await vendor.save();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        vendor: {
+          id: vendor._id,
+          vendorId: vendor.vendorId,
+          name: vendor.name,
+          firstName: vendor.firstName,
+          lastName: vendor.lastName,
+          phone: vendor.phone,
+          email: vendor.email,
+          shopName: vendor.shopName,
+          shopAddress: vendor.shopAddress,
+          gstNumber: vendor.gstNumber,
+          panNumber: vendor.panNumber,
+          aadhaarNumber: vendor.aadhaarNumber,
+          agentName: vendor.agentName,
+          location: vendor.location,
+          status: vendor.status,
+          isActive: vendor.isActive,
+        },
+      },
+      message: 'Profile updated successfully',
     });
   } catch (error) {
     next(error);
@@ -2944,12 +3037,20 @@ exports.getProducts = async (req, res, next) => {
       limit = 20,
       category,
       search,
+      ids,
       sortBy = 'createdAt',
       sortOrder = 'desc',
     } = req.query;
 
     // Build query - only show active products
     const query = { isActive: true };
+
+    if (ids) {
+      const idList = ids.split(',').filter(Boolean);
+      if (idList.length > 0) {
+        query._id = { $in: idList };
+      }
+    }
 
     if (category) {
       query.category = category.toLowerCase();
@@ -3834,6 +3935,34 @@ exports.getCreditPurchases = async (req, res, next) => {
           totalItems: total,
           itemsPerPage: limitNum,
         },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get pending credit purchases (approved/sent but not repaid)
+ * @route   GET /api/vendors/credit/purchases/pending
+ * @access  Private (Vendor)
+ */
+exports.getPendingPurchases = async (req, res, next) => {
+  try {
+    const vendor = req.vendor;
+
+    const purchases = await CreditPurchase.find({
+      vendorId: vendor._id,
+      status: { $in: ['approved', 'sent'] },
+    })
+      .sort({ createdAt: -1 })
+      .select('-__v')
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        purchases,
       },
     });
   } catch (error) {

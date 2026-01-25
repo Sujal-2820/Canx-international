@@ -3,6 +3,7 @@ const router = express.Router();
 
 // Import controllers and middleware
 const vendorController = require('../controllers/vendorController');
+const vendorRepaymentController = require('../controllers/vendorRepaymentController');
 const vendorAdminMessageController = require('../controllers/vendorAdminMessageController');
 const { authorizeVendor } = require('../middleware/auth');
 
@@ -44,6 +45,7 @@ router.post('/auth/logout', authorizeVendor, vendorController.logout);
  * @access  Private (Vendor)
  */
 router.get('/auth/profile', authorizeVendor, vendorController.getProfile);
+router.put('/auth/profile', authorizeVendor, vendorController.updateProfile);
 
 // ============================================================================
 // DASHBOARD ROUTES
@@ -203,12 +205,13 @@ router.get('/inventory/:itemId', authorizeVendor, vendorController.getInventoryI
  */
 router.post('/credit/purchase', authorizeVendor, vendorController.requestCreditPurchase);
 
-/**
- * @route   GET /api/vendors/credit/purchases
- * @desc    Get credit purchase request history
- * @access  Private (Vendor)
- */
 router.get('/credit/purchases', authorizeVendor, vendorController.getCreditPurchases);
+
+/**
+ * @route   GET /api/vendors/credit/purchases/pending
+ * @desc    Get pending credit purchases for repayment
+ */
+router.get('/credit/purchases/pending', authorizeVendor, vendorController.getPendingPurchases);
 
 /**
  * @route   GET /api/vendors/credit/purchases/:requestId
@@ -223,6 +226,13 @@ router.get('/credit/purchases/:requestId', authorizeVendor, vendorController.get
  * @access  Private (Vendor)
  */
 router.get('/credit/history', authorizeVendor, vendorController.getCreditHistory);
+
+/**
+ * @route   GET /api/vendors/credit/summary
+ * @desc    Get vendor credit summary (New Repayment System)
+ * @access  Private (Vendor)
+ */
+router.get('/credit/summary', authorizeVendor, vendorRepaymentController.getCreditSummary);
 
 /**
  * @route   GET /api/vendors/credit

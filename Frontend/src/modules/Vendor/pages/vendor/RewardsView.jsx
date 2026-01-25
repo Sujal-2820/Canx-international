@@ -218,7 +218,7 @@ export function RewardsView({ navigate }) {
                                     <div className="flex items-center justify-between mb-0.5">
                                         <h4 className="text-sm font-black text-gray-900 uppercase italic line-clamp-1">{item.incentiveSnapshot?.title}</h4>
                                         <span className="text-[9px] font-black text-white px-2 py-0.5 rounded bg-gray-900 uppercase tracking-tighter">
-                                            {item.status.replace('_', ' ')}
+                                            {item.status.replace(/_/g, ' ')}
                                         </span>
                                     </div>
                                     <div className="flex items-center justify-between">

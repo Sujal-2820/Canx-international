@@ -70,7 +70,6 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
         <div className="vendor-shell-header__controls">
           <div className="vendor-shell-header__brand">
             <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="h-11 w-auto transition-transform duration-200" />
-            <span className="vendor-logo-text-large">satpura</span>
           </div>
           <div className="vendor-shell-header__actions-redesigned">
             <button

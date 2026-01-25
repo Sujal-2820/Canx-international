@@ -10,7 +10,9 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Calendar, Calculator, TrendingDown, TrendingUp, DollarSign, Info, CheckCircle, Loader, ArrowRight } from 'lucide-react'
+import { Calendar, Calculator, TrendingDown, TrendingUp, DollarSign, Info, CheckCircle, Loader, ArrowRight, ChevronRight } from 'lucide-react'
+import { cn } from '../../../lib/cn'
+import { Trans } from '../../../components/Trans'
 
 export function RepaymentCalculator({ vendorApi, onSuccess }) {
     const [purchases, setPurchases] = useState([])
@@ -29,8 +31,15 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
 
     const loadPendingPurchases = async () => {
         try {
-            // This would call vendor API to get pending purchases
-            // For now, using mock data
+            if (vendorApi?.getPendingPurchases) {
+                const res = await vendorApi.getPendingPurchases()
+                if (res.data?.purchases) {
+                    setPurchases(res.data.purchases)
+                    return
+                }
+            }
+
+            // Fallback mock
             const mockPurchases = [
                 {
                     _id: '1',
@@ -39,14 +48,6 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                     createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
                     status: 'approved',
                     products: [{ name: 'Micro Nutrient Mix', quantity: 100 }]
-                },
-                {
-                    _id: '2',
-                    purchaseOrderId: 'PUR-20260105-0002',
-                    totalAmount: 50000,
-                    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-                    status: 'approved',
-                    products: [{ name: 'NPK Fertilizer', quantity: 50 }]
                 }
             ]
             setPurchases(mockPurchases)
@@ -56,20 +57,23 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
     }
 
     const handleCalculate = async () => {
-        if (!selectedPurchase) {
-            alert('Please select a purchase')
-            return
-        }
+        if (!selectedPurchase) return
 
         setIsLoading(true)
         try {
-            // Calculate repayment amount
-            const calcData = {
-                purchaseId: selectedPurchase._id,
-                repaymentDate: new Date(repaymentDate).toISOString()
+            if (vendorApi?.calculateRepayment) {
+                const res = await vendorApi.calculateRepayment({
+                    purchaseId: selectedPurchase._id,
+                    repaymentDate: new Date(repaymentDate).toISOString()
+                })
+                if (res.data) {
+                    setCalculation(res.data)
+                    setIsLoading(false)
+                    return
+                }
             }
 
-            // Mock calculation - replace with actual API call
+            // Mock calculation fallback
             const daysElapsed = Math.floor(
                 (new Date(repaymentDate) - new Date(selectedPurchase.createdAt)) / (1000 * 60 * 60 * 24)
             )
@@ -78,36 +82,16 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
             let interestRate = 0
             let tierType = 'neutral'
 
-            if (daysElapsed <= 30) {
-                discountRate = 10
-                tierType = 'discount'
-            } else if (daysElapsed <= 40) {
-                discountRate = 6
-                tierType = 'discount'
-            } else if (daysElapsed <= 60) {
-                discountRate = 4
-                tierType = 'discount'
-            } else if (daysElapsed <= 90) {
-                discountRate = 2
-                tierType = 'discount'
-            } else if (daysElapsed >= 105 && daysElapsed <= 120) {
-                interestRate = 5
-                tierType = 'interest'
-            } else if (daysElapsed > 120) {
-                interestRate = 10
-                tierType = 'interest'
-            }
+            if (daysElapsed <= 30) { discountRate = 10; tierType = 'discount'; }
+            else if (daysElapsed <= 60) { discountRate = 5; tierType = 'discount'; }
+            else if (daysElapsed > 90) { interestRate = 2; tierType = 'interest'; }
 
             const baseAmount = selectedPurchase.totalAmount
             const discountAmount = (baseAmount * discountRate) / 100
             const interestAmount = (baseAmount * interestRate) / 100
-            const finalPayable = tierType === 'discount'
-                ? baseAmount - discountAmount
-                : tierType === 'interest'
-                    ? baseAmount + interestAmount
-                    : baseAmount
+            const finalPayable = tierType === 'discount' ? baseAmount - discountAmount : tierType === 'interest' ? baseAmount + interestAmount : baseAmount
 
-            const mockCalc = {
+            setCalculation({
                 purchaseId: selectedPurchase._id,
                 baseAmount,
                 daysElapsed,
@@ -117,17 +101,10 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                 discountAmount,
                 interestAmount,
                 finalPayable,
-                tierApplied: tierType === 'discount'
-                    ? `${daysElapsed <= 30 ? '0-30' : daysElapsed <= 40 ? '30-40' : daysElapsed <= 60 ? '40-60' : '60-90'} Days (${discountRate}% Discount)`
-                    : tierType === 'interest'
-                        ? `${daysElapsed <= 120 ? '105-120' : '120+'} Days (${interestRate}% Interest)`
-                        : '90-105 Days (Neutral Zone)'
-            }
-
-            setCalculation(mockCalc)
+                tierApplied: tierType === 'discount' ? `${discountRate}% Early Pay Discount` : tierType === 'interest' ? `${interestRate}% Late Fee` : 'Standard Rate'
+            })
         } catch (error) {
             console.error('Calculation failed:', error)
-            alert('Failed to calculate repayment amount')
         } finally {
             setIsLoading(false)
         }
@@ -135,61 +112,16 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
 
     const handleViewProjection = async () => {
         if (!selectedPurchase) return
-
         setIsLoading(true)
         try {
-            // Mock projection data - replace with actual API call
-            const projections = []
-            const baseAmount = selectedPurchase.totalAmount
-            const purchaseDate = new Date(selectedPurchase.createdAt)
-
-            for (let day of [15, 30, 35, 40, 50, 60, 75, 90, 95, 105, 110, 120, 130, 150]) {
-                const targetDate = new Date(purchaseDate)
-                targetDate.setDate(targetDate.getDate() + day)
-
-                let discountRate = 0
-                let interestRate = 0
-                let tierType = 'neutral'
-
-                if (day <= 30) {
-                    discountRate = 10
-                    tierType = 'discount'
-                } else if (day <= 40) {
-                    discountRate = 6
-                    tierType = 'discount'
-                } else if (day <= 60) {
-                    discountRate = 4
-                    tierType = 'discount'
-                } else if (day <= 90) {
-                    discountRate = 2
-                    tierType = 'discount'
-                } else if (day >= 105 && day <= 120) {
-                    interestRate = 5
-                    tierType = 'interest'
-                } else if (day > 120) {
-                    interestRate = 10
-                    tierType = 'interest'
+            if (vendorApi?.getRepaymentProjection) {
+                const res = await vendorApi.getRepaymentProjection(selectedPurchase._id)
+                if (res.data) {
+                    setProjection(res.data)
+                    setShowProjection(true)
+                    return
                 }
-
-                const amount = tierType === 'discount'
-                    ? baseAmount - (baseAmount * discountRate / 100)
-                    : tierType === 'interest'
-                        ? baseAmount + (baseAmount * interestRate / 100)
-                        : baseAmount
-
-                projections.push({
-                    day,
-                    date: targetDate.toISOString().split('T')[0],
-                    tierType,
-                    rate: discountRate || interestRate,
-                    amount,
-                    savings: tierType === 'discount' ? (baseAmount * discountRate / 100) : 0,
-                    penalty: tierType === 'interest' ? (baseAmount * interestRate / 100) : 0
-                })
             }
-
-            setProjection(projections)
-            setShowProjection(true)
         } catch (error) {
             console.error('Failed to load projection:', error)
         } finally {
@@ -198,326 +130,242 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
     }
 
     const handleSubmitRepayment = async () => {
-        if (!calculation) {
-            alert('Please calculate repayment amount first')
-            return
-        }
+        if (!calculation || !selectedPurchase) return
 
-        if (!confirm(`Confirm repayment of ₹${calculation.finalPayable.toLocaleString('en-IN')}?`)) {
-            return
-        }
+        if (!confirm(`Confirm repayment of ₹${calculation.finalPayable.toLocaleString('en-IN')}?`)) return
 
         setIsSubmitting(true)
         try {
-            // Submit repayment - replace with actual API call
-            console.log('Submitting repayment:', {
-                purchaseId: selectedPurchase._id,
-                amount: calculation.finalPayable,
-                repaymentDate
-            })
-
-            alert('Repayment submitted successfully!')
-            if (onSuccess) onSuccess()
+            if (vendorApi?.submitRepayment) {
+                const res = await vendorApi.submitRepayment(selectedPurchase._id, {
+                    repaymentAmount: calculation.finalPayable,
+                    paymentMode: 'online',
+                    transactionId: 'TXN-' + Date.now()
+                })
+                if (res.success) {
+                    if (onSuccess) onSuccess()
+                    setCalculation(null)
+                    setSelectedPurchase(null)
+                    loadPendingPurchases()
+                }
+            }
         } catch (error) {
             console.error('Submission failed:', error)
-            alert('Failed to submit repayment')
         } finally {
             setIsSubmitting(false)
         }
     }
 
-    const formatCurrency = (amount) => `₹${amount.toLocaleString('en-IN')}`
+    const formatCurrency = (amount) => `₹${Number(amount || 0).toLocaleString('en-IN')}`
 
     return (
-        <div className="max-w-4xl mx-auto p-6 space-y-6">
-            {/* Header */}
-            <div>
-                <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                    <Calculator className="w-6 h-6 text-blue-600" />
-                    Repayment Calculator
-                </h2>
-                <p className="text-sm text-gray-600 mt-1">
-                    Calculate your repayment amount and see potential savings or charges
-                </p>
-            </div>
+        <div className="space-y-6">
+            {/* Active Dues List - BETTER UI TO SETTLE CREDITS */}
+            {purchases.length > 0 && !calculation && (
+                <div className="space-y-3">
+                    <p className="px-2 text-[10px] text-gray-400 uppercase tracking-widest"><Trans>Select a due to settle</Trans></p>
+                    <div className="grid grid-cols-1 gap-3">
+                        {purchases.map((p) => (
+                            <button
+                                key={p._id}
+                                onClick={() => {
+                                    setSelectedPurchase(p)
+                                    setCalculation(null)
+                                }}
+                                className={cn(
+                                    "p-4 rounded-2xl border text-left transition-all flex items-center justify-between group",
+                                    selectedPurchase?._id === p._id
+                                        ? "bg-green-50 border-green-200 ring-1 ring-green-600 shadow-sm"
+                                        : "bg-white border-gray-100 hover:border-gray-300"
+                                )}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={cn(
+                                        "h-10 w-10 rounded-xl flex items-center justify-center transition-colors",
+                                        selectedPurchase?._id === p._id ? "bg-green-600 text-white" : "bg-gray-50 text-gray-400 group-hover:bg-gray-100"
+                                    )}>
+                                        <DollarSign className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-900 leading-none">
+                                            {p.creditPurchaseId || `Order #${String(p._id).slice(-4)}`}
+                                        </p>
+                                        <p className="text-[10px] text-gray-500 mt-1 uppercase">
+                                            {new Date(p.createdAt).toLocaleDateString()} • {formatCurrency(p.totalAmount)}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {selectedPurchase?._id === p._id && <CheckCircle className="w-4 h-4 text-green-600" />}
+                                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400 group-hover:translate-x-0.5 transition-all" />
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
-            {/* Purchase Selection */}
-            <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Pending Purchase
-                </label>
-                <select
-                    value={selectedPurchase?._id || ''}
-                    onChange={(e) => {
-                        const purchase = purchases.find(p => p._id === e.target.value)
-                        setSelectedPurchase(purchase)
-                        setCalculation(null)
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                    <option value="">-- Select a purchase --</option>
-                    {purchases.map(purchase => (
-                        <option key={purchase._id} value={purchase._id}>
-                            {purchase.purchaseOrderId} - {formatCurrency(purchase.totalAmount)}
-                            ({new Date(purchase.createdAt).toLocaleDateString('en-IN')})
-                        </option>
-                    ))}
-                </select>
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between bg-gray-50/20">
+                    <div className="flex items-center gap-2">
+                        <Calculator className="w-5 h-5 text-green-600" />
+                        <h3 className="text-gray-900 text-base tracking-tight">
+                            <Trans>Settlement Hub</Trans>
+                        </h3>
+                    </div>
+                </div>
 
-                {selectedPurchase && (
-                    <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <p className="text-gray-600">Order ID</p>
-                                <p className="font-semibold text-gray-900">{selectedPurchase.purchaseOrderId}</p>
+                <div className="p-4 md:p-6 space-y-6">
+                    {/* Selection Area */}
+                    <div className="space-y-4">
+                        <div className="space-y-1.5">
+                            <label className="text-xs text-gray-500 ml-1"><Trans>Repayment Effective Date</Trans></label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="relative">
+                                    <input
+                                        type="date"
+                                        value={repaymentDate}
+                                        onChange={(e) => {
+                                            setRepaymentDate(e.target.value)
+                                            setCalculation(null)
+                                        }}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:border-green-600 focus:ring-0 transition-all outline-none"
+                                    />
+                                    <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                                </div>
+                                <button
+                                    onClick={handleCalculate}
+                                    disabled={!selectedPurchase || isLoading}
+                                    className="px-6 py-3 bg-green-600 text-white rounded-xl text-xs uppercase tracking-wide hover:bg-green-700 active:scale-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2 h-[46px]"
+                                >
+                                    {isLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
+                                    <span><Trans>Calculate</Trans></span>
+                                </button>
                             </div>
-                            <div>
-                                <p className="text-gray-600">Amount</p>
-                                <p className="font-semibold text-gray-900">{formatCurrency(selectedPurchase.totalAmount)}</p>
+                        </div>
+                    </div>
+
+                    {/* Calculation Result - Integrated with Dashboard Style */}
+                    {calculation && (
+                        <div className="animate-in fade-in duration-300">
+                            <div className={cn(
+                                "rounded-2xl p-6 border transition-all",
+                                calculation.tierType === 'discount' ? "bg-green-50 border-green-100" :
+                                    calculation.tierType === 'interest' ? "bg-red-50 border-red-100" : "bg-gray-50 border-gray-100"
+                            )}>
+                                <div className="space-y-5">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className={cn(
+                                                "h-10 w-10 min-w-[2.5rem] rounded-xl flex items-center justify-center bg-white shadow-sm",
+                                                calculation.tierType === 'discount' ? "text-green-600" :
+                                                    calculation.tierType === 'interest' ? "text-red-600" : "text-gray-400"
+                                            )}>
+                                                {calculation.tierType === 'discount' ? <TrendingDown className="h-5 w-5" /> : <TrendingUp className="h-5 w-5" />}
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] text-gray-500 uppercase tracking-wider line-clamp-1">{calculation.tierApplied}</p>
+                                                <h4 className="text-sm text-gray-900 leading-tight">
+                                                    {calculation.tierType === 'discount' ? <Trans>Savings Applicable</Trans> : <Trans>Settlement Adjustment</Trans>}
+                                                </h4>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] text-gray-400 uppercase tracking-widest leading-none mb-1"><Trans>Payable</Trans></p>
+                                            <p className="text-lg text-gray-900 leading-none">{formatCurrency(calculation.finalPayable)}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 border-t border-gray-100 pt-4">
+                                        <div className="flex justify-between items-center text-xs text-gray-600">
+                                            <span><Trans>Base Principal</Trans></span>
+                                            <span className="text-gray-900">{formatCurrency(calculation.baseAmount)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className={cn(
+                                                calculation.tierType === 'discount' ? "text-green-600" :
+                                                    calculation.tierType === 'interest' ? "text-red-600" : "text-gray-400"
+                                            )}>
+                                                {calculation.tierType === 'discount' ? <Trans>Discount</Trans> : <Trans>Handling Fee</Trans>}
+                                            </span>
+                                            <span className={cn(
+                                                calculation.tierType === 'discount' ? "text-green-600" :
+                                                    calculation.tierType === 'interest' ? "text-red-600" : "text-gray-400"
+                                            )}>
+                                                {calculation.tierType === 'discount' ? `-${formatCurrency(calculation.discountAmount)}` : `+${formatCurrency(calculation.interestAmount)}`}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                                        <button
+                                            onClick={handleViewProjection}
+                                            className="flex-1 py-3 px-4 border border-gray-200 rounded-xl text-[10px] uppercase tracking-wider text-gray-500 hover:bg-white hover:text-gray-700 transition-all text-center"
+                                        >
+                                            <Trans>Full Schedule</Trans>
+                                        </button>
+                                        <button
+                                            onClick={handleSubmitRepayment}
+                                            disabled={isSubmitting}
+                                            className="flex-[2] py-3 px-4 bg-green-600 text-white rounded-xl text-[10px] uppercase tracking-widest hover:bg-green-700 transition-all shadow-md flex items-center justify-center gap-2"
+                                        >
+                                            {isSubmitting ? <Loader className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
+                                            <Trans>Finalize Payment</Trans>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-gray-600">Purchase Date</p>
-                                <p className="font-semibold text-gray-900">
-                                    {new Date(selectedPurchase.createdAt).toLocaleDateString('en-IN')}
-                                </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Projection Modal */}
+                {showProjection && projection && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 bg-gray-900/10 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white rounded-2xl w-full max-w-xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col border border-gray-100">
+                            <div className="px-6 py-5 border-b border-gray-50 flex items-center justify-between">
+                                <h3 className="text-gray-900 text-base tracking-tight"><Trans>Repayment Valuation Graph</Trans></h3>
+                                <button
+                                    onClick={() => setShowProjection(false)}
+                                    className="h-8 w-8 flex items-center justify-center rounded-lg bg-gray-100 text-gray-500 hover:text-gray-900 transition-all"
+                                >
+                                    ✕
+                                </button>
                             </div>
-                            <div>
-                                <p className="text-gray-600">Status</p>
-                                <p className="font-semibold text-green-600 capitalize">{selectedPurchase.status}</p>
+
+                            <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-2">
+                                {projection.map((point, idx) => (
+                                    <div key={idx} className={cn(
+                                        "p-3 rounded-xl flex items-center justify-between text-xs border border-transparent shadow-sm",
+                                        point.tierType === 'discount' ? "bg-green-50 border-green-100" :
+                                            point.tierType === 'interest' ? "bg-red-50 border-red-100" : "bg-gray-50 border-gray-100"
+                                    )}>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-[10px] text-gray-400">
+                                                {point.day}d
+                                            </div>
+                                            <div>
+                                                <p className="text-gray-900">{formatCurrency(point.amount)}</p>
+                                                <p className="text-[10px] text-gray-500">{new Date(point.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={cn(
+                                                "text-[9px] uppercase px-1.5 py-0.5 rounded",
+                                                point.tierType === 'discount' ? "text-green-700 bg-white/50" :
+                                                    point.tierType === 'interest' ? "text-red-700 bg-white/50" : "text-gray-500"
+                                            )}>
+                                                {point.rate}% {point.tierType}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
                 )}
             </div>
-
-            {/* Repayment Date Selection */}
-            {selectedPurchase && (
-                <div className="bg-white rounded-lg border-2 border-gray-200 p-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        Repayment Date
-                    </label>
-                    <div className="flex gap-4">
-                        <input
-                            type="date"
-                            value={repaymentDate}
-                            onChange={(e) => {
-                                setRepaymentDate(e.target.value)
-                                setCalculation(null)
-                            }}
-                            min={new Date(selectedPurchase.createdAt).toISOString().split('T')[0]}
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <button
-                            onClick={handleCalculate}
-                            disabled={isLoading}
-                            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-                        >
-                            {isLoading ? (
-                                <>
-                                    <Loader className="w-4 h-4 animate-spin" />
-                                    Calculating...
-                                </>
-                            ) : (
-                                <>
-                                    <Calculator className="w-4 h-4" />
-                                    Calculate
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Calculation Result */}
-            {calculation && (
-                <div className={`rounded-lg border-2 p-6 ${calculation.tierType === 'discount'
-                        ? 'bg-green-50 border-green-200'
-                        : calculation.tierType === 'interest'
-                            ? 'bg-red-50 border-red-200'
-                            : 'bg-gray-50 border-gray-200'
-                    }`}>
-                    <div className="flex items-start justify-between mb-4">
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                {calculation.tierType === 'discount' && <TrendingDown className="w-5 h-5 text-green-600" />}
-                                {calculation.tierType === 'interest' && <TrendingUp className="w-5 h-5 text-red-600" />}
-                                {calculation.tierType === 'neutral' && <DollarSign className="w-5 h-5 text-gray-600" />}
-                                Repayment Calculation
-                            </h3>
-                            <p className="text-sm text-gray-600 mt-1">
-                                Days Elapsed: <span className="font-semibold">{calculation.daysElapsed} days</span>
-                            </p>
-                            <p className="text-sm text-gray-600">
-                                Tier Applied: <span className="font-semibold">{calculation.tierApplied}</span>
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        <div className="flex justify-between text-gray-700">
-                            <span>Base Amount:</span>
-                            <span className="font-semibold">{formatCurrency(calculation.baseAmount)}</span>
-                        </div>
-
-                        {calculation.tierType === 'discount' && (
-                            <div className="flex justify-between text-green-700">
-                                <span>Discount ({calculation.discountRate}%):</span>
-                                <span className="font-semibold">-{formatCurrency(calculation.discountAmount)}</span>
-                            </div>
-                        )}
-
-                        {calculation.tierType === 'interest' && (
-                            <div className="flex justify-between text-red-700">
-                                <span>Interest ({calculation.interestRate}%):</span>
-                                <span className="font-semibold">+{formatCurrency(calculation.interestAmount)}</span>
-                            </div>
-                        )}
-
-                        <div className="border-t-2 border-gray-300 pt-3 flex justify-between text-lg font-bold">
-                            <span>Final Payable:</span>
-                            <span className={
-                                calculation.tierType === 'discount'
-                                    ? 'text-green-600'
-                                    : calculation.tierType === 'interest'
-                                        ? 'text-red-600'
-                                        : 'text-gray-900'
-                            }>
-                                {formatCurrency(calculation.finalPayable)}
-                            </span>
-                        </div>
-
-                        {calculation.tierType === 'discount' && (
-                            <div className="p-3 bg-green-100 rounded-lg flex items-center gap-2">
-                                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                                <p className="text-sm text-green-800">
-                                    <strong>You save {formatCurrency(calculation.discountAmount)}!</strong> Great job on early repayment.
-                                </p>
-                            </div>
-                        )}
-
-                        {calculation.tierType === 'interest' && (
-                            <div className="p-3 bg-red-100 rounded-lg flex items-center gap-2">
-                                <Info className="w-5 h-5 text-red-600 flex-shrink-0" />
-                                <p className="text-sm text-red-800">
-                                    <strong>Additional {formatCurrency(calculation.interestAmount)} charged.</strong> Consider paying earlier next time.
-                                </p>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="mt-6 flex gap-3">
-                        <button
-                            onClick={handleViewProjection}
-                            className="flex-1 px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <Calendar className="w-4 h-4" />
-                            View Full Projection
-                        </button>
-                        <button
-                            onClick={handleSubmitRepayment}
-                            disabled={isSubmitting}
-                            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader className="w-4 h-4 animate-spin" />
-                                    Submitting...
-                                </>
-                            ) : (
-                                <>
-                                    Submit Repayment
-                                    <ArrowRight className="w-4 h-4" />
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Projection Modal */}
-            {showProjection && projection && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-                            <h3 className="text-xl font-bold text-gray-900">14-Point Repayment Schedule</h3>
-                            <button
-                                onClick={() => setShowProjection(false)}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        <div className="p-6">
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b-2">
-                                            <th className="text-left py-3 px-2 text-sm font-semibold">Day</th>
-                                            <th className="text-left py-3 px-2 text-sm font-semibold">Date</th>
-                                            <th className="text-left py-3 px-2 text-sm font-semibold">Type</th>
-                                            <th className="text-right py-3 px-2 text-sm font-semibold">Rate</th>
-                                            <th className="text-right py-3 px-2 text-sm font-semibold">Amount</th>
-                                            <th className="text-right py-3 px-2 text-sm font-semibold">Impact</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {projection.map((point, idx) => (
-                                            <tr
-                                                key={idx}
-                                                className={`border-b ${point.tierType === 'discount'
-                                                        ? 'bg-green-50'
-                                                        : point.tierType === 'interest'
-                                                            ? 'bg-red-50'
-                                                            : 'bg-gray-50'
-                                                    }`}
-                                            >
-                                                <td className="py-3 px-2 text-sm font-medium">{point.day}</td>
-                                                <td className="py-3 px-2 text-sm">{new Date(point.date).toLocaleDateString('en-IN')}</td>
-                                                <td className="py-3 px-2 text-sm">
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${point.tierType === 'discount'
-                                                            ? 'bg-green-200 text-green-800'
-                                                            : point.tierType === 'interest'
-                                                                ? 'bg-red-200 text-red-800'
-                                                                : 'bg-gray-200 text-gray-800'
-                                                        }`}>
-                                                        {point.tierType === 'discount' ? 'Discount' : point.tierType === 'interest' ? 'Interest' : 'Neutral'}
-                                                    </span>
-                                                </td>
-                                                <td className="py-3 px-2 text-sm text-right font-semibold">{point.rate}%</td>
-                                                <td className="py-3 px-2 text-sm text-right font-bold">{formatCurrency(point.amount)}</td>
-                                                <td className="py-3 px-2 text-sm text-right">
-                                                    {point.savings > 0 && (
-                                                        <span className="text-green-600 font-semibold">
-                                                            Save {formatCurrency(point.savings)}
-                                                        </span>
-                                                    )}
-                                                    {point.penalty > 0 && (
-                                                        <span className="text-red-600 font-semibold">
-                                                            +{formatCurrency(point.penalty)}
-                                                        </span>
-                                                    )}
-                                                    {point.savings === 0 && point.penalty === 0 && (
-                                                        <span className="text-gray-500">--</span>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                                <p className="text-sm text-blue-800">
-                                    <strong>💡 Tip:</strong> Pay within 30 days to maximize your savings!
-                                    The earlier you pay, the more you save.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     )
 }

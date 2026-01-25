@@ -96,13 +96,9 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
           dispatch({
             type: 'AUTH_LOGIN',
             payload: {
+              ...vendorData,
               id: vendorData.id || vendorData._id,
-              name: vendorData.name,
               phone: vendorData.phone || form.phone,
-              email: vendorData.email,
-              location: vendorData.location,
-              status: vendorData.status,
-              isActive: vendorData.isActive,
             },
           })
         }
