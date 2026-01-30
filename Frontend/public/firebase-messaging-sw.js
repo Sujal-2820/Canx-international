@@ -2,16 +2,16 @@
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
 
-// These will be replaced by actual values if needed, but for now 
-// we can use the same config as the frontend app
-// Note: In production, these should ideally be hardcoded or injected during build
+// Retrieve config options from the URL query parameters
+// This allows us to use environment variables from the main app instead of hardcoding secrets here
+const urlParams = new URLSearchParams(location.search);
 const firebaseConfig = {
-    apiKey: "AIzaSyC1Ro0C440eVz-5BNJSvTLwrRA1hajEm8Y",
-    authDomain: "satpura-bio.firebaseapp.com",
-    projectId: "satpura-bio",
-    storageBucket: "satpura-bio.firebasestorage.app",
-    messagingSenderId: "411379643976",
-    appId: "1:411379643976:web:e6fb3d017c08c31da30a7d"
+    apiKey: urlParams.get('apiKey'),
+    authDomain: urlParams.get('authDomain'),
+    projectId: urlParams.get('projectId'),
+    storageBucket: urlParams.get('storageBucket'),
+    messagingSenderId: urlParams.get('messagingSenderId'),
+    appId: urlParams.get('appId')
 };
 
 // Initialize Firebase

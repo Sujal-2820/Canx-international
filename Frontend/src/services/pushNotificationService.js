@@ -9,7 +9,16 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 async function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         try {
-            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+            const firebaseConfigParams = new URLSearchParams({
+                apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+                authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+                projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+                storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+                messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+                appId: import.meta.env.VITE_FIREBASE_APP_ID,
+            }).toString();
+
+            const registration = await navigator.serviceWorker.register(`/firebase-messaging-sw.js?${firebaseConfigParams}`, {
                 scope: '/'
             });
             console.log('✅ FCM Service Worker registered:', registration.scope);
