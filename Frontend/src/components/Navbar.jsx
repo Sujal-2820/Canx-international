@@ -24,7 +24,7 @@ const defaultCta = {
 }
 
 export function Navbar({
-  brand = { name: 'Satpura Bio', logo: '/assets/Satpura-1.webp' },
+  brand = { name: 'Canx International', logo: '/canxLogo.png' },
   links = defaultLinks,
   cta = defaultCta,
 }) {

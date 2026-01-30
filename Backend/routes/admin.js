@@ -163,6 +163,7 @@ router.get('/vendors', authorizeAdmin, adminController.getVendors);
  * @desc    Get all vendor withdrawal requests (global, with optional filters)
  * @access  Private (Admin)
  */
+router.get('/vendors/rankings', authorizeAdmin, adminController.getVendorRankings);
 router.get('/vendors/withdrawals', authorizeAdmin, adminController.getAllVendorWithdrawals);
 
 /**
@@ -243,6 +244,7 @@ router.post('/vendors/purchases/:requestId/approve', authorizeAdmin, adminContro
 router.post('/vendors/purchases/:requestId/reject', authorizeAdmin, adminController.rejectVendorPurchase);
 router.post('/vendors/purchases/:requestId/send', authorizeAdmin, adminController.sendVendorPurchaseStock);
 router.post('/vendors/purchases/:requestId/confirm-delivery', authorizeAdmin, adminController.confirmVendorPurchaseDelivery);
+router.delete('/vendors/purchases/:requestId', authorizeAdmin, adminController.deleteVendorPurchase);
 
 
 /**
@@ -273,106 +275,6 @@ router.get('/vendors/:vendorId', authorizeAdmin, adminController.getVendorDetail
  */
 router.delete('/vendors/:vendorId', authorizeAdmin, adminController.deleteVendor);
 
-// ============================================================================
-// SELLER (IRA PARTNER) MANAGEMENT ROUTES
-// ============================================================================
-
-/**
- * @route   GET /api/admin/sellers
- * @desc    Get all sellers with filtering
- * @access  Private (Admin)
- */
-router.get('/sellers', authorizeAdmin, adminController.getSellers);
-
-/**
- * IMPORTANT: Specific routes with sub-paths must come BEFORE generic :sellerId routes
- */
-
-/**
- * @route   POST /api/admin/sellers/:sellerId/approve
- * @desc    Approve seller registration
- * @access  Private (Admin)
- */
-router.post('/sellers/:sellerId/approve', authorizeAdmin, adminController.approveSeller);
-
-/**
- * @route   POST /api/admin/sellers/:sellerId/reject
- * @desc    Reject seller registration
- * @access  Private (Admin)
- */
-router.post('/sellers/:sellerId/reject', authorizeAdmin, adminController.rejectSeller);
-
-/**
- * @route   PUT /api/admin/sellers/:sellerId/target
- * @desc    Set monthly sales target
- * @access  Private (Admin)
- */
-router.put('/sellers/:sellerId/target', authorizeAdmin, adminController.setSellerTarget);
-
-/**
- * @route   GET /api/admin/sellers/withdrawals
- * @desc    Get all seller withdrawal requests (global, with optional filters)
- * @access  Private (Admin)
- */
-router.get('/sellers/withdrawals', authorizeAdmin, adminController.getAllSellerWithdrawals);
-
-/**
- * @route   GET /api/admin/sellers/:sellerId/withdrawals
- * @desc    Get seller withdrawal requests (seller-specific)
- * @access  Private (Admin)
- */
-router.get('/sellers/:sellerId/withdrawals', authorizeAdmin, adminController.getSellerWithdrawals);
-
-/**
- * @route   POST /api/admin/sellers/withdrawals/:requestId/payment-intent
- * @desc    Create payment intent for seller withdrawal
- * @access  Private (Admin)
- */
-router.post('/sellers/withdrawals/:requestId/payment-intent', authorizeAdmin, adminController.createSellerWithdrawalPaymentIntent);
-
-/**
- * @route   POST /api/admin/sellers/withdrawals/:requestId/approve
- * @desc    Approve seller withdrawal request
- * @access  Private (Admin)
- */
-router.post('/sellers/withdrawals/:requestId/approve', authorizeAdmin, adminController.approveSellerWithdrawal);
-
-/**
- * @route   POST /api/admin/sellers/withdrawals/:requestId/reject
- * @desc    Reject seller withdrawal request
- * @access  Private (Admin)
- */
-router.post('/sellers/withdrawals/:requestId/reject', authorizeAdmin, adminController.rejectSellerWithdrawal);
-
-/**
- * @route   GET /api/admin/sellers/change-requests
- * @desc    Get all seller change requests
- * @access  Private (Admin)
- */
-router.get('/sellers/change-requests', authorizeAdmin, adminController.getSellerChangeRequests);
-
-/**
- * @route   GET /api/admin/sellers/change-requests/:requestId
- * @desc    Get seller change request details
- * @access  Private (Admin)
- */
-router.get('/sellers/change-requests/:requestId', authorizeAdmin, adminController.getSellerChangeRequestDetails);
-
-/**
- * @route   POST /api/admin/sellers/change-requests/:requestId/approve
- * @desc    Approve seller change request
- * @access  Private (Admin)
- */
-router.post('/sellers/change-requests/:requestId/approve', authorizeAdmin, adminController.approveSellerChangeRequest);
-
-/**
- * @route   POST /api/admin/sellers/change-requests/:requestId/reject
- * @desc    Reject seller change request
- * @access  Private (Admin)
- */
-router.post('/sellers/change-requests/:requestId/reject', authorizeAdmin, adminController.rejectSellerChangeRequest);
-
-// ============================================================================
 // UNIFIED WITHDRAWAL MANAGEMENT ROUTES
 // ============================================================================
 
@@ -396,56 +298,6 @@ router.get('/payment-history', authorizeAdmin, adminController.getPaymentHistory
  * @access  Private (Admin)
  */
 router.get('/payment-history/stats', authorizeAdmin, adminController.getPaymentHistoryStats);
-
-/**
- * @route   POST /api/admin/sellers
- * @desc    Create seller (IRA Partner)
- * @access  Private (Admin)
- */
-router.post('/sellers', authorizeAdmin, adminController.createSeller);
-
-/**
- * @route   PUT /api/admin/sellers/:sellerId
- * @desc    Update seller
- * @access  Private (Admin)
- */
-router.put('/sellers/:sellerId', authorizeAdmin, adminController.updateSeller);
-
-/**
- * @route   GET /api/admin/sellers/:sellerId
- * @desc    Get seller details
- * @access  Private (Admin)
- */
-router.get('/sellers/:sellerId', authorizeAdmin, adminController.getSellerDetails);
-
-// ============================================================================
-// USER MANAGEMENT ROUTES
-// ============================================================================
-
-/**
- * @route   GET /api/admin/users
- * @desc    Get all users with filtering
- * @access  Private (Admin)
- */
-router.get('/users', authorizeAdmin, adminController.getUsers);
-
-/**
- * IMPORTANT: Specific routes with sub-paths must come BEFORE generic :userId routes
- */
-
-/**
- * @route   PUT /api/admin/users/:userId/block
- * @desc    Block/deactivate user account
- * @access  Private (Admin)
- */
-router.put('/users/:userId/block', authorizeAdmin, adminController.blockUser);
-
-/**
- * @route   GET /api/admin/users/:userId
- * @desc    Get user details
- * @access  Private (Admin)
- */
-router.get('/users/:userId', authorizeAdmin, adminController.getUserDetails);
 
 // ============================================================================
 // ORDER & PAYMENT MANAGEMENT ROUTES

@@ -208,7 +208,7 @@ export function DocumentUpload({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                <CheckCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
                 <p className="text-sm font-bold text-surface-foreground truncate uppercase">
                   {isPDF ? 'PDF Document' : 'Image uploaded'}
                 </p>

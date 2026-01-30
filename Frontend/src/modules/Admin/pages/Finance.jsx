@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BadgeIndianRupee, Sparkles, Building2, Eye, AlertCircle, Package, CheckCircle, XCircle, ArrowLeft, Calendar, MoreVertical } from 'lucide-react'
+import { BadgeIndianRupee, Sparkles, Building2, Eye, AlertCircle, Package, CheckCircle, XCircle, ArrowLeft, Calendar, MoreVertical, Trash2 } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { ProgressList } from '../components/ProgressList'
 import { Timeline } from '../components/Timeline'
@@ -42,6 +42,7 @@ export function FinancePage({ subRoute = null, navigate }) {
     confirmVendorPurchaseDelivery,
     getVendorCreditHistory,
     getVendorRepayments,
+    deleteVendorPurchase,
     loading,
   } = useAdminApi()
   const { success, error: showError, warning: showWarning } = useToast()
@@ -292,6 +293,27 @@ export function FinancePage({ subRoute = null, navigate }) {
       showError(error.message || 'Failed to reject purchase request', 5000)
     } finally {
       setApprovingPurchase(false)
+    }
+  }
+
+  const handleDeletePurchaseRequest = async (requestId) => {
+    if (window.confirm('Are you sure you want to permanently delete this purchase invoice? This action cannot be undone.')) {
+      try {
+        const result = await deleteVendorPurchase(requestId)
+        if (result.success) {
+          success('Purchase invoice deleted successfully')
+          fetchPurchaseRequests()
+          // If we were viewing this request, go back to list
+          if (selectedPurchaseRequest?.id === requestId || selectedPurchaseRequest?._id === requestId) {
+            setCurrentView(null)
+            setSelectedPurchaseRequest(null)
+          }
+        } else {
+          showError(result.error?.message || 'Failed to delete purchase invoice')
+        }
+      } catch (error) {
+        showError('An error occurred while deleting the invoice')
+      }
     }
   }
 
@@ -1018,6 +1040,17 @@ export function FinancePage({ subRoute = null, navigate }) {
                   title="Review request"
                 >
                   <Eye className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDeletePurchaseRequest(request.id || request._id)
+                  }}
+                  className="ml-2 flex h-9 w-9 items-center justify-center rounded-lg border border-red-300 bg-white text-red-600 transition-all hover:border-red-500 hover:bg-red-50"
+                  title="Delete invoice"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             ))}

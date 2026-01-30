@@ -5,7 +5,7 @@ const AdminStateContext = createContext(null)
 const AdminDispatchContext = createContext(() => { })
 
 const initialState = {
-  activeTenant: 'Satpura Bio Super Admin',
+  activeTenant: 'Canx International Super Admin',
   authenticated: false,
   profile: {
     name: 'Guest Admin',
@@ -27,14 +27,6 @@ const initialState = {
     updated: false,
   },
   vendors: {
-    data: null,
-    updated: false,
-  },
-  sellers: {
-    data: null,
-    updated: false,
-  },
-  users: {
     data: null,
     updated: false,
   },
@@ -90,8 +82,6 @@ function reducer(state, action) {
         dashboard: initialState.dashboard,
         products: initialState.products,
         vendors: initialState.vendors,
-        sellers: initialState.sellers,
-        users: initialState.users,
         orders: initialState.orders,
         finance: initialState.finance,
         analytics: initialState.analytics,
@@ -136,38 +126,6 @@ function reducer(state, action) {
         ...state,
         vendors: {
           ...state.vendors,
-          updated: action.payload,
-        },
-      }
-    case 'SET_SELLERS_DATA':
-      return {
-        ...state,
-        sellers: {
-          ...state.sellers,
-          data: action.payload,
-        },
-      }
-    case 'SET_SELLERS_UPDATED':
-      return {
-        ...state,
-        sellers: {
-          ...state.sellers,
-          updated: action.payload,
-        },
-      }
-    case 'SET_USERS_DATA':
-      return {
-        ...state,
-        users: {
-          ...state.users,
-          data: action.payload,
-        },
-      }
-    case 'SET_USERS_UPDATED':
-      return {
-        ...state,
-        users: {
-          ...state.users,
           updated: action.payload,
         },
       }

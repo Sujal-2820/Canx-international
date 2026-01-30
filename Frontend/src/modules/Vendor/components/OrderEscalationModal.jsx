@@ -151,7 +151,7 @@ export function OrderEscalationModal({ isOpen, onClose, order, onSuccess }) {
                           <span
                             className={cn(
                               'font-semibold',
-                              vendorStock > 0 ? 'text-green-600' : 'text-red-600'
+                              vendorStock > 0 ? 'text-blue-600' : 'text-red-600'
                             )}
                           >
                             Your stock: {vendorStock} {unit}

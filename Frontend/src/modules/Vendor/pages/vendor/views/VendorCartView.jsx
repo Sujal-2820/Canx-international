@@ -1,9 +1,9 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useVendorState } from '../../../context/VendorContext'
-import { PlusIcon, MinusIcon, TrashIcon, TruckIcon, ChevronRightIcon, HelpCircleIcon } from '../../../../User/components/icons'
+import { PlusIcon, MinusIcon, TrashIcon, TruckIcon, ChevronRightIcon, HelpCircleIcon } from '../../../../../components/shared/catalog'
 import { cn } from '../../../../../lib/cn'
 import { useVendorApi } from '../../../hooks/useVendorApi'
-import { getPrimaryImageUrl } from '../../../../User/utils/productImages'
+import { getPrimaryImageUrl } from '../../../../../utils/productImages'
 import { Trans } from '../../../../../components/Trans'
 import { TransText } from '../../../../../components/TransText'
 
@@ -313,7 +313,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                             <div className="flex-1 min-w-0">
                                 <h3 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2"><TransText>{group.name}</TransText></h3>
                                 <div className="flex items-center gap-2">
-                                    <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold rounded-full uppercase"><Trans>Wholesale Stock</Trans></span>
+                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-full uppercase"><Trans>Wholesale Stock</Trans></span>
                                 </div>
                             </div>
                         </div>
@@ -347,7 +347,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                                                     </div>
                                                 )}
 
-                                                <div className="text-sm font-bold text-green-600 mt-1">
+                                                <div className="text-sm font-bold text-blue-600 mt-1">
                                                     ₹{(variant.unitPrice || 0).toLocaleString('en-IN')} <span className="text-[10px] text-gray-500 font-normal">/ unit</span>
                                                 </div>
                                             </div>
@@ -451,7 +451,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                             "px-3 py-1.5 rounded-xl shadow-lg text-[11px] font-bold text-white whitespace-nowrap flex flex-col items-center gap-0.5 border border-white/20 transition-colors duration-200",
                             creditCalculation.type === 'discount' ? "bg-gradient-to-r from-blue-600 to-indigo-600" :
                                 creditCalculation.type === 'interest' ? "bg-gradient-to-r from-red-500 to-rose-600" :
-                                    "bg-green-700"
+                                    "bg-blue-700"
                         )}>
                             <div className="flex items-center gap-1">
                                 {creditCalculation.type === 'discount' ? '-' : creditCalculation.type === 'interest' ? '+' : ''}
@@ -468,7 +468,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                                 "w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] absolute -bottom-[5px]",
                                 creditCalculation.type === 'discount' ? "border-t-indigo-600" :
                                     creditCalculation.type === 'interest' ? "border-t-rose-600" :
-                                        "border-t-green-700"
+                                        "border-t-blue-700"
                             )}
                             style={{
                                 left: `${sliderProgress}%`,
@@ -488,7 +488,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                             "w-full h-2 rounded-lg appearance-none cursor-pointer transition-colors shadow-inner relative z-0",
                             creditCalculation.type === 'interest' ? "accent-red-500 bg-red-100" :
                                 creditCalculation.type === 'discount' ? "accent-blue-500 bg-blue-100" :
-                                    "accent-green-700 bg-green-100"
+                                    "accent-blue-700 bg-blue-100"
                         )}
                     />
 
@@ -514,7 +514,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                         </div>
                         <div className="w-px h-8 bg-gray-200 shrink-0"></div>
                         <div className="pl-3 text-right shrink-0">
-                            <p className="text-sm font-bold text-green-700">₹{creditCalculation.final.toFixed(0)}</p>
+                            <p className="text-sm font-bold text-blue-700">₹{creditCalculation.final.toFixed(0)}</p>
                             <p className="text-[8px] font-medium text-gray-400 uppercase tracking-tighter">Payable</p>
                         </div>
                     </div>
@@ -552,10 +552,10 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                                         </td>
                                     </tr>
                                 )}
-                                <tr className="bg-green-50/30 border-t-2 border-green-100">
+                                <tr className="bg-blue-50/30 border-t-2 border-blue-100">
                                     <td className="p-3 font-semibold text-gray-900"><Trans>Total Payable</Trans></td>
                                     <td className="p-3 text-right"></td>
-                                    <td className="p-3 text-right font-bold text-green-700 text-sm bg-green-50/50">₹{creditCalculation.final.toFixed(0)}</td>
+                                    <td className="p-3 text-right font-bold text-blue-700 text-sm bg-blue-50/50">₹{creditCalculation.final.toFixed(0)}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -581,7 +581,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                     className={cn(
                         'w-full py-4 px-6 rounded-2xl text-base font-bold transition-all duration-200',
                         totals.meetsMinimum
-                            ? 'bg-green-600 text-white shadow-lg active:scale-95'
+                            ? 'bg-blue-600 text-white shadow-lg active:scale-95'
                             : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                     )}
                     onClick={onCheckout}
@@ -605,12 +605,12 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                                     <img src={getPrimaryImageUrl(product)} alt={product.name} className="w-full h-full object-cover" />
                                 </div>
                                 <h4 className="text-[10px] font-bold text-gray-900 line-clamp-1 mb-1"><TransText>{product.name}</TransText></h4>
-                                <p className="text-[12px] font-bold text-green-600">
+                                <p className="text-[12px] font-bold text-blue-600">
                                     ₹{((product.attributeStocks && product.attributeStocks.length > 0)
                                         ? Math.min(...product.attributeStocks.map(a => a.vendorPrice))
                                         : (product.priceToVendor || product.price || 0)).toLocaleString('en-IN')}
                                 </p>
-                                <button className="w-full mt-2 py-1 text-[10px] font-bold text-green-600 border border-green-600 rounded-lg">
+                                <button className="w-full mt-2 py-1 text-[10px] font-bold text-blue-600 border border-blue-600 rounded-lg">
                                     <Trans>View</Trans>
                                 </button>
                             </div>

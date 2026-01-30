@@ -1,14 +1,89 @@
 import { useEffect, useState } from 'react'
 import { cn } from '../../../lib/cn'
-import { CloseIcon, MenuIcon, SearchIcon, BellIcon, HeartIcon, CartIcon } from './icons'
+import { CloseIcon, MenuIcon, SearchIcon, BellIcon, HeartIcon, CartIcon, UserIcon } from './icons'
 
 import { MapPinIcon } from './icons'
-import { LanguageToggle } from '../../../components/LanguageToggle'
 import { Trans } from '../../../components/Trans'
 import { useTranslation } from '../../../context/TranslationContext'
 import { TransText } from '../../../components/TransText'
 
-export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick, onNotificationClick, notificationCount = 0, favouritesCount = 0, cartCount = 0, isNotificationAnimating = false, isHome = false, onNavigate }) {
+// Component for translated search input placeholder
+function TranslatedSearchInput({ onSearchClick }) {
+  const { translate, isEnglish, language } = useTranslation()
+  const [currentPlaceholder, setCurrentPlaceholder] = useState('Search Products...')
+  const [searchTerms, setSearchTerms] = useState(['Seeds', 'Fertilizers', 'Pesticides', 'Equipment'])
+  const [termIndex, setTermIndex] = useState(0)
+
+  useEffect(() => {
+    // Animation loop for search terms
+    const interval = setInterval(() => {
+      setTermIndex((prev) => (prev + 1) % searchTerms.length)
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [searchTerms.length])
+
+  useEffect(() => {
+    const term = searchTerms[termIndex]
+    if (isEnglish) {
+      setCurrentPlaceholder(`Search ${term}...`)
+    } else {
+      translate(`Search ${term}...`).then(translated => setCurrentPlaceholder(translated)).catch(() => setCurrentPlaceholder(`Search ${term}...`))
+    }
+  }, [termIndex, isEnglish, translate, searchTerms])
+
+  // Translate terms on mount/language change
+  useEffect(() => {
+    if (!isEnglish) {
+      Promise.all(['Seeds', 'Fertilizers', 'Pesticides', 'Equipment'].map(t => translate(t)))
+        .then(translated => setSearchTerms(translated))
+        .catch(() => setSearchTerms(['Seeds', 'Fertilizers', 'Pesticides', 'Equipment']))
+    } else {
+      setSearchTerms(['Seeds', 'Fertilizers', 'Pesticides', 'Equipment'])
+    }
+  }, [isEnglish, translate])
+
+  return (
+    <input
+      type="text"
+      className="home-search-bar__input animated-placeholder"
+      placeholder={currentPlaceholder}
+      onClick={onSearchClick}
+      readOnly
+    />
+  )
+}
+
+// Component for translated email input placeholder
+function TranslatedEmailInput() {
+  const { translate, isEnglish, language } = useTranslation()
+  const [placeholder, setPlaceholder] = useState('Write Email')
+
+  useEffect(() => {
+    if (isEnglish) {
+      setPlaceholder('Write Email')
+      return
+    }
+
+    translate('Write Email')
+      .then((translated) => {
+        setPlaceholder(translated)
+      })
+      .catch(() => {
+        setPlaceholder('Write Email')
+      })
+  }, [isEnglish, translate, language])
+
+  return (
+    <input
+      type="email"
+      placeholder={placeholder}
+      className="vendor-shell-footer__email-input"
+    />
+  )
+}
+
+export function MobileShell({ title, subtitle, children, navigation, menuContent, onSearchClick, onNotificationClick, notificationCount = 0, favouritesCount = 0, cartCount = 0, isNotificationAnimating = false, isHome = false, onNavigate, onLogout, onLogin, isAuthenticated = false }) {
   const [open, setOpen] = useState(false)
   const [compact, setCompact] = useState(false)
   const [hideSecondRow, setHideSecondRow] = useState(false)
@@ -65,13 +140,31 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
 
   return (
     <div className="vendor-shell">
-      <header className={cn('vendor-shell-header', compact && 'is-compact')}>
+      <header className={cn(
+        'vendor-shell-header',
+        compact && 'is-compact',
+        hideSecondRow && 'is-second-row-hidden'
+      )}>
         <div className="vendor-shell-header__glow" />
-        <div className="vendor-shell-header__controls">
+        <div className="vendor-shell-header__first-row vendor-shell-header__controls relative z-10 flex items-center justify-between">
           <div className="vendor-shell-header__brand">
-            <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="h-11 w-auto transition-transform duration-200" />
+            <img src="/canxLogo.png" alt="Canx International" className="h-11 w-auto transition-transform duration-200" />
+            <span className="vendor-shell-header__logo-text">CANX INTERNATIONAL</span>
           </div>
+
+          {/* Search Bar - Between Logo and Navigation (Laptop Only) */}
+          <div className="vendor-shell-header__search-bar">
+            <div className="home-search-bar__input-wrapper">
+              <SearchIcon className="home-search-bar__icon" />
+              <TranslatedSearchInput onSearchClick={onSearchClick} />
+            </div>
+          </div>
+
           <div className="vendor-shell-header__actions-redesigned">
+            {/* Laptop Navigation Items - Only Language Toggle and Icons here */}
+            <nav className="vendor-shell-header__nav">
+            </nav>
+
             <button
               type="button"
               onClick={onNotificationClick}
@@ -113,12 +206,94 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
             </button>
           </div>
         </div>
-        <div className={cn('vendor-shell-header__info', compact && 'is-compact', hideSecondRow && 'is-hidden')}>
-          {title ? <span className="vendor-brand-title"><TransText>{title}</TransText></span> : null}
-          <div className="vendor-shell-header__hint">
-            <MapPinIcon className="mr-2 inline h-3.5 w-3.5" />
-            <TransText>{subtitle}</TransText>
+
+        {/* Mobile Title/Subtitle - Display Name & Location with Animation */}
+        {(title || subtitle) && (
+          <div className={cn(
+            'vendor-shell-header__info relative z-10 flex flex-col gap-1 opacity-100 transition-all duration-300 pointer-events-auto pl-[4px]',
+            compact && 'is-compact',
+            hideSecondRow && 'is-hidden'
+          )}>
+            {title && (
+              <span className="relative z-10 text-[0.95rem] font-bold text-white tracking-[0.01em]">
+                <TransText>{title}</TransText>
+              </span>
+            )}
+            {subtitle && (
+              <p className="relative z-10 text-[0.72rem] font-medium text-white/90 tracking-[0.04em] uppercase">
+                <MapPinIcon className="mr-2 inline h-3.5 w-3.5" />
+                <TransText>{subtitle}</TransText>
+              </p>
+            )}
           </div>
+        )}
+
+        {/* Second Row - Title/Subtitle and Navigation Links (Laptop Only) */}
+        <div className={cn('vendor-shell-header__second-row', hideSecondRow && 'vendor-shell-header__second-row--hidden')}>
+          {title && (
+            <div className="vendor-shell-header__info-wrapper">
+              <span className="vendor-shell-header__title-text"><TransText>{title}</TransText></span>
+              {subtitle && (
+                <p className="vendor-shell-header__subtitle-text">
+                  <MapPinIcon className="mr-2 inline h-3.5 w-3.5" />
+                  <TransText>{subtitle}</TransText>
+                </p>
+              )}
+            </div>
+          )}
+          <nav className="vendor-shell-header__links">
+            <button
+              type="button"
+              onClick={() => onNavigate?.('home')}
+              className="vendor-shell-header__link"
+            >
+              <Trans>CATALOG</Trans>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('vyapaar')}
+              className="vendor-shell-header__link"
+            >
+              <Trans>VYAPAAR</Trans>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('orders')}
+              className="vendor-shell-header__link"
+            >
+              <Trans>ORDERS</Trans>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('profile')}
+              className="vendor-shell-header__link"
+            >
+              <Trans>PROFILE</Trans>
+            </button>
+
+            {/* Laptop Auth Buttons - Placed in Second Row next to Profile */}
+            {isAuthenticated ? (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="vendor-shell-header__auth-btn vendor-shell-header__auth-btn--signout"
+                aria-label="Sign Out"
+              >
+                <UserIcon className="h-4 w-4" />
+                <span><Trans>Sign Out</Trans></span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onLogin}
+                className="vendor-shell-header__auth-btn vendor-shell-header__auth-btn--signin"
+                aria-label="Sign In"
+              >
+                <UserIcon className="h-4 w-4" />
+                <span><Trans>Sign In</Trans></span>
+              </button>
+            )}
+          </nav>
         </div>
       </header>
 
@@ -150,6 +325,90 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
         <div className="vendor-shell-bottom-nav__inner">{navigation}</div>
       </nav>
 
+      {/* Footer - Laptop Only */}
+      <footer className="vendor-shell-footer">
+        <div className="vendor-shell-footer__top">
+          <div className="vendor-shell-footer__content">
+            {/* Brand Column */}
+            <div className="vendor-shell-footer__column">
+              <h3 className="vendor-shell-footer__brand"><Trans>CANX INTERNATIONAL</Trans></h3>
+              <p className="vendor-shell-footer__slogan"><Trans>Your Trusted Farming Partner</Trans></p>
+              <div className="vendor-shell-footer__about">
+                <h4 className="vendor-shell-footer__heading"><Trans>About Us</Trans></h4>
+                <p className="vendor-shell-footer__text">
+                  <Trans>Canx International is a comprehensive agricultural marketplace connecting farmers with quality seeds, fertilizers, pesticides, and farming equipment. We are committed to empowering farmers with the best agricultural products and services across India.</Trans>
+                </p>
+              </div>
+            </div>
+
+            {/* Services Column */}
+            <div className="vendor-shell-footer__column">
+              <h4 className="vendor-shell-footer__heading"><Trans>Services</Trans></h4>
+              <ul className="vendor-shell-footer__list">
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Seeds & Planting</Trans></a></li>
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Fertilizers</Trans></a></li>
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Pesticides</Trans></a></li>
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Farming Equipment</Trans></a></li>
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Expert Consultation</Trans></a></li>
+              </ul>
+            </div>
+
+            {/* Company Column */}
+            <div className="vendor-shell-footer__column">
+              <h4 className="vendor-shell-footer__heading"><Trans>Company</Trans></h4>
+              <ul className="vendor-shell-footer__list">
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>About Canx International</Trans></a></li>
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Our Mission</Trans></a></li>
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Become a Seller</Trans></a></li>
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Careers</Trans></a></li>
+                <li><a href="#" className="vendor-shell-footer__link"><Trans>Contact Us</Trans></a></li>
+              </ul>
+            </div>
+
+            {/* Contact Column */}
+            <div className="vendor-shell-footer__column">
+              <h4 className="vendor-shell-footer__heading"><Trans>Contact us</Trans></h4>
+              <div className="vendor-shell-footer__contact">
+                <p className="vendor-shell-footer__text"><Trans>Call</Trans> : <a href="tel:+911234567890" className="vendor-shell-footer__link">+91 123 456 7890</a></p>
+                <p className="vendor-shell-footer__text"><Trans>Email</Trans>: <a href="mailto:support@canxinternational.com" className="vendor-shell-footer__link">support@canxinternational.com</a></p>
+              </div>
+            </div>
+
+            {/* Newsletter Column */}
+            <div className="vendor-shell-footer__column">
+              <div className="vendor-shell-footer__newsletter">
+                <TranslatedEmailInput />
+                <button type="button" className="vendor-shell-footer__subscribe-btn">
+                  →
+                </button>
+              </div>
+              <div className="vendor-shell-footer__social">
+                <a href="#" className="vendor-shell-footer__social-icon" aria-label="Facebook">F</a>
+                <a href="#" className="vendor-shell-footer__social-icon" aria-label="Twitter">T</a>
+                <a href="#" className="vendor-shell-footer__social-icon" aria-label="LinkedIn">L</a>
+                <a href="#" className="vendor-shell-footer__social-icon" aria-label="WhatsApp">W</a>
+                <a href="#" className="vendor-shell-footer__social-icon" aria-label="Instagram">I</a>
+              </div>
+              <h4 className="vendor-shell-footer__heading"><Trans>Follow Us</Trans></h4>
+            </div>
+          </div>
+        </div>
+        <div className="vendor-shell-footer__bottom">
+          <div className="vendor-shell-footer__bottom-content">
+            <div className="vendor-shell-footer__legal">
+              <a href="#" className="vendor-shell-footer__legal-link"><Trans>Privacy Policy</Trans></a>
+              <span className="vendor-shell-footer__separator">|</span>
+              <a href="#" className="vendor-shell-footer__legal-link"><Trans>Our History</Trans></a>
+              <span className="vendor-shell-footer__separator">|</span>
+              <a href="#" className="vendor-shell-footer__legal-link"><Trans>What We Do</Trans></a>
+            </div>
+            <p className="vendor-shell-footer__copyright">
+              <Trans>© 2025 Canx International. All images are for demo purposes only.</Trans>
+            </p>
+          </div>
+        </div>
+      </footer>
+
       <div
         className={cn(
           'fixed inset-0 z-40 bg-black/20 backdrop-blur-sm transition-opacity',
@@ -177,7 +436,6 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
         </div>
         <div className="flex-1 overflow-y-auto px-3 pb-10">
           <div className="mb-4">
-            <LanguageToggle variant="default" onLanguageChange={() => setOpen(false)} />
           </div>
           {typeof menuContent === 'function'
             ? menuContent({
@@ -190,4 +448,3 @@ export function MobileShell({ title, subtitle, children, navigation, menuContent
     </div>
   )
 }
-

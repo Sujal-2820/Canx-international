@@ -28,8 +28,8 @@ export function WebsiteHeader() {
           <div className="website-header__logo">
             <Link to="/" className="website-header__logo-link">
               <img
-                src="/assets/Satpura-1.webp"
-                alt="Satpura Bio"
+                src="/canxLogo.png"
+                alt="Canx International"
                 className="website-header__logo-img"
               />
             </Link>

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { StarIcon, HeartIcon, PlusIcon, MinusIcon, ChevronLeftIcon, CartIcon, HelpCircleIcon } from '../../../../User/components/icons'
+import { StarIcon, HeartIcon, PlusIcon, MinusIcon, ChevronLeftIcon, CartIcon, HelpCircleIcon } from '../../../../../components/shared/catalog'
 import { cn } from '../../../../../lib/cn'
 import { useVendorApi } from '../../../hooks/useVendorApi'
 import { useVendorState, useVendorDispatch } from '../../../context/VendorContext'
@@ -192,7 +192,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
     return (
         <div className="bg-white min-h-screen pb-24">
             {/* Header */}
-            <header className="fixed top-0 left-0 right-0 h-14 bg-green-800 text-white flex items-center px-4 z-50">
+            <header className="fixed top-0 left-0 right-0 h-14 bg-blue-800 text-white flex items-center px-4 z-50">
                 <button onClick={onBack} className="p-1">
                     <ChevronLeftIcon className="h-6 w-6" />
                 </button>
@@ -202,7 +202,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                 <button onClick={onCartClick} className="p-2 relative">
                     <CartIcon className="h-6 w-6" />
                     {cart.length > 0 && (
-                        <span className="absolute top-1 right-1 bg-white text-green-800 text-[10px] font-bold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center border-2 border-green-800">
+                        <span className="absolute top-1 right-1 bg-white text-blue-800 text-[10px] font-bold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center border-2 border-blue-800">
                             {cart.reduce((sum, item) => sum + item.quantity, 0)}
                         </span>
                     )}
@@ -222,7 +222,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                     </button>
 
                     {/* In Stock Badge */}
-                    <div className="absolute bottom-4 right-4 px-3 py-1.5 bg-green-600/90 backdrop-blur-sm text-white text-[10px] font-semibold rounded-lg shadow-lg border border-green-500/50">
+                    <div className="absolute bottom-4 right-4 px-3 py-1.5 bg-blue-600/90 backdrop-blur-sm text-white text-[10px] font-semibold rounded-lg shadow-lg border border-blue-500/50">
                         <Trans>Product in stock</Trans>
                     </div>
                 </div>
@@ -236,7 +236,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                                 onClick={() => setSelectedImage(i)}
                                 className={cn(
                                     "flex-shrink-0 w-16 h-16 rounded-xl border-2 overflow-hidden transition-all bg-white flex items-center justify-center p-1.5",
-                                    i === selectedImage ? "border-green-600 scale-105 shadow-md" : "border-gray-100 opacity-60 hover:opacity-100"
+                                    i === selectedImage ? "border-blue-600 scale-105 shadow-md" : "border-gray-100 opacity-60 hover:opacity-100"
                                 )}
                             >
                                 <img src={img} alt={`view ${i}`} className="w-full h-full object-contain" />
@@ -255,7 +255,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                         </div>
                         <div className="text-right shrink-0">
                             <p className="text-gray-400 line-through text-[9px] font-medium">₹{(currentPrice * 1.5).toFixed(0)}</p>
-                            <p className="text-lg font-bold text-green-700">₹{currentPrice.toFixed(0)}</p>
+                            <p className="text-lg font-bold text-blue-700">₹{currentPrice.toFixed(0)}</p>
                         </div>
                     </div>
 
@@ -275,8 +275,8 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                                     className={cn(
                                         "p-2.5 rounded-xl border-2 transition-all cursor-pointer min-w-[80px] text-center shadow-sm",
                                         selectedAttributeStock === attr
-                                            ? "border-green-600 bg-green-50 text-green-800 ring-2 ring-green-600/10"
-                                            : "border-gray-100 bg-white text-gray-500 hover:border-green-200"
+                                            ? "border-blue-600 bg-blue-50 text-blue-800 ring-2 ring-blue-600/10"
+                                            : "border-gray-100 bg-white text-gray-500 hover:border-blue-200"
                                     )}
                                 >
                                     <p className="font-semibold text-xs leading-tight">{getAttributeDisplayName(attr)}</p>
@@ -336,7 +336,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                                     "px-3 py-1.5 rounded-xl shadow-lg text-[11px] font-bold text-white whitespace-nowrap flex flex-col items-center gap-0.5 border border-white/20 transition-colors duration-200",
                                     calculation.type === 'discount' ? "bg-gradient-to-r from-blue-600 to-indigo-600" :
                                         calculation.type === 'interest' ? "bg-gradient-to-r from-red-500 to-rose-600" :
-                                            "bg-green-700"
+                                            "bg-blue-700"
                                 )}>
                                     <div className="flex items-center gap-1">
                                         {calculation.type === 'discount' ? '-' : calculation.type === 'interest' ? '+' : ''}
@@ -354,7 +354,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                                         "w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] absolute -bottom-[5px]",
                                         calculation.type === 'discount' ? "border-t-indigo-600" :
                                             calculation.type === 'interest' ? "border-t-rose-600" :
-                                                "border-t-green-700"
+                                                "border-t-blue-700"
                                     )}
                                     style={{
                                         // Counteract the parent's translateX to keep arrow centered on pointer
@@ -375,7 +375,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                                     "w-full h-2 rounded-lg appearance-none cursor-pointer transition-colors shadow-inner relative z-0",
                                     calculation.type === 'interest' ? "accent-red-500 bg-red-100" :
                                         calculation.type === 'discount' ? "accent-blue-500 bg-blue-100" :
-                                            "accent-green-700 bg-green-100"
+                                            "accent-blue-700 bg-blue-100"
                                 )}
                             />
                             {/* Marker Info */}
@@ -400,7 +400,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                                 </div>
                                 <div className="w-px h-8 bg-gray-200 shrink-0"></div>
                                 <div className="pl-3 text-right shrink-0">
-                                    <p className="text-sm font-bold text-green-700">₹{calculation.final.toFixed(0)}</p>
+                                    <p className="text-sm font-bold text-blue-700">₹{calculation.final.toFixed(0)}</p>
                                     <p className="text-[8px] font-medium text-gray-400">Payable</p>
                                 </div>
                             </div>
@@ -438,10 +438,10 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                                                 </td>
                                             </tr>
                                         )}
-                                        <tr className="bg-green-50/30 border-t-2 border-green-100">
+                                        <tr className="bg-blue-50/30 border-t-2 border-blue-100">
                                             <td className="p-3 font-semibold text-gray-900">Final Payable</td>
                                             <td className="p-3 text-right"></td>
-                                            <td className="p-3 text-right font-bold text-green-700 text-sm bg-green-50/50">₹{calculation.final.toFixed(0)}</td>
+                                            <td className="p-3 text-right font-bold text-blue-700 text-sm bg-blue-50/50">₹{calculation.final.toFixed(0)}</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -503,7 +503,7 @@ export function VendorProductDetailView({ productId, onAddToCart, onBuyNow, onTo
                 </button>
                 <button
                     onClick={() => onAddToCart?.(productId, quantity, selectedAttributes, currentPrice)}
-                    className="flex-[2] bg-green-800 text-white flex items-center justify-center gap-2 active:bg-green-900 transition-colors"
+                    className="flex-[2] bg-blue-800 text-white flex items-center justify-center gap-2 active:bg-blue-900 transition-colors"
                 >
                     <CartIcon className="h-5 w-5" />
                     <span className="font-bold text-sm uppercase tracking-wide"><Trans>Add to Cart</Trans></span>

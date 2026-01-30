@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useVendorState, useVendorDispatch } from '../../../context/VendorContext'
 import { useVendorApi } from '../../../hooks/useVendorApi'
 import {
-    WalletIcon,
     GiftIcon,
     SparkIcon,
     CheckIcon,
@@ -12,14 +11,9 @@ import {
     ReportIcon,
     ClockIcon,
     TrendingUpIcon,
-    DollarSignIcon,
     AwardIcon,
-    ArrowUpRightIcon,
-    BuildingIcon,
-    PlusIcon,
     AlertCircleIcon
 } from '../../../components/icons'
-import { BankAccountForm } from '../../../components/BankAccountForm'
 import { cn } from '../../../../../lib/cn'
 import { Trans } from '../../../../../components/Trans'
 import { TransText } from '../../../../../components/TransText'
@@ -38,10 +32,7 @@ export function VendorVyapaarView() {
         getIncentiveSchemes,
         getIncentiveHistory,
         claimReward,
-        getRepaymentHistory,
-        getEarningsSummary,
-        requestWithdrawal,
-        getBankAccounts
+        getRepaymentHistory
     } = useVendorApi()
 
     // State for tabs
@@ -54,16 +45,6 @@ export function VendorVyapaarView() {
     const [pendingPurchases, setPendingPurchases] = useState([])
     const [incentiveSchemes, setIncentiveSchemes] = useState([])
     const [incentiveHistory, setIncentiveHistory] = useState([])
-    const [earningsSummary, setEarningsSummary] = useState(null)
-    const [bankAccounts, setBankAccounts] = useState([])
-
-    // Withdrawal State
-    const [showWithdrawModal, setShowWithdrawModal] = useState(false)
-    const [showBankForm, setShowBankForm] = useState(false)
-    const [withdrawAmount, setWithdrawAmount] = useState('')
-    const [selectedBankId, setSelectedBankId] = useState('')
-    const [isWithdrawing, setIsWithdrawing] = useState(false)
-
     // Loading states
     const [loading, setLoading] = useState(true)
     const [repaymentRefreshKey, setRepaymentRefreshKey] = useState(0)
@@ -77,17 +58,13 @@ export function VendorVyapaarView() {
                 pendingPurchasesRes,
                 schemesRes,
                 historyRes,
-                repaymentHistoryRes,
-                earningsSummaryRes,
-                bankAccountsRes
+                repaymentHistoryRes
             ] = await Promise.all([
                 getCreditSummary(),
                 getPendingPurchases(),
                 getIncentiveSchemes(),
                 getIncentiveHistory({}),
-                getRepaymentHistory({ page: 1, limit: 10 }),
-                getEarningsSummary(),
-                getBankAccounts()
+                getRepaymentHistory({ page: 1, limit: 10 })
             ])
 
             if (creditSummaryRes.data) {
@@ -104,19 +81,6 @@ export function VendorVyapaarView() {
             }
             if (repaymentHistoryRes.data?.repayments) {
                 setRepaymentHistory(repaymentHistoryRes.data.repayments)
-            }
-            if (earningsSummaryRes.data) {
-                setEarningsSummary(earningsSummaryRes.data)
-                // Set default withdraw amount if balance exists
-                if (earningsSummaryRes.data.availableBalance > 0) {
-                    setWithdrawAmount(Math.floor(earningsSummaryRes.data.availableBalance).toString())
-                }
-            }
-            if (bankAccountsRes.data?.bankAccounts) {
-                setBankAccounts(bankAccountsRes.data.bankAccounts)
-                const primary = bankAccountsRes.data.bankAccounts.find(b => b.isPrimary)
-                if (primary) setSelectedBankId(primary._id || primary.id)
-                else if (bankAccountsRes.data.bankAccounts[0]) setSelectedBankId(bankAccountsRes.data.bankAccounts[0]._id || bankAccountsRes.data.bankAccounts[0].id)
             }
         } catch (error) {
             console.error('Error loading Vyapaar data:', error)
@@ -147,47 +111,12 @@ export function VendorVyapaarView() {
         }
     }
 
-    const handleWithdraw = async () => {
-        const amount = Number(withdrawAmount)
-        if (isNaN(amount) || amount < 10000) {
-            alert('Minimum withdrawal amount is ₹10,000')
-            return
-        }
-        if (amount > (earningsSummary?.availableBalance || 0)) {
-            alert('Amount exceeds available balance')
-            return
-        }
-        if (!selectedBankId) {
-            alert('Please select a bank account')
-            return
-        }
-
-        setIsWithdrawing(true)
-        try {
-            const res = await requestWithdrawal({
-                amount,
-                bankAccountId: selectedBankId
-            })
-            if (res.success) {
-                setShowWithdrawModal(false)
-                setRepaymentRefreshKey(prev => prev + 1)
-                alert('Withdrawal request submitted successfully')
-            } else {
-                alert(res.error?.message || 'Failed to submit request')
-            }
-        } catch (error) {
-            console.error('Withdrawal error:', error)
-        } finally {
-            setIsWithdrawing(false)
-        }
-    }
-
     const formatCurrency = (val) => `₹${Number(val || 0).toLocaleString('en-IN')}`
 
     if (loading && !creditSummary && incentiveSchemes.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
                 <p className="text-gray-400 text-sm font-medium animate-pulse"><Trans>Loading Vyapaar Hub...</Trans></p>
             </div>
         )
@@ -198,7 +127,7 @@ export function VendorVyapaarView() {
             {/* Header Area */}
             <div className="px-2 pt-6 pb-6 space-y-1">
                 <div className="flex items-center gap-2">
-                    <div className="h-2 w-8 bg-green-600 rounded-full"></div>
+                    <div className="h-2 w-8 bg-blue-600 rounded-full"></div>
                     <h1 className="text-2xl tracking-tight text-gray-900"><Trans>Vyapaar Hub</Trans></h1>
                 </div>
                 <p className="text-xs text-gray-500"><Trans>Global business capital and growth management</Trans></p>
@@ -211,24 +140,24 @@ export function VendorVyapaarView() {
                         onClick={() => setMainTab('credit')}
                         className={cn(
                             "py-4 text-sm transition-all relative",
-                            mainTab === 'credit' ? "text-green-600" : "text-gray-500 hover:text-gray-700"
+                            mainTab === 'credit' ? "text-blue-600" : "text-gray-500 hover:text-gray-700"
                         )}
                     >
-                        <Trans>Dues & Wallet</Trans>
-                        {mainTab === 'credit' && <span className="absolute bottom-0 left-0 right-0 h-1 bg-green-600 rounded-t-full"></span>}
+                        <Trans>Wholesale Credit</Trans>
+                        {mainTab === 'credit' && <span className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full"></span>}
                     </button>
                     <button
                         onClick={() => setMainTab('incentives')}
                         className={cn(
                             "py-4 text-sm transition-all relative flex items-center gap-2",
-                            mainTab === 'incentives' ? "text-green-600" : "text-gray-500 hover:text-gray-700"
+                            mainTab === 'incentives' ? "text-blue-600" : "text-gray-500 hover:text-gray-700"
                         )}
                     >
                         <Trans>Incentives</Trans>
                         {eligibleRewards.length > 0 && (
                             <span className="h-2 w-2 rounded-full bg-orange-500"></span>
                         )}
-                        {mainTab === 'incentives' && <span className="absolute bottom-0 left-0 right-0 h-1 bg-green-600 rounded-t-full"></span>}
+                        {mainTab === 'incentives' && <span className="absolute bottom-0 left-0 right-0 h-1 bg-blue-600 rounded-t-full"></span>}
                     </button>
                 </div>
             </div>
@@ -237,64 +166,7 @@ export function VendorVyapaarView() {
                 {/* TAB 1: CREDIT & WALLET */}
                 {mainTab === 'credit' && (
                     <div className="space-y-10 animate-in fade-in duration-500 pb-12">
-                        {/* WALLET & EARNINGS SECTION - BRANDED REDESIGN */}
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between px-1">
-                                <h2 className="text-[10px] text-gray-400 uppercase tracking-[0.2em]">
-                                    <Trans>Revenue Ledger</Trans>
-                                </h2>
-                                <div className="h-px flex-1 bg-gray-100 ml-4"></div>
-                            </div>
 
-                            <div className="relative overflow-hidden rounded-2xl bg-[#26b276] p-6 text-white shadow-xl shadow-green-600/10 group">
-                                <div className="relative z-10 flex flex-col gap-6">
-                                    <div className="flex justify-between items-start">
-                                        <div className="space-y-0.5">
-                                            <p className="text-[10px] text-green-100/70 uppercase tracking-[0.15em]"><Trans>Available for Payout</Trans></p>
-                                            <h3 className="text-3xl tracking-tight">
-                                                {formatCurrency(earningsSummary?.availableBalance)}
-                                            </h3>
-                                        </div>
-                                        <div className="h-10 w-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/20">
-                                            <WalletIcon active className="h-5 w-5 text-white" />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-6 py-4 border-y border-white/10">
-                                        <div className="space-y-0.5">
-                                            <p className="text-[9px] text-green-100/50 uppercase tracking-widest"><Trans>Total Revenue</Trans></p>
-                                            <p className="text-base tracking-tight">{formatCurrency(earningsSummary?.totalEarnings)}</p>
-                                        </div>
-                                        <div className="space-y-0.5 text-right">
-                                            <p className="text-[9px] text-green-100/50 uppercase tracking-widest"><Trans>In Transit</Trans></p>
-                                            <p className="text-base tracking-tight">{formatCurrency(earningsSummary?.pendingWithdrawal)}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <button
-                                            onClick={() => setShowWithdrawModal(true)}
-                                            disabled={!earningsSummary?.availableBalance || earningsSummary.availableBalance < 10000}
-                                            className={cn(
-                                                "w-full py-3 rounded-xl text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-sm",
-                                                earningsSummary?.availableBalance >= 10000
-                                                    ? "bg-white text-green-700 hover:bg-green-50 active:scale-[0.98]"
-                                                    : "bg-white/10 text-white/40 border border-white/10 cursor-not-allowed"
-                                            )}
-                                        >
-                                            <ArrowUpRightIcon className="h-4 w-4" />
-                                            <Trans>Request Payout</Trans>
-                                        </button>
-
-                                        {(!earningsSummary?.availableBalance || earningsSummary.availableBalance < 10000) && (
-                                            <p className="text-center text-[9px] text-green-100/40 uppercase tracking-widest">
-                                                <Trans>Minimum threshold: ₹10,000</Trans>
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
                         {/* CAPITAL & DUES SECTION */}
                         <div className="space-y-4">
@@ -357,7 +229,7 @@ export function VendorVyapaarView() {
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <span className="px-2 py-0.5 rounded bg-green-50 text-[9px] text-green-700 border border-green-100 uppercase tracking-widest">
+                                                <span className="px-2 py-0.5 rounded bg-blue-50 text-[9px] text-blue-700 border border-blue-100 uppercase tracking-widest">
                                                     <Trans>Settled</Trans>
                                                 </span>
                                             </div>
@@ -378,7 +250,7 @@ export function VendorVyapaarView() {
                                 onClick={() => setIncentiveTab('schemes')}
                                 className={cn(
                                     "flex-1 py-2.5 text-xs font-bold transition-all rounded-lg",
-                                    incentiveTab === 'schemes' ? "bg-white text-green-700 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                                    incentiveTab === 'schemes' ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-900"
                                 )}
                             >
                                 <Trans>Live Schemes</Trans>
@@ -387,7 +259,7 @@ export function VendorVyapaarView() {
                                 onClick={() => setIncentiveTab('eligible')}
                                 className={cn(
                                     "flex-1 py-2.5 text-xs font-bold transition-all rounded-lg flex items-center justify-center gap-2",
-                                    incentiveTab === 'eligible' ? "bg-white text-green-700 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                                    incentiveTab === 'eligible' ? "bg-white text-blue-700 shadow-sm" : "text-gray-500 hover:text-gray-900"
                                 )}
                             >
                                 <Trans>Eligible Rewards</Trans>
@@ -410,12 +282,12 @@ export function VendorVyapaarView() {
                                         </div>
                                     ) : (
                                         incentiveSchemes.map((scheme) => (
-                                            <div key={scheme._id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:border-green-200 transition-all group">
+                                            <div key={scheme._id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:border-blue-200 transition-all group">
                                                 <div className="p-6 space-y-4">
                                                     <div className="flex items-start justify-between">
                                                         <div className="space-y-1">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold rounded border border-green-100">
+                                                                <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded border border-blue-100">
                                                                     {scheme.rewardType?.replace(/_/g, ' ').toUpperCase()}
                                                                 </span>
                                                             </div>
@@ -438,7 +310,7 @@ export function VendorVyapaarView() {
                                                         </div>
                                                         <div className="text-right space-y-1">
                                                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider"><Trans>Benefit</Trans></p>
-                                                            <p className="text-base font-bold text-green-600">
+                                                            <p className="text-base font-bold text-blue-600">
                                                                 {scheme.rewardUnit === 'percentage' ? `${scheme.rewardValue}% OFF` :
                                                                     scheme.rewardUnit === 'fixed_amount' ? `₹${scheme.rewardValue.toLocaleString('en-IN')}` :
                                                                         scheme.rewardValue}
@@ -461,7 +333,7 @@ export function VendorVyapaarView() {
                                         </div>
                                     ) : (
                                         eligibleRewards.map((reward) => (
-                                            <div key={reward._id} className="bg-gradient-to-br from-green-600 to-green-800 rounded-2xl p-6 shadow-lg shadow-green-900/10 text-white group overflow-hidden relative">
+                                            <div key={reward._id} className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-6 shadow-lg shadow-blue-900/10 text-white group overflow-hidden relative">
                                                 <div className="absolute top-0 right-0 h-32 w-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2"></div>
 
                                                 <div className="relative space-y-4">
@@ -484,7 +356,7 @@ export function VendorVyapaarView() {
 
                                                     <button
                                                         onClick={() => handleClaimReward(reward._id)}
-                                                        className="w-full py-3 bg-white text-green-700 text-xs font-bold rounded-xl uppercase tracking-widest hover:bg-gray-50 transition-all"
+                                                        className="w-full py-3 bg-white text-blue-700 text-xs font-bold rounded-xl uppercase tracking-widest hover:bg-gray-50 transition-all"
                                                     >
                                                         <Trans>Claim Reward Now</Trans>
                                                     </button>
@@ -531,146 +403,7 @@ export function VendorVyapaarView() {
                     </div>
                 )}
             </div>
-            {/* WITHDRAWAL MODAL - RESTORED */}
-            {showWithdrawModal && (
-                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white w-full max-w-lg rounded-t-[2.5rem] sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-500">
-                        <div className="px-8 py-6 border-b border-gray-50 flex items-center justify-between">
-                            <h3 className="text-xl text-gray-900 tracking-tight"><Trans>Secure Payout</Trans></h3>
-                            <button
-                                onClick={() => setShowWithdrawModal(false)}
-                                className="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500 hover:text-gray-900 transition-all"
-                            >
-                                ✕
-                            </button>
-                        </div>
 
-                        <div className="p-8 space-y-6">
-                            {/* Amount Input */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] text-gray-400 uppercase tracking-widest px-1"><Trans>Withdrawal Amount</Trans></label>
-                                <div className="relative">
-                                    <input
-                                        type="number"
-                                        value={withdrawAmount}
-                                        onChange={(e) => setWithdrawAmount(e.target.value)}
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-2xl text-gray-900 focus:border-green-600 focus:ring-0 transition-all outline-none"
-                                        placeholder="0.00"
-                                    />
-                                    <span className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-400">INR</span>
-                                </div>
-                                <p className="text-[10px] text-gray-500 px-2 flex justify-between">
-                                    <span>Available: {formatCurrency(earningsSummary?.availableBalance)}</span>
-                                    {Number(withdrawAmount) < 10000 && <span className="text-orange-500">Min ₹10,000</span>}
-                                </p>
-                            </div>
-
-                            {/* Bank Account Selection */}
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between px-1">
-                                    <label className="text-[10px] text-gray-400 uppercase tracking-widest"><Trans>Deposit To</Trans></label>
-                                    <button
-                                        onClick={() => setShowBankForm(true)}
-                                        className="text-[10px] text-green-600 uppercase tracking-widest flex items-center gap-1 hover:text-green-700"
-                                    >
-                                        <PlusIcon className="h-3 w-3" />
-                                        <Trans>Add New</Trans>
-                                    </button>
-                                </div>
-
-                                {bankAccounts.length === 0 ? (
-                                    <div className="p-4 rounded-2xl border border-dashed border-gray-200 bg-gray-50 text-center">
-                                        <p className="text-xs text-gray-500 mb-2"><Trans>No bank accounts linked</Trans></p>
-                                        <button
-                                            onClick={() => setShowBankForm(true)}
-                                            className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 shadow-sm"
-                                        >
-                                            <Trans>Link Account First</Trans>
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                        {bankAccounts.map((account) => (
-                                            <button
-                                                key={account._id || account.id}
-                                                onClick={() => setSelectedBankId(account._id || account.id)}
-                                                className={cn(
-                                                    "w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between group",
-                                                    selectedBankId === (account._id || account.id)
-                                                        ? "bg-green-50 border-green-200 ring-1 ring-green-600 shadow-sm"
-                                                        : "bg-white border-gray-100 hover:border-gray-200"
-                                                )}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={cn(
-                                                        "h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
-                                                        selectedBankId === (account._id || account.id) ? "bg-green-600 text-white" : "bg-gray-100 text-gray-400"
-                                                    )}>
-                                                        <BuildingIcon className="h-4 w-4" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs text-gray-900 leading-none">{account.bankName}</p>
-                                                        <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-tighter">
-                                                            {account.accountNumber?.replace(/.(?=.{4})/g, '•')}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                {selectedBankId === (account._id || account.id) && <CheckIcon className="h-4 w-4 text-green-600" />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Alert/Notice */}
-                            <div className="flex gap-3 p-4 bg-orange-50 rounded-2xl border border-orange-100 italic">
-                                <AlertCircleIcon className="h-5 w-5 text-orange-400 shrink-0" />
-                                <p className="text-[10px] text-orange-700 leading-relaxed">
-                                    <Trans>Withdrawals are processed within 24-48 working hours. Ensure all details are correct as transactions cannot be reversed.</Trans>
-                                </p>
-                            </div>
-
-                            <button
-                                onClick={handleWithdraw}
-                                disabled={isWithdrawing || !selectedBankId || Number(withdrawAmount) < 10000}
-                                className={cn(
-                                    "w-full py-4 rounded-2xl text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl",
-                                    !isWithdrawing && selectedBankId && Number(withdrawAmount) >= 10000
-                                        ? "bg-green-600 text-white hover:bg-green-700 shadow-green-900/20 active:scale-[0.98]"
-                                        : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                )}
-                            >
-                                {isWithdrawing ? (
-                                    <>
-                                        <div className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                                        <Trans>Processing Request...</Trans>
-                                    </>
-                                ) : (
-                                    <>
-                                        <ArrowUpRightIcon className="h-4 w-4" />
-                                        <Trans>Confirm Withdrawal</Trans>
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* BANK ACCOUNT FORM PANEL */}
-            {showBankForm && (
-                <div className="fixed inset-0 z-[110] bg-white flex flex-col p-6 animate-in slide-in-from-right duration-500">
-                    <BankAccountForm
-                        isOpen={showBankForm}
-                        onClose={() => setShowBankForm(false)}
-                        onSuccess={(newAccount) => {
-                            setBankAccounts(prev => [...prev, newAccount])
-                            setSelectedBankId(newAccount._id || newAccount.id)
-                            setShowBankForm(false)
-                        }}
-                    />
-                </div>
-            )}
         </div>
     )
 }

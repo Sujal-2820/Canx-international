@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { VendorDashboard } from '../pages/vendor/VendorDashboard'
+import '../vendor.css'
 
 export function VendorDashboardPage() {
   const navigate = useNavigate()

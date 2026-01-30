@@ -23,7 +23,7 @@ function formatNumber(num) {
 export function AnalyticsPage({ subRoute = null, navigate }) {
   const { getAnalyticsData, getSalesAnalytics, getUserAnalytics, getVendorAnalytics, getOrderAnalytics, loading } = useAdminApi()
   const { error: showError } = useToast()
-  
+
   const [period, setPeriod] = useState(30)
   const [analyticsData, setAnalyticsData] = useState(null)
   const [salesData, setSalesData] = useState(null)
@@ -69,24 +69,7 @@ export function AnalyticsPage({ subRoute = null, navigate }) {
     }
   }, [subRoute, period, getSalesAnalytics, showError])
 
-  // Fetch user analytics data
-  useEffect(() => {
-    if (subRoute === 'users') {
-      const fetchData = async () => {
-        try {
-          const result = await getUserAnalytics({ period })
-          if (result.data) {
-            setUserData(result.data)
-          } else if (result.error) {
-            showError(result.error.message || 'Failed to load user analytics', 5000)
-          }
-        } catch (error) {
-          showError(error.message || 'Failed to load user analytics', 5000)
-        }
-      }
-      fetchData()
-    }
-  }, [subRoute, period, getUserAnalytics, showError])
+
 
   // Fetch vendor analytics data
   useEffect(() => {
@@ -159,7 +142,6 @@ export function AnalyticsPage({ subRoute = null, navigate }) {
             { id: 'period', label: `Last ${period} days`, active: true },
             { id: 'region', label: 'All regions' },
             { id: 'vendor', label: 'Top vendors' },
-            { id: 'seller', label: 'Top sellers' },
           ]}
         />
 
@@ -383,7 +365,7 @@ export function AnalyticsPage({ subRoute = null, navigate }) {
               <div className="rounded-3xl border border-yellow-200 bg-gradient-to-br from-yellow-50 to-yellow-100/50 p-6">
                 <p className="text-xs uppercase tracking-wide text-yellow-700 font-bold">Avg Orders/User</p>
                 <p className="mt-2 text-2xl font-bold text-gray-900">{userData.summary?.averageOrdersPerUser?.toFixed(1) || '0.0'}</p>
-                <p className="mt-1 text-xs text-yellow-600">{userData.summary?.usersWithSellerId || 0} with seller ID</p>
+                <p className="mt-1 text-xs text-yellow-600">{userData.summary?.usersWithSellerId || 0} with Partner ID</p>
               </div>
             </section>
 

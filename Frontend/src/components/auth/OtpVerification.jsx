@@ -5,46 +5,46 @@ import { ShieldCheckIcon, UserIcon, StoreIcon, ShoppingBagIcon } from 'lucide-re
 // Theme configurations for different user types
 const themes = {
   user: {
-    bgGradient: 'from-green-50 via-white to-green-50',
-    borderColor: 'border-green-200/60',
-    primaryColor: '#1b8f5b',
-    primaryBg: 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61]',
-    focusBorder: 'focus:border-[#1b8f5b]',
-    focusRing: 'focus:ring-[#1b8f5b]/40',
-    textColor: 'text-[#172022]',
+    bgGradient: 'from-blue-50 via-white to-blue-50',
+    borderColor: 'border-blue-200/60',
+    primaryColor: '#1d4ed8',
+    primaryBg: 'bg-gradient-to-r from-blue-600 to-blue-700',
+    focusBorder: 'focus:border-blue-600',
+    focusRing: 'focus:ring-blue-600/40',
+    textColor: 'text-slate-900',
     mutedColor: 'text-gray-600',
-    iconBg: 'bg-green-100',
-    iconColor: 'text-green-600',
+    iconBg: 'bg-blue-100',
+    iconColor: 'text-blue-600',
     title: 'User Verification',
-    subtitle: 'Satpura Bio User Account'
+    subtitle: 'Canx International User Account'
   },
   vendor: {
-    bgGradient: 'from-green-50 via-white to-green-50',
-    borderColor: 'border-green-200/60',
-    primaryColor: '#1b8f5b',
-    primaryBg: 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61]',
-    focusBorder: 'focus:border-[#1b8f5b]',
-    focusRing: 'focus:ring-[#1b8f5b]/40',
-    textColor: 'text-[#172022]',
+    bgGradient: 'from-blue-50 via-white to-blue-50',
+    borderColor: 'border-blue-200/60',
+    primaryColor: '#1d4ed8',
+    primaryBg: 'bg-gradient-to-r from-blue-600 to-blue-700',
+    focusBorder: 'focus:border-blue-600',
+    focusRing: 'focus:ring-blue-600/40',
+    textColor: 'text-slate-900',
     mutedColor: 'text-gray-600',
-    iconBg: 'bg-green-100',
-    iconColor: 'text-green-600',
+    iconBg: 'bg-blue-100',
+    iconColor: 'text-blue-600',
     title: 'Vendor Verification',
-    subtitle: 'Satpura Bio Vendor Portal'
+    subtitle: 'Canx International Vendor Portal'
   },
   seller: {
-    bgGradient: 'from-green-50 via-white to-green-50',
-    borderColor: 'border-green-200/60',
-    primaryColor: '#1b8f5b',
-    primaryBg: 'bg-gradient-to-r from-[#1b8f5b] to-[#2a9d61]',
-    focusBorder: 'focus:border-[#1b8f5b]',
-    focusRing: 'focus:ring-[#1b8f5b]/40',
-    textColor: 'text-[#172022]',
+    bgGradient: 'from-blue-50 via-white to-blue-50',
+    borderColor: 'border-blue-200/60',
+    primaryColor: '#1d4ed8',
+    primaryBg: 'bg-gradient-to-r from-blue-600 to-blue-700',
+    focusBorder: 'focus:border-blue-600',
+    focusRing: 'focus:ring-blue-600/40',
+    textColor: 'text-slate-900',
     mutedColor: 'text-gray-600',
-    iconBg: 'bg-green-100',
-    iconColor: 'text-green-600',
+    iconBg: 'bg-blue-100',
+    iconColor: 'text-blue-600',
     title: 'Seller Verification',
-    subtitle: 'Satpura Bio Seller Portal'
+    subtitle: 'Canx International Seller Portal'
   },
   admin: {
     bgGradient: 'from-gray-50 via-white to-gray-50',
@@ -58,7 +58,7 @@ const themes = {
     iconBg: 'bg-gray-100',
     iconColor: 'text-gray-700',
     title: 'Admin Verification',
-    subtitle: 'Satpura Bio Admin Dashboard'
+    subtitle: 'Canx International Admin Dashboard'
   }
 }
 
@@ -172,7 +172,7 @@ export function OtpVerification({ phone, email, onVerify, onResend, onBack, load
         <div className="flex flex-col items-center gap-3">
           {/* Logo */}
           <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full ${theme.iconBg} mb-2 overflow-hidden border-2 ${theme.borderColor}`}>
-            <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="h-full w-full object-contain p-2" />
+            <img src="/canxLogo.png" alt="Canx International" className="h-full w-full object-contain p-2" />
           </div>
 
           {/* User Type Badge */}

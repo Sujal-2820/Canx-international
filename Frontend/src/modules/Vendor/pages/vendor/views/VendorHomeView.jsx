@@ -1,18 +1,17 @@
 import { useRef, useState, useEffect } from 'react'
-import { ProductCard } from '../../../../User/components/ProductCard'
-import { CategoryCard } from '../../../../User/components/CategoryCard'
-import { ChevronRightIcon, MapPinIcon, TruckIcon, SearchIcon, FilterIcon, CartIcon } from '../../../../User/components/icons'
+import { ProductCard, CategoryCard, ChevronRightIcon, MapPinIcon, TruckIcon, SearchIcon, FilterIcon, CartIcon } from '../../../../../components/shared/catalog'
 import { cn } from '../../../../../lib/cn'
 import { useVendorApi } from '../../../hooks/useVendorApi'
-import * as userApi from '../../../../User/services/userApi'
+import * as catalogApi from '../../../../../services/catalogApi'
 import { Trans } from '../../../../../components/Trans'
 import { TransText } from '../../../../../components/TransText'
-import '../../../../User/home-redesign.css'
+import '../../../../../styles/home-redesign.css'
+import '../../../../../styles/product-card.css'
 
 const formatCategoryName = (name) => {
     if (!name) return name
     const fertilizerMatch = name.match(/(\w+)(Fertilizer)/i)
-    if (fertilizerMatch && fertilizerMatch[1] && fertilizerMatch[2]) {
+    if (fertilizerMatch && fertilizerMatch[1] && fertilizerMatch[2] && !name.includes(' ')) {
         return `${fertilizerMatch[1]} ${fertilizerMatch[2]}`
     }
     return name
@@ -27,6 +26,11 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
     const { getProducts } = useVendorApi()
     const [carousels, setCarousels] = useState([])
     const [recentlyViewed, setRecentlyViewed] = useState([])
+    const [bannerIndex, setBannerIndex] = useState(0)
+    const [isUserInteracting, setIsUserInteracting] = useState(false)
+    const autoSlideTimeoutRef = useRef(null)
+    const touchStartXRef = useRef(null)
+    const touchEndXRef = useRef(null)
 
     useEffect(() => {
         const loadData = async () => {
@@ -42,17 +46,29 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
                 }
 
                 // Fetch real categories from API
-                const categoriesResult = await userApi.getCategories()
-                if (categoriesResult.success && categoriesResult.data?.categories) {
-                    setCategories(categoriesResult.data.categories)
+                const categoriesResult = await catalogApi.getCategories()
+                if (categoriesResult.success && Array.isArray(categoriesResult.data)) {
+                    // Standardize category objects (ensure id, name, and image are present)
+                    const standardizedCategories = categoriesResult.data.map(cat => ({
+                        id: cat._id || cat.id,
+                        name: cat.name || '',
+                        image: cat.image?.url || cat.image || cat.icon || cat.imageUrl || null,
+                        emoji: cat.emoji || '📦'
+                    }))
+                    setCategories(standardizedCategories)
                 } else {
                     // Fallback to extraction from products
                     const cats = Array.from(new Set(result.data?.products?.map(p => p.category) || []))
-                    setCategories(cats.map(c => ({ id: c, name: c.charAt(0).toUpperCase() + c.slice(1) })))
+                    setCategories(cats.map(c => ({
+                        id: c.toLowerCase().replace(/\s+/g, '-'),
+                        name: c.charAt(0).toUpperCase() + c.slice(1),
+                        image: null,
+                        emoji: '📦'
+                    })))
                 }
 
                 // Fetch offers (carousels)
-                const offersResult = await userApi.getOffers()
+                const offersResult = await catalogApi.getOffers()
                 if (offersResult.success && offersResult.data) {
                     const activeCarousels = (offersResult.data.carousels || [])
                         .filter(c => c.isActive !== false)
@@ -86,6 +102,63 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
         loadData()
     }, [])
 
+    // Carousel logic
+    const resetAutoSlide = () => {
+        if (autoSlideTimeoutRef.current) {
+            clearTimeout(autoSlideTimeoutRef.current)
+        }
+        autoSlideTimeoutRef.current = setTimeout(() => {
+            setIsUserInteracting(false)
+        }, 5000)
+    }
+
+    useEffect(() => {
+        if (isUserInteracting || carousels.length <= 1) return
+
+        const interval = setInterval(() => {
+            setBannerIndex((prev) => (prev + 1) % carousels.length)
+        }, 4000)
+
+        return () => clearInterval(interval)
+    }, [isUserInteracting, carousels.length])
+
+    const goToSlide = (index) => {
+        setBannerIndex(index)
+        setIsUserInteracting(true)
+        resetAutoSlide()
+    }
+
+    // Swipe logic
+    const handleTouchStart = (e) => {
+        touchStartXRef.current = e.touches[0].clientX
+        setIsUserInteracting(true)
+    }
+
+    const handleTouchMove = (e) => {
+        touchEndXRef.current = e.touches[0].clientX
+    }
+
+    const handleTouchEnd = () => {
+        if (!touchStartXRef.current || !touchEndXRef.current) return
+
+        const distance = touchStartXRef.current - touchEndXRef.current
+        const minSwipeDistance = 50
+
+        if (Math.abs(distance) > minSwipeDistance) {
+            if (distance > 0) {
+                // Swipe left -> Next
+                setBannerIndex((prev) => (prev + 1) % carousels.length)
+            } else {
+                // Swipe right -> Prev
+                setBannerIndex((prev) => (prev - 1 + carousels.length) % carousels.length)
+            }
+        }
+
+        resetAutoSlide()
+        touchStartXRef.current = null
+        touchEndXRef.current = null
+    }
+
     const banners = carousels.length > 0
         ? carousels.map(carousel => ({
             id: carousel.id || carousel._id,
@@ -95,6 +168,12 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
             productIds: carousel.productIds || [],
         }))
         : []
+
+    useEffect(() => {
+        if (banners.length > 0 && bannerIndex >= banners.length) {
+            setBannerIndex(0)
+        }
+    }, [banners.length, bannerIndex])
 
     const formatProductForCard = (product) => {
         // Robust price calculation for vendor
@@ -129,19 +208,51 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
 
     return (
         <div className="user-home-view vendor-home-view">
-            {/* Main Banner */}
+            {/* Main Banner Carousel */}
             {banners.length > 0 && (
                 <section id="home-banner" className="home-banner-section">
-                    <div className="home-banner">
-                        <div
-                            className="home-banner__slide home-banner__slide--active"
-                            style={{ backgroundImage: `url(${banners[0]?.image})` }}
-                            onClick={() => {
-                                if (banners[0]?.productIds && banners[0].productIds.length > 0) {
-                                    onProductClick(`carousel:${banners[0].id}`)
-                                }
-                            }}
-                        />
+                    <div
+                        className="home-banner"
+                        onTouchStart={handleTouchStart}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                    >
+                        {banners.map((banner, index) => (
+                            <div
+                                key={banner.id}
+                                className={cn(
+                                    "home-banner__slide",
+                                    index === bannerIndex ? "home-banner__slide--active" : "home-banner__slide--hidden"
+                                )}
+                                style={{ backgroundImage: `url(${banner.image})` }}
+                                onClick={() => {
+                                    if (banner.productIds && banner.productIds.length > 0) {
+                                        onProductClick(`carousel:${banner.id}`)
+                                    }
+                                }}
+                            />
+                        ))}
+
+                        {/* Pagination Indicators */}
+                        {banners.length > 1 && (
+                            <div className="home-banner__indicators">
+                                {banners.map((_, index) => (
+                                    <button
+                                        key={index}
+                                        type="button"
+                                        className={cn(
+                                            "home-banner__indicator",
+                                            index === bannerIndex && "home-banner__indicator--active"
+                                        )}
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            goToSlide(index)
+                                        }}
+                                        aria-label={`Go to slide ${index + 1}`}
+                                    />
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </section>
             )}
@@ -299,21 +410,21 @@ export function VendorHomeView({ onProductClick, onCategoryClick, onAddToCart, o
                             <p className="text-sm text-gray-500"><Trans>No categories available</Trans></p>
                         </div>
                     ) : (
-                        categories.slice(0, 6).map((category) => (
+                        categories.slice(0, 12).map((category) => (
                             <div
-                                key={category.id || category._id}
+                                key={category.id}
                                 className="home-shop-category-card"
-                                onClick={() => onCategoryClick?.(category.id || category._id)}
+                                onClick={() => onCategoryClick?.(category.id)}
                             >
                                 <div className="home-shop-category-card__image">
-                                    {category.image || category.icon ? (
+                                    {category.image ? (
                                         <img
-                                            src={category.image || category.icon}
+                                            src={category.image}
                                             alt={category.name}
                                             className="home-shop-category-card__img"
                                         />
                                     ) : (
-                                        <span className="home-shop-category-card__emoji">{category.emoji || '📦'}</span>
+                                        <span className="home-shop-category-card__emoji">{category.emoji}</span>
                                     )}
                                 </div>
                                 <p className="home-shop-category-card__title">

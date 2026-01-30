@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes, Link, useNavigate } from 'react-router-dom'
 import { AdminDashboardRoute as AdminDashboardModuleRoute, AdminLogin } from './modules/Admin'
-import { UserDashboardPage, UserLogin, UserRegister } from './modules/User'
+// DISABLED: User module removed as per vendor-centric refactoring
+// import { UserDashboardPage, UserLogin, UserRegister } from './modules/User'
 import {
   VendorRouteContainer,
   VendorLoginPage,
@@ -9,7 +10,8 @@ import {
   VendorLanguagePage,
   VendorRolePage,
 } from './modules/Vendor'
-import { SellerDashboardPage, SellerLogin, SellerRegister, SellerProvider } from './modules/Seller'
+// DISABLED: Seller module removed as per vendor-centric refactoring
+// import { SellerDashboardPage, SellerLogin, SellerRegister, SellerProvider } from './modules/Seller'
 import { WebsiteProvider, WebsiteRoutes } from './modules/website'
 import { TranslationProvider } from './context/TranslationContext'
 import { useEffect } from 'react'
@@ -19,23 +21,25 @@ function Home() {
   const links = [
     { label: 'Admin Login', to: '/admin/login' },
     { label: 'Admin Dashboard', to: '/admin/dashboard' },
-    { label: 'User Login', to: '/user/login' },
-    { label: 'User Register', to: '/user/register' },
-    { label: 'User Dashboard', to: '/user/dashboard' },
+    // DISABLED: User routes removed per vendor-centric refactoring
+    // { label: 'User Login', to: '/user/login' },
+    // { label: 'User Register', to: '/user/register' },
+    // { label: 'User Dashboard', to: '/user/dashboard' },
     { label: 'Vendor Language Select', to: '/vendor/language' },
     { label: 'Vendor/Seller Role Select', to: '/vendor/role' },
     { label: 'Vendor Login', to: '/vendor/login' },
     { label: 'Vendor Dashboard', to: '/vendor/dashboard' },
-    { label: 'Seller Login', to: '/seller/login' },
-    { label: 'Seller Register', to: '/seller/register' },
-    { label: 'Seller Dashboard', to: '/seller/dashboard' },
+    // DISABLED: Seller routes removed per vendor-centric refactoring
+    // { label: 'Seller Login', to: '/seller/login' },
+    // { label: 'Seller Register', to: '/seller/register' },
+    // { label: 'Seller Dashboard', to: '/seller/dashboard' },
   ]
 
   return (
     <div className="min-h-screen bg-surface px-6 py-12 text-surface-foreground">
       <div className="mx-auto flex max-w-4xl flex-col gap-6">
         <header>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Satpura Bio</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Canx International</p>
           <h1 className="mt-2 text-3xl font-semibold text-surface-foreground">Access Console Routes</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Choose a portal to continue. Authentication is mocked at the moment; each dashboard renders the respective
@@ -68,33 +72,35 @@ function AdminDashboardRoute() {
   return <AdminDashboardModuleRoute onExit={() => navigate('/admin/login')} />
 }
 
-function UserLoginRoute() {
-  const navigate = useNavigate()
-  return <UserLogin onSuccess={() => navigate('/user/dashboard')} onSwitchToRegister={() => navigate('/user/register')} />
-}
+// DISABLED: User route components - module removed per vendor-centric refactoring
+// function UserLoginRoute() {
+//   const navigate = useNavigate()
+//   return <UserLogin onSuccess={() => navigate('/user/dashboard')} onSwitchToRegister={() => navigate('/user/register')} />
+// }
 
-function UserRegisterRoute() {
-  const navigate = useNavigate()
-  return <UserRegister onSuccess={() => navigate('/user/dashboard')} onSwitchToLogin={() => navigate('/user/login')} />
-}
+// function UserRegisterRoute() {
+//   const navigate = useNavigate()
+//   return <UserRegister onSuccess={() => navigate('/user/dashboard')} onSwitchToLogin={() => navigate('/user/login')} />
+// }
 
-function SellerLoginRoute() {
-  const navigate = useNavigate()
-  return (
-    <SellerProvider>
-      <SellerLogin onSubmit={() => navigate('/seller/dashboard')} onSwitchToRegister={() => navigate('/seller/register')} />
-    </SellerProvider>
-  )
-}
+// DISABLED: Seller route components - module removed per vendor-centric refactoring
+// function SellerLoginRoute() {
+//   const navigate = useNavigate()
+//   return (
+//     <SellerProvider>
+//       <SellerLogin onSubmit={() => navigate('/seller/dashboard')} onSwitchToRegister={() => navigate('/seller/register')} />
+//     </SellerProvider>
+//   )
+// }
 
-function SellerRegisterRoute() {
-  const navigate = useNavigate()
-  return (
-    <SellerProvider>
-      <SellerRegister onSubmit={() => navigate('/seller/dashboard')} onSwitchToLogin={() => navigate('/seller/login')} />
-    </SellerProvider>
-  )
-}
+// function SellerRegisterRoute() {
+//   const navigate = useNavigate()
+//   return (
+//     <SellerProvider>
+//       <SellerRegister onSubmit={() => navigate('/seller/dashboard')} onSwitchToLogin={() => navigate('/seller/login')} />
+//     </SellerProvider>
+//   )
+// }
 
 function App() {
   useEffect(() => {
@@ -112,16 +118,17 @@ function App() {
     <TranslationProvider>
       <BrowserRouter>
         <Routes>
-          {/* Home route redirects to user dashboard */}
-          <Route path="/" element={<Navigate to="/user/dashboard/home" replace />} />
+          {/* Home route redirects to vendor dashboard (was user dashboard) */}
+          <Route path="/" element={<Navigate to="/vendor/dashboard/home" replace />} />
           {/* Console/Admin Routes - Specific paths first */}
           <Route path="/console" element={<Home />} />
           <Route path="/admin/login" element={<AdminLoginRoute />} />
           <Route path="/admin/dashboard" element={<AdminDashboardRoute />} />
-          <Route path="/user/login" element={<UserLoginRoute />} />
-          <Route path="/user/register" element={<UserRegisterRoute />} />
-          <Route path="/user/dashboard" element={<Navigate to="/user/dashboard/home" replace />} />
-          <Route path="/user/dashboard/:tab" element={<UserDashboardPage />} />
+          {/* DISABLED: User routes removed per vendor-centric refactoring */}
+          {/* <Route path="/user/login" element={<UserLoginRoute />} /> */}
+          {/* <Route path="/user/register" element={<UserRegisterRoute />} /> */}
+          {/* <Route path="/user/dashboard" element={<Navigate to="/user/dashboard/home" replace />} /> */}
+          {/* <Route path="/user/dashboard/:tab" element={<UserDashboardPage />} /> */}
           <Route path="/vendor" element={<VendorRouteContainer />}>
             <Route path="language" element={<VendorLanguagePage />} />
             <Route path="role" element={<VendorRolePage />} />
@@ -131,10 +138,11 @@ function App() {
             <Route path="dashboard/:tab" element={<VendorDashboardPage />} />
             <Route path="dashboard/:tab/:id" element={<VendorDashboardPage />} />
           </Route>
-          <Route path="/seller/login" element={<SellerLoginRoute />} />
-          <Route path="/seller/register" element={<SellerRegisterRoute />} />
-          <Route path="/seller/dashboard" element={<Navigate to="/seller/dashboard/overview" replace />} />
-          <Route path="/seller/dashboard/:tab" element={<SellerDashboardPage />} />
+          {/* DISABLED: Seller routes removed per vendor-centric refactoring */}
+          {/* <Route path="/seller/login" element={<SellerLoginRoute />} /> */}
+          {/* <Route path="/seller/register" element={<SellerRegisterRoute />} /> */}
+          {/* <Route path="/seller/dashboard" element={<Navigate to="/seller/dashboard/overview" replace />} /> */}
+          {/* <Route path="/seller/dashboard/:tab" element={<SellerDashboardPage />} /> */}
 
           {/* Website Routes - Public E-commerce Site (catch-all for remaining paths) */}
           <Route path="/*" element={

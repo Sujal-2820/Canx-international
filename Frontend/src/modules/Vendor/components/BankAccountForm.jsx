@@ -161,7 +161,7 @@ export function BankAccountForm({ isOpen, onClose, onSuccess }) {
         gap: '1rem',
         marginBottom: '1.5rem',
         paddingBottom: '1rem',
-        borderBottom: '1px solid rgba(34, 94, 65, 0.12)'
+        borderBottom: '1px solid rgba(30, 58, 138, 0.12)'
       }}>
         <button 
           type="button" 
@@ -174,15 +174,15 @@ export function BankAccountForm({ isOpen, onClose, onSuccess }) {
             width: '40px',
             height: '40px',
             borderRadius: '12px',
-            border: '1px solid rgba(34, 94, 65, 0.15)',
+            border: '1px solid rgba(30, 58, 138, 0.15)',
             background: 'rgba(255, 255, 255, 0.8)',
-            color: 'var(--vendor-green-600)',
+            color: 'var(--vendor-blue-600)',
             cursor: loading ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s ease'
           }}
           onMouseEnter={(e) => {
             if (!loading) {
-              e.currentTarget.style.background = 'rgba(43, 118, 79, 0.1)'
+              e.currentTarget.style.background = 'rgba(29, 78, 216, 0.1)'
               e.currentTarget.style.transform = 'translateX(-2px)'
             }
           }}

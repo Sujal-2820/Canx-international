@@ -5,16 +5,16 @@ export function VendorStatusMessage({ status, vendorId, onBack }) {
   const isRejected = status === 'rejected'
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-8">
       <div className="w-full max-w-md space-y-5">
-        <div className="rounded-3xl border border-green-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm text-center">
+        <div className="rounded-3xl border border-blue-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm text-center">
           {/* Brand Identity */}
-          <div className="flex flex-col items-center mb-8 border-b border-green-50 pb-6">
-            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-2 shadow-sm border border-green-100 p-2 overflow-hidden">
+          <div className="flex flex-col items-center mb-8 border-b border-blue-50 pb-6">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-2 shadow-sm border border-blue-100 p-2 overflow-hidden">
               <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="w-full h-full object-contain" />
             </div>
             <div className="flex flex-col -space-y-1">
-              <span className="text-lg font-black text-slate-900 tracking-tighter uppercase">Satpura <span className="text-green-600">Bio</span></span>
+              <span className="text-lg font-black text-slate-900 tracking-tighter uppercase">Satpura <span className="text-blue-600">Bio</span></span>
               <span className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">Organic Solutions</span>
             </div>
           </div>
@@ -27,7 +27,7 @@ export function VendorStatusMessage({ status, vendorId, onBack }) {
               <h1 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">Waiting for Approval</h1>
               {vendorId && (
                 <p className="text-sm text-gray-500 mb-4">
-                  Your Satpura Partner ID: <span className="font-bold text-green-600">{vendorId}</span>
+                  Your Satpura Partner ID: <span className="font-bold text-blue-600">{vendorId}</span>
                 </p>
               )}
               <p className="text-sm text-gray-500 mb-8 leading-relaxed">
@@ -51,7 +51,7 @@ export function VendorStatusMessage({ status, vendorId, onBack }) {
           {onBack && (
             <button
               onClick={onBack}
-              className="w-full rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all"
+              className="w-full rounded-full bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all"
             >
               Go Back
             </button>

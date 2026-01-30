@@ -54,7 +54,7 @@ export function VendorProfileView({ onNavigate, onLogout }) {
 
         try {
             const result = await updateVendorProfile({ name: editedName.trim() })
-            if (result.success) {
+            if (result.data) {
                 const newName = result.data.vendor?.name || editedName.trim()
                 dispatch({
                     type: 'UPDATE_PROFILE',
@@ -203,6 +203,56 @@ export function VendorProfileView({ onNavigate, onLogout }) {
                 </div>
             </div>
 
+            {/* Location Panel */}
+            {showLocationPanel && (
+                <div className="user-account-view__panel" onClick={() => setShowLocationPanel(false)}>
+                    <div className="user-account-view__panel-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="user-account-view__panel-header">
+                            <h3 className="user-account-view__panel-title"><Trans>Edit Business Location</Trans></h3>
+                            <button type="button" onClick={() => setShowLocationPanel(false)} className="user-account-view__panel-close">
+                                <CloseIcon className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="user-account-view__panel-body p-6 space-y-6">
+                            <GoogleMapsLocationPicker
+                                label={<Trans>New Delivery Location</Trans>}
+                                initialLocation={profile?.location}
+                                onLocationSelect={(loc) => setSelectedLocation(loc)}
+                            />
+
+                            <button
+                                type="button"
+                                disabled={!selectedLocation}
+                                onClick={async () => {
+                                    if (!selectedLocation) return
+                                    try {
+                                        const result = await updateVendorProfile({ location: selectedLocation })
+                                        if (result.data) {
+                                            dispatch({
+                                                type: 'UPDATE_PROFILE',
+                                                payload: { location: selectedLocation }
+                                            })
+                                            success('Address updated successfully')
+                                            setShowLocationPanel(false)
+                                        } else {
+                                            showError(result.error?.message || 'Failed to update address')
+                                        }
+                                    } catch (err) {
+                                        showError('An error occurred while updating address')
+                                    }
+                                }}
+                                className={cn(
+                                    "w-full py-4 rounded-2xl font-bold transition-all shadow-lg",
+                                    selectedLocation ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                )}
+                            >
+                                <Trans>Update Address</Trans>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Support Panel */}
             {showSupportPanel && (
                 <div className="user-account-view__panel" onClick={() => setShowSupportPanel(false)}>
@@ -214,10 +264,10 @@ export function VendorProfileView({ onNavigate, onLogout }) {
                             </button>
                         </div>
                         <div className="user-account-view__panel-body p-6 space-y-4">
-                            <div className="p-4 rounded-xl bg-green-50 border border-green-100">
-                                <h4 className="font-bold text-green-900 mb-1"><Trans>Contact Partner Support</Trans></h4>
-                                <p className="text-sm text-green-700 mb-4"><Trans>Our dedicated support team is available for vendor assistance.</Trans></p>
-                                <a href="tel:+911234567890" className="flex items-center gap-2 text-[#1b8f5b] font-bold">
+                            <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+                                <h4 className="font-bold text-blue-900 mb-1"><Trans>Contact Partner Support</Trans></h4>
+                                <p className="text-sm text-blue-700 mb-4"><Trans>Our dedicated support team is available for vendor assistance.</Trans></p>
+                                <a href="tel:+911234567890" className="flex items-center gap-2 text-[#1d4ed8] font-bold">
                                     <TruckIcon className="h-5 w-5" /> +91-1234567890
                                 </a>
                             </div>

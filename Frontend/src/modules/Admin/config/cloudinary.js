@@ -8,13 +8,13 @@
 export const CLOUDINARY_CONFIG = {
   cloudName: import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dhmtagkyz',
   apiKey: import.meta.env.VITE_CLOUDINARY_API_KEY || '883114994776468',
-  uploadPreset: import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'satpura-bio-products', // Unsigned upload preset name (must be created in Cloudinary Dashboard)
+  uploadPreset: import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'canx-products', // Unsigned upload preset name (must be created in Cloudinary Dashboard)
   // To create the unsigned upload preset:
   // 1. Go to Cloudinary Dashboard > Settings > Upload
   // 2. Click "Add upload preset"
-  // 3. Name it "satpura-bio-products"
+  // 3. Name it "canx-products"
   // 4. Set "Signing mode" to "Unsigned"
-  // 5. Set folder to "satpura-bio/products"
+  // 5. Set folder to "canx/products"
   // 6. Enable "Use filename" and "Unique filename"
   // 7. Add transformation: width: 800, height: 800, crop: limit, quality: auto
 }

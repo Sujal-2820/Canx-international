@@ -6,9 +6,11 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 // Import routes
-const userRoutes = require('./routes/user');
+// DISABLED: User module removed per vendor-centric refactoring
+// const userRoutes = require('./routes/user');
 const vendorRoutes = require('./routes/vendor');
-const sellerRoutes = require('./routes/seller');
+// DISABLED: Seller module removed per vendor-centric refactoring
+// const sellerRoutes = require('./routes/seller');
 const adminRoutes = require('./routes/admin');
 // const utilsRoutes = require('./routes/utils');
 
@@ -21,6 +23,7 @@ const categoryRoutes = require('./routes/category');
 const adminCategoryRoutes = require('./routes/adminCategory');
 const adminCreditManagementRoutes = require('./routes/adminCreditManagement');
 const fcmRoutes = require('./routes/fcm');
+const catalogRoutes = require('./routes/catalog'); // NEW: Public catalog routes
 
 // Import config
 const { connectDB } = require('./config/database');
@@ -76,7 +79,7 @@ app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    message: 'Satpura Bio Backend Server is running',
+    message: 'Canx International Backend Server is running',
     timestamp: new Date().toISOString(),
   });
 });
@@ -85,9 +88,11 @@ app.get('/health', (req, res) => {
 const errorHandler = require('./middleware/errorHandler');
 
 // API Routes
-app.use('/api/users', userRoutes);
+// DISABLED: User module removed per vendor-centric refactoring
+// app.use('/api/users', userRoutes);
 app.use('/api/vendors', vendorRoutes);
-app.use('/api/sellers', sellerRoutes);
+// DISABLED: Seller module removed per vendor-centric refactoring
+// app.use('/api/sellers', sellerRoutes);
 app.use('/api/admin', adminRoutes);
 // app.use('/api/utils', utilsRoutes); // Deprecated: Frontend uses Google Cloud Translation API directly
 
@@ -100,6 +105,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/admin/categories', adminCategoryRoutes);
 app.use('/api/admin/credit', adminCreditManagementRoutes);
 app.use('/api/fcm', fcmRoutes);
+app.use('/api/catalog', catalogRoutes); // NEW: Public catalog routes
 
 // 404 handler (must come before error handler)
 app.use((req, res) => {
@@ -122,7 +128,7 @@ connectDB()
   .then(() => {
     // Start HTTP server
     const server = app.listen(PORT, HOST, () => {
-      console.log(`🚀 Satpura Bio Backend Server running on http://${HOST}:${PORT}`);
+      console.log(`🚀 Canx International Backend Server running on http://${HOST}:${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🔗 MongoDB: ${process.env.MONGO_URI ? 'Connected' : 'Not configured'}`);
     });

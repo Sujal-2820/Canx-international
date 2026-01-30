@@ -46,7 +46,7 @@ export function CreditSummaryWidget({ creditData, onNavigateToCalculator }) {
             {/* Header Area - Balanced & Refined */}
             <div className="relative px-5 py-4 border-b border-gray-50 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-green-600 flex items-center justify-center text-white shadow-sm">
+                    <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm">
                         <Wallet className="w-5 h-5" />
                     </div>
                     <div>
@@ -86,14 +86,14 @@ export function CreditSummaryWidget({ creditData, onNavigateToCalculator }) {
                                 </div>
                                 <span className={cn(
                                     "text-base font-semibold",
-                                    creditUtilization > 80 ? "text-red-500" : "text-green-600"
+                                    creditUtilization > 80 ? "text-red-500" : "text-blue-600"
                                 )}>{creditUtilization.toFixed(0)}%</span>
                             </div>
                             <div className="relative h-2 w-full bg-gray-100 rounded-full overflow-hidden">
                                 <div
                                     className={cn(
                                         "h-full rounded-full transition-all duration-1000",
-                                        creditUtilization > 80 ? 'bg-red-500' : 'bg-green-500'
+                                        creditUtilization > 80 ? 'bg-red-500' : 'bg-blue-500'
                                     )}
                                     style={{ width: `${Math.min(creditUtilization + 1, 100)}%` }}
                                 />
@@ -105,9 +105,9 @@ export function CreditSummaryWidget({ creditData, onNavigateToCalculator }) {
                                 <p className="text-[9px] text-gray-400 uppercase tracking-widest mb-1"><Trans>Current Used</Trans></p>
                                 <p className="text-base font-semibold text-gray-900 leading-none">{formatCurrency(data.creditUsed)}</p>
                             </div>
-                            <div className="p-3 rounded-xl bg-green-50/50 border border-green-100">
-                                <p className="text-[9px] text-green-600 uppercase tracking-widest mb-1"><Trans>Safe Balance</Trans></p>
-                                <p className="text-base font-semibold text-green-700 leading-none">{formatCurrency(data.creditAvailable)}</p>
+                            <div className="p-3 rounded-xl bg-blue-50/50 border border-blue-100">
+                                <p className="text-[9px] text-blue-600 uppercase tracking-widest mb-1"><Trans>Safe Balance</Trans></p>
+                                <p className="text-base font-semibold text-blue-700 leading-none">{formatCurrency(data.creditAvailable)}</p>
                             </div>
                         </div>
                     </div>
@@ -118,9 +118,9 @@ export function CreditSummaryWidget({ creditData, onNavigateToCalculator }) {
                             <div className="relative mb-3">
                                 <div className="h-24 w-24 rounded-full border-[6px] border-white shadow-md flex flex-col items-center justify-center bg-white relative z-10">
                                     <span className="text-3xl font-semibold text-gray-900 tracking-tight leading-none mb-0.5">{data.creditScore}</span>
-                                    <span className="text-[10px] font-semibold text-green-600 uppercase tracking-widest">Score</span>
+                                    <span className="text-[10px] font-semibold text-blue-600 uppercase tracking-widest">Score</span>
                                 </div>
-                                <div className="absolute inset-0 bg-green-100 rounded-full blur-xl opacity-20 -z-10"></div>
+                                <div className="absolute inset-0 bg-blue-100 rounded-full blur-xl opacity-20 -z-10"></div>
                             </div>
 
                             <div className="space-y-0.5">
@@ -166,7 +166,7 @@ export function CreditSummaryWidget({ creditData, onNavigateToCalculator }) {
                 {data.outstandingPurchases > 0 && (
                     <button
                         onClick={onNavigateToCalculator}
-                        className="group w-full bg-green-600 p-4 rounded-xl flex items-center justify-between transition-all hover:bg-green-700 active:scale-[0.98] shadow-sm"
+                        className="group w-full bg-blue-600 p-4 rounded-xl flex items-center justify-between transition-all hover:bg-blue-700 active:scale-[0.98] shadow-sm"
                     >
                         <div className="flex items-center gap-3">
                             <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center border border-white/20">
@@ -174,7 +174,7 @@ export function CreditSummaryWidget({ creditData, onNavigateToCalculator }) {
                             </div>
                             <div className="text-left text-white">
                                 <p className="text-[10px] font-semibold uppercase tracking-wide"><Trans>Settle Outstanding Capital</Trans></p>
-                                <p className="text-[9px] text-green-100/70 uppercase"><Trans>Maintain your reliability score</Trans></p>
+                                <p className="text-[9px] text-blue-100/70 uppercase"><Trans>Maintain your reliability score</Trans></p>
                             </div>
                         </div>
                         <ChevronRight className="w-4 h-4 text-white group-hover:translate-x-0.5 transition-transform" />

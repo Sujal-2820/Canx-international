@@ -229,8 +229,10 @@ async function calculateSellerCommission(order) {
 
     return commission;
   } catch (error) {
-    console.error('Error calculating seller commission:', error);
-    throw error;
+    // Fault-tolerant: Return null instead of throwing to prevent breaking vendor earnings flow
+    // This follows safe-change principles - Seller module can be disabled without breaking order completion
+    console.warn('[FaultTolerant] Seller commission calculation failed, returning null:', error.message);
+    return null;
   }
 }
 

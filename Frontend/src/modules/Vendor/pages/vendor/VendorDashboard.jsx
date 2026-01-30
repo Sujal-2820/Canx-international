@@ -42,7 +42,7 @@ import { playNotificationSoundIfEnabled } from '../../../../utils/notificationSo
 import { RepaymentCalculator } from '../../components/RepaymentCalculator'
 import { CreditSummaryWidget } from '../../components/CreditSummaryWidget'
 import { RewardsWidget } from '../../components/RewardsWidget'
-import * as userApi from '../../../User/services/userApi'
+import * as catalogApi from '../../../../services/catalogApi'
 
 // New Catalog Views
 import { VendorHomeView } from './views/VendorHomeView'
@@ -53,6 +53,7 @@ import { VendorCategoryProductsView } from './views/VendorCategoryProductsView'
 import { VendorFavouritesView } from './views/VendorFavouritesView'
 import { VendorProfileView } from './views/VendorProfileView'
 import { VendorVyapaarView } from './views/VendorVyapaarView'
+import { VendorOrdersView } from './views/VendorOrdersView'
 
 const NAV_ITEMS = [
   {
@@ -70,7 +71,7 @@ const NAV_ITEMS = [
   {
     id: 'orders',
     label: <Trans>Orders</Trans>,
-    description: <Trans>Customer fulfillments</Trans>,
+    description: <Trans>Wholesale & status</Trans>,
     icon: TruckIcon,
   },
   {
@@ -92,10 +93,6 @@ export function VendorDashboard({ onLogout }) {
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [showCheckout, setShowCheckout] = useState(false)
-  const [showAllOrders, setShowAllOrders] = useState(false)
-  const [showOrderDetails, setShowOrderDetails] = useState(false)
-  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null)
-  const [ordersViewRefreshKey, setOrdersViewRefreshKey] = useState(0)
   const welcomeName = (profile?.name || 'Partner').split(' ')[0]
   const { isOpen, isMounted, currentAction, openPanel, closePanel } = useButtonAction()
   const { translateProduct } = useTranslation()
@@ -103,12 +100,6 @@ export function VendorDashboard({ onLogout }) {
   const [notificationPanelOpen, setNotificationPanelOpen] = useState(false)
   const [isNotificationAnimating, setIsNotificationAnimating] = useState(false)
   const previousNotificationsCountRef = useRef(0)
-
-  // Escalation modal states
-  const [escalationModalOpen, setEscalationModalOpen] = useState(false)
-  const [partialEscalationModalOpen, setPartialEscalationModalOpen] = useState(false)
-  const [selectedOrderForEscalation, setSelectedOrderForEscalation] = useState(null)
-  const [escalationType, setEscalationType] = useState('items') // 'items' or 'quantities'
 
   // Valid tabs for navigation
   const validTabs = ['home', 'orders', 'profile', 'product-detail', 'catalog-cart', 'checkout', 'category-products', 'favourites', 'reports', 'earnings', 'rewards', 'vyapaar']
@@ -119,14 +110,9 @@ export function VendorDashboard({ onLogout }) {
       setActiveTab(tab)
       const path = id ? `/vendor/dashboard/${tab}/${id}` : `/vendor/dashboard/${tab}`
       navigate(path, { replace: false })
-      // Close modals/panels when navigating to a different tab
-      if (tab !== 'orders' || !showOrderDetails) {
-        setShowOrderDetails(false)
-        setSelectedOrderForDetails(null)
-      }
       closePanel()
     }
-  }, [navigate, closePanel, showOrderDetails, validTabs])
+  }, [navigate, closePanel, validTabs])
 
   // Confirmation modal states
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false)
@@ -243,17 +229,12 @@ export function VendorDashboard({ onLogout }) {
       if (tab === 'product-detail' && urlId) {
         setSelectedProduct(urlId)
       }
-      // Close modals/panels when navigating to a different tab
-      if (tab !== 'orders' || !showOrderDetails) {
-        setShowOrderDetails(false)
-        setSelectedOrderForDetails(null)
-      }
       closePanel()
     } else {
       // Invalid tab, redirect to overview
       navigate('/vendor/dashboard/overview', { replace: true })
     }
-  }, [urlTab, urlId, navigate, closePanel, showOrderDetails])
+  }, [urlTab, urlId, navigate, closePanel])
 
 
   // Listen for navigation events from children
@@ -631,7 +612,7 @@ export function VendorDashboard({ onLogout }) {
         // Fetch both products and categories
         const [productsResult, categoriesResult] = await Promise.all([
           getProducts({ search: searchQuery.trim(), limit: 5 }),
-          userApi.getCategories()
+          catalogApi.getCategories()
         ])
 
         const products = productsResult.data?.products || []
@@ -715,6 +696,9 @@ export function VendorDashboard({ onLogout }) {
         favouritesCount={favouritesCount}
         cartCount={cartCount}
         onNavigate={navigateToTab}
+        onLogout={handleLogout}
+        onLogin={() => navigate('/vendor/login')}
+        isAuthenticated={true}
         isNotificationAnimating={isNotificationAnimating}
         navigation={NAV_ITEMS.map((item) => (
           <BottomNavItem
@@ -795,76 +779,7 @@ export function VendorDashboard({ onLogout }) {
           )}
           {activeTab === 'overview' && <OverviewView onNavigate={navigateTo} welcomeName={welcomeName} openPanel={openPanel} />}
           {activeTab === 'vyapaar' && <VendorVyapaarView />}
-          {activeTab === 'orders' && !showAllOrders && !showOrderDetails && (
-            <OrdersView
-              openPanel={openPanel}
-              refreshKey={ordersViewRefreshKey}
-              onRefresh={() => setOrdersViewRefreshKey(prev => prev + 1)}
-              onOpenEscalationModal={(order) => {
-                setSelectedOrderForEscalation(order)
-                setEscalationModalOpen(true)
-              }}
-              onOpenPartialEscalationModal={(order, type) => {
-                setSelectedOrderForEscalation(order)
-                setEscalationType(type)
-                setPartialEscalationModalOpen(true)
-              }}
-              onShowAllOrders={() => setShowAllOrders(true)}
-              onViewOrderDetails={(order) => {
-                setSelectedOrderForDetails(order)
-                setShowOrderDetails(true)
-              }}
-            />
-          )}
-          {activeTab === 'orders' && showAllOrders && !showOrderDetails && (
-            <AllOrdersView
-              openPanel={openPanel}
-              onOpenEscalationModal={(order) => {
-                setSelectedOrderForEscalation(order)
-                setEscalationModalOpen(true)
-              }}
-              onOpenPartialEscalationModal={(order, type) => {
-                setSelectedOrderForEscalation(order)
-                setEscalationType(type)
-                setPartialEscalationModalOpen(true)
-              }}
-              onBack={() => setShowAllOrders(false)}
-              onViewOrderDetails={(order) => {
-                setSelectedOrderForDetails(order)
-                setShowOrderDetails(true)
-              }}
-            />
-          )}
-          {activeTab === 'orders' && showOrderDetails && selectedOrderForDetails && (
-            <OrderDetailsView
-              order={selectedOrderForDetails}
-              openPanel={openPanel}
-              onBack={() => {
-                setShowOrderDetails(false)
-                setSelectedOrderForDetails(null)
-              }}
-              onOpenEscalationModal={(order) => {
-                setSelectedOrderForEscalation(order)
-                setEscalationModalOpen(true)
-              }}
-              onOpenPartialEscalationModal={(order, type) => {
-                setSelectedOrderForEscalation(order)
-                setEscalationType(type)
-                setPartialEscalationModalOpen(true)
-              }}
-              onOrderUpdated={() => {
-                // Refresh order details after update
-                getOrders().then((result) => {
-                  if (result.data?.orders) {
-                    const updatedOrder = result.data.orders.find(o => o._id === selectedOrderForDetails.id || o.id === selectedOrderForDetails.id)
-                    if (updatedOrder) {
-                      setSelectedOrderForDetails(updatedOrder)
-                    }
-                  }
-                })
-              }}
-            />
-          )}
+          {activeTab === 'orders' && <VendorOrdersView />}
           {activeTab === 'credit' && <VendorVyapaarView />}
           {activeTab === 'earnings' && <EarningsView openPanel={openPanel} onNavigate={navigateTo} />}
           {activeTab === 'reports' && <ReportsView onNavigate={navigateTo} />}
@@ -953,7 +868,7 @@ export function VendorDashboard({ onLogout }) {
                                   <TransText>{product.name}</TransText>
                                 </span>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-sm font-semibold text-green-600">₹{displayPrice.toLocaleString('en-IN')}</span>
+                                  <span className="text-sm font-semibold text-blue-600">₹{displayPrice.toLocaleString('en-IN')}</span>
                                 </div>
                               </div>
                             </button>
@@ -981,8 +896,8 @@ export function VendorDashboard({ onLogout }) {
                             }}
                             className="vendor-search-result w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
                           >
-                            <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-                              <BoxIcon className="w-4 h-4 text-green-600" />
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                              <BoxIcon className="w-4 h-4 text-blue-600" />
                             </div>
                             <div className="flex-1 text-left">
                               <span className="vendor-search-result__label font-medium block"><TransText>{category.name}</TransText></span>
@@ -1050,22 +965,7 @@ export function VendorDashboard({ onLogout }) {
                   getOrders().then((result) => {
                     if (result.data) {
                       dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
-                      if (showOrderDetails && selectedOrderForDetails) {
-                        const updatedOrder = result.data.orders?.find((o) => {
-                          const candidateId =
-                            o._id?.toString?.() ||
-                            o.id?.toString?.() ||
-                            ''
-                          const selectedId =
-                            selectedOrderForDetails.id?.toString?.() ||
-                            selectedOrderForDetails._id?.toString?.() ||
-                            ''
-                          return candidateId && selectedId && candidateId === selectedId
-                        })
-                        if (updatedOrder) {
-                          setSelectedOrderForDetails(updatedOrder)
-                        }
-                      }
+
                     }
                   })
                 } else if (result.error) {
@@ -1078,22 +978,7 @@ export function VendorDashboard({ onLogout }) {
                   getOrders().then((result) => {
                     if (result.data) {
                       dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
-                      if (showOrderDetails && selectedOrderForDetails) {
-                        const updatedOrder = result.data.orders?.find((o) => {
-                          const candidateId =
-                            o._id?.toString?.() ||
-                            o.id?.toString?.() ||
-                            ''
-                          const selectedId =
-                            selectedOrderForDetails.id?.toString?.() ||
-                            selectedOrderForDetails._id?.toString?.() ||
-                            ''
-                          return candidateId && selectedId && candidateId === selectedId
-                        })
-                        if (updatedOrder) {
-                          setSelectedOrderForDetails(updatedOrder)
-                        }
-                      }
+
                     }
                   })
                 } else if (result.error) {
@@ -1106,22 +991,7 @@ export function VendorDashboard({ onLogout }) {
                   getOrders().then((result) => {
                     if (result.data) {
                       dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
-                      if (showOrderDetails && selectedOrderForDetails) {
-                        const updatedOrder = result.data.orders?.find((o) => {
-                          const candidateId =
-                            o._id?.toString?.() ||
-                            o.id?.toString?.() ||
-                            ''
-                          const selectedId =
-                            selectedOrderForDetails.id?.toString?.() ||
-                            selectedOrderForDetails._id?.toString?.() ||
-                            ''
-                          return candidateId && selectedId && candidateId === selectedId
-                        })
-                        if (updatedOrder) {
-                          setSelectedOrderForDetails(updatedOrder)
-                        }
-                      }
+
                     }
                   })
                 } else if (result.error) {
@@ -1183,16 +1053,7 @@ export function VendorDashboard({ onLogout }) {
                     if (result.data) {
                       dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
                       // If viewing order details, refresh the order
-                      if (showOrderDetails && selectedOrderForDetails) {
-                        const updatedOrder = result.data.orders?.find(o =>
-                          (o._id && selectedOrderForDetails.id && o._id.toString() === selectedOrderForDetails.id.toString()) ||
-                          (o.id && selectedOrderForDetails.id && o.id.toString() === selectedOrderForDetails.id.toString()) ||
-                          (o._id && selectedOrderForDetails._id && o._id.toString() === selectedOrderForDetails._id.toString())
-                        )
-                        if (updatedOrder) {
-                          setSelectedOrderForDetails(updatedOrder)
-                        }
-                      }
+
                     }
                   })
                   fetchDashboardData()
@@ -1219,19 +1080,6 @@ export function VendorDashboard({ onLogout }) {
                   // Show message from backend (includes grace period info if applicable)
                   success(result.data.message || 'Order status updated successfully!')
 
-                  // If viewing order details, refresh the order details explicitly (only once)
-                  if (showOrderDetails && selectedOrderForDetails) {
-                    const orderId = data.orderId
-                    // Fetch full order details to ensure all data is up to date
-                    getOrderDetails(orderId).then((detailsResult) => {
-                      if (detailsResult.data?.order) {
-                        setSelectedOrderForDetails(detailsResult.data.order)
-                      }
-                    }).catch((err) => {
-                      console.error('Error refreshing order details:', err)
-                    })
-                  }
-
                   // Refresh orders list and dashboard
                   getOrders().then((result) => {
                     if (result.data) {
@@ -1239,9 +1087,6 @@ export function VendorDashboard({ onLogout }) {
                     }
                   })
                   fetchDashboardData()
-
-                  // Trigger OrdersView refresh (only once)
-                  setOrdersViewRefreshKey(prev => prev + 1)
                 } else if (result.error) {
                   error(result.error.message || 'Failed to update order status')
                 }
@@ -1597,69 +1442,6 @@ export function VendorDashboard({ onLogout }) {
       />
 
       {/* Escalation Modals */}
-      <OrderEscalationModal
-        isOpen={escalationModalOpen}
-        onClose={() => {
-          setEscalationModalOpen(false)
-          setSelectedOrderForEscalation(null)
-        }}
-        order={selectedOrderForEscalation}
-        onSuccess={() => {
-          // Refresh orders - modal already closes itself
-          if (activeTab === 'orders') {
-            getOrders().then((result) => {
-              if (result.data) {
-                dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
-                // If viewing order details, refresh the order
-                if (showOrderDetails && selectedOrderForDetails) {
-                  const updatedOrder = result.data.orders?.find(o =>
-                    (o._id && selectedOrderForDetails.id && o._id.toString() === selectedOrderForDetails.id.toString()) ||
-                    (o.id && selectedOrderForDetails.id && o.id.toString() === selectedOrderForDetails.id.toString()) ||
-                    (o._id && selectedOrderForDetails._id && o._id.toString() === selectedOrderForDetails._id.toString())
-                  )
-                  if (updatedOrder) {
-                    setSelectedOrderForDetails(updatedOrder)
-                  }
-                }
-              }
-            })
-            fetchDashboardData()
-          }
-        }}
-      />
-
-      <OrderPartialEscalationModal
-        isOpen={partialEscalationModalOpen}
-        onClose={() => {
-          setPartialEscalationModalOpen(false)
-          setSelectedOrderForEscalation(null)
-        }}
-        order={selectedOrderForEscalation}
-        escalationType={escalationType}
-        onSuccess={() => {
-          // Refresh orders - modal already closes itself
-          if (activeTab === 'orders') {
-            getOrders().then((result) => {
-              if (result.data) {
-                dispatch({ type: 'SET_ORDERS_DATA', payload: result.data })
-                // If viewing order details, refresh the order
-                if (showOrderDetails && selectedOrderForDetails) {
-                  const updatedOrder = result.data.orders?.find(o =>
-                    (o._id && selectedOrderForDetails.id && o._id.toString() === selectedOrderForDetails.id.toString()) ||
-                    (o.id && selectedOrderForDetails.id && o.id.toString() === selectedOrderForDetails.id.toString()) ||
-                    (o._id && selectedOrderForDetails._id && o._id.toString() === selectedOrderForDetails._id.toString())
-                  )
-                  if (updatedOrder) {
-                    setSelectedOrderForDetails(updatedOrder)
-                  }
-                }
-              }
-            })
-            fetchDashboardData()
-          }
-        }}
-      />
-
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
       {/* Notification Panel */}
@@ -1859,7 +1641,7 @@ function OverviewView({ onNavigate, welcomeName, openPanel }) {
       description: <Trans>Set delivery time</Trans>,
       target: 'orders',
       icon: TruckIcon,
-      tone: 'green',
+      tone: 'Blue',
       action: 'confirm-delivery-slot',
     },
     {
@@ -2894,7 +2676,7 @@ function InventoryView({ openPanel, onNavigate }) {
                   className={cn(
                     'text-lg font-bold',
                     vendorStockStatus.tone === 'success'
-                      ? 'text-green-700'
+                      ? 'text-blue-700'
                       : vendorStockStatus.tone === 'teal'
                         ? 'text-blue-700'
                         : vendorStockStatus.tone === 'warn'
@@ -3897,7 +3679,7 @@ function InventoryView({ openPanel, onNavigate }) {
                         className={cn(
                           'rounded-full px-2 py-0.5 text-xs font-semibold',
                           vendorStockStatus.tone === 'success'
-                            ? 'bg-green-100 text-green-700'
+                            ? 'bg-blue-100 text-blue-700'
                             : vendorStockStatus.tone === 'teal'
                               ? 'bg-blue-100 text-blue-700'
                               : vendorStockStatus.tone === 'warn'
@@ -4221,7 +4003,7 @@ function OrdersView({ openPanel, onOpenEscalationModal, onOpenPartialEscalationM
           {
             label: <Trans>Next actions</Trans>,
             value: totals.accepted > 0 ? <Trans>Pack & assign</Trans> : <Trans>All clear</Trans>,
-            meta: <Trans>Keep SLA green</Trans>,
+            meta: <Trans>Keep SLA Blue</Trans>,
             tone: totals.accepted > 0 ? 'warn' : 'success',
           },
         ]
@@ -6244,8 +6026,8 @@ function ReportsView({ onNavigate }) {
                         <svg className="reports-line-chart__svg" viewBox={`0 0 ${(chartData.labels.length - 1) * 100} 200`} preserveAspectRatio="none">
                           <defs>
                             <linearGradient id="revenueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                              <stop offset="0%" stopColor="rgba(43, 118, 79, 0.3)" />
-                              <stop offset="100%" stopColor="rgba(43, 118, 79, 0.05)" />
+                              <stop offset="0%" stopColor="rgba(29, 78, 216, 0.3)" />
+                              <stop offset="100%" stopColor="rgba(29, 78, 216, 0.05)" />
                             </linearGradient>
                             <linearGradient id="ordersGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                               <stop offset="0%" stopColor="rgba(33, 150, 173, 0.3)" />
@@ -6262,7 +6044,7 @@ function ReportsView({ onNavigate }) {
                                 y1={y}
                                 x2={(chartData.labels.length - 1) * 100}
                                 y2={y}
-                                stroke="rgba(34, 94, 65, 0.08)"
+                                stroke="rgba(30, 58, 138, 0.08)"
                                 strokeWidth="1"
                                 strokeDasharray="2,2"
                               />
@@ -6291,7 +6073,7 @@ function ReportsView({ onNavigate }) {
                               .map((value, index) => `L ${(index + 1) * 100},${200 - (value / maxValue) * 200}`)
                               .join(' ')}`}
                             fill="none"
-                            stroke="rgba(43, 118, 79, 0.9)"
+                            stroke="rgba(29, 78, 216, 0.9)"
                             strokeWidth="2.5"
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -6315,7 +6097,7 @@ function ReportsView({ onNavigate }) {
                               cx={index * 100}
                               cy={200 - (value / maxValue) * 200}
                               r="4"
-                              fill="rgba(43, 118, 79, 0.95)"
+                              fill="rgba(29, 78, 216, 0.95)"
                               stroke="rgba(255, 255, 255, 0.9)"
                               strokeWidth="2"
                             />
@@ -6757,7 +6539,7 @@ function EarningsView({ openPanel, onNavigate }) {
                     alignSelf: 'flex-start',
                     padding: '0.5rem 1rem',
                     borderRadius: '0.5rem',
-                    background: '#1b8f5b',
+                    background: '#1d4ed8',
                     color: 'white',
                     fontSize: '0.875rem',
                     fontWeight: '600',
@@ -6765,8 +6547,8 @@ function EarningsView({ openPanel, onNavigate }) {
                     cursor: 'pointer',
                     transition: 'background 0.2s',
                   }}
-                  onMouseEnter={(e) => e.target.style.background = '#157a4d'}
-                  onMouseLeave={(e) => e.target.style.background = '#1b8f5b'}
+                  onMouseEnter={(e) => e.target.style.background = '#1e40af'}
+                  onMouseLeave={(e) => e.target.style.background = '#1d4ed8'}
                 >
                   <Trans>Add Bank Account</Trans>
                 </button>

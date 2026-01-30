@@ -175,14 +175,14 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                 className={cn(
                                     "p-4 rounded-2xl border text-left transition-all flex items-center justify-between group",
                                     selectedPurchase?._id === p._id
-                                        ? "bg-green-50 border-green-200 ring-1 ring-green-600 shadow-sm"
+                                        ? "bg-blue-50 border-blue-200 ring-1 ring-blue-600 shadow-sm"
                                         : "bg-white border-gray-100 hover:border-gray-300"
                                 )}
                             >
                                 <div className="flex items-center gap-4">
                                     <div className={cn(
                                         "h-10 w-10 rounded-xl flex items-center justify-center transition-colors",
-                                        selectedPurchase?._id === p._id ? "bg-green-600 text-white" : "bg-gray-50 text-gray-400 group-hover:bg-gray-100"
+                                        selectedPurchase?._id === p._id ? "bg-blue-600 text-white" : "bg-gray-50 text-gray-400 group-hover:bg-gray-100"
                                     )}>
                                         <DollarSign className="w-5 h-5" />
                                     </div>
@@ -196,7 +196,7 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    {selectedPurchase?._id === p._id && <CheckCircle className="w-4 h-4 text-green-600" />}
+                                    {selectedPurchase?._id === p._id && <CheckCircle className="w-4 h-4 text-blue-600" />}
                                     <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400 group-hover:translate-x-0.5 transition-all" />
                                 </div>
                             </button>
@@ -209,7 +209,7 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between bg-gray-50/20">
                     <div className="flex items-center gap-2">
-                        <Calculator className="w-5 h-5 text-green-600" />
+                        <Calculator className="w-5 h-5 text-blue-600" />
                         <h3 className="text-gray-900 text-base tracking-tight">
                             <Trans>Settlement Hub</Trans>
                         </h3>
@@ -230,14 +230,14 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                             setRepaymentDate(e.target.value)
                                             setCalculation(null)
                                         }}
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:border-green-600 focus:ring-0 transition-all outline-none"
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:border-blue-600 focus:ring-0 transition-all outline-none"
                                     />
                                     <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                                 </div>
                                 <button
                                     onClick={handleCalculate}
                                     disabled={!selectedPurchase || isLoading}
-                                    className="px-6 py-3 bg-green-600 text-white rounded-xl text-xs uppercase tracking-wide hover:bg-green-700 active:scale-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2 h-[46px]"
+                                    className="px-6 py-3 bg-blue-600 text-white rounded-xl text-xs uppercase tracking-wide hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2 h-[46px]"
                                 >
                                     {isLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
                                     <span><Trans>Calculate</Trans></span>
@@ -251,7 +251,7 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                         <div className="animate-in fade-in duration-300">
                             <div className={cn(
                                 "rounded-2xl p-6 border transition-all",
-                                calculation.tierType === 'discount' ? "bg-green-50 border-green-100" :
+                                calculation.tierType === 'discount' ? "bg-blue-50 border-blue-100" :
                                     calculation.tierType === 'interest' ? "bg-red-50 border-red-100" : "bg-gray-50 border-gray-100"
                             )}>
                                 <div className="space-y-5">
@@ -259,7 +259,7 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                         <div className="flex items-center gap-3">
                                             <div className={cn(
                                                 "h-10 w-10 min-w-[2.5rem] rounded-xl flex items-center justify-center bg-white shadow-sm",
-                                                calculation.tierType === 'discount' ? "text-green-600" :
+                                                calculation.tierType === 'discount' ? "text-blue-600" :
                                                     calculation.tierType === 'interest' ? "text-red-600" : "text-gray-400"
                                             )}>
                                                 {calculation.tierType === 'discount' ? <TrendingDown className="h-5 w-5" /> : <TrendingUp className="h-5 w-5" />}
@@ -284,13 +284,13 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                         </div>
                                         <div className="flex justify-between items-center text-xs">
                                             <span className={cn(
-                                                calculation.tierType === 'discount' ? "text-green-600" :
+                                                calculation.tierType === 'discount' ? "text-blue-600" :
                                                     calculation.tierType === 'interest' ? "text-red-600" : "text-gray-400"
                                             )}>
                                                 {calculation.tierType === 'discount' ? <Trans>Discount</Trans> : <Trans>Handling Fee</Trans>}
                                             </span>
                                             <span className={cn(
-                                                calculation.tierType === 'discount' ? "text-green-600" :
+                                                calculation.tierType === 'discount' ? "text-blue-600" :
                                                     calculation.tierType === 'interest' ? "text-red-600" : "text-gray-400"
                                             )}>
                                                 {calculation.tierType === 'discount' ? `-${formatCurrency(calculation.discountAmount)}` : `+${formatCurrency(calculation.interestAmount)}`}
@@ -308,7 +308,7 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                         <button
                                             onClick={handleSubmitRepayment}
                                             disabled={isSubmitting}
-                                            className="flex-[2] py-3 px-4 bg-green-600 text-white rounded-xl text-[10px] uppercase tracking-widest hover:bg-green-700 transition-all shadow-md flex items-center justify-center gap-2"
+                                            className="flex-[2] py-3 px-4 bg-blue-600 text-white rounded-xl text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md flex items-center justify-center gap-2"
                                         >
                                             {isSubmitting ? <Loader className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
                                             <Trans>Finalize Payment</Trans>
@@ -338,7 +338,7 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                 {projection.map((point, idx) => (
                                     <div key={idx} className={cn(
                                         "p-3 rounded-xl flex items-center justify-between text-xs border border-transparent shadow-sm",
-                                        point.tierType === 'discount' ? "bg-green-50 border-green-100" :
+                                        point.tierType === 'discount' ? "bg-blue-50 border-blue-100" :
                                             point.tierType === 'interest' ? "bg-red-50 border-red-100" : "bg-gray-50 border-gray-100"
                                     )}>
                                         <div className="flex items-center gap-3">
@@ -353,7 +353,7 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                         <div className="text-right">
                                             <span className={cn(
                                                 "text-[9px] uppercase px-1.5 py-0.5 rounded",
-                                                point.tierType === 'discount' ? "text-green-700 bg-white/50" :
+                                                point.tierType === 'discount' ? "text-blue-700 bg-white/50" :
                                                     point.tierType === 'interest' ? "text-red-700 bg-white/50" : "text-gray-500"
                                             )}>
                                                 {point.rate}% {point.tierType}

@@ -10,7 +10,7 @@
     font-family: "Inter", system-ui, "Segoe UI", sans-serif;
     color: hsl(24 32% 18%);
     letter-spacing: 0.01em;
-    background: radial-gradient(circle at top, hsl(134 45% 88%) 0%, hsl(45 52% 97%) 55%);
+    background: radial-gradient(circle at top, hsl(215 45% 88%) 0%, hsl(45 52% 97%) 55%);
     text-rendering: optimizeLegibility;
   }
 
@@ -50,11 +50,11 @@
     align-items: center;
     gap: 0.5rem;
     border-radius: 9999px;
-    background-color: hsl(142 45% 25%);
+    background-color: hsl(215 45% 15%);
     padding: 0.25rem 0.75rem;
     font-size: 0.875rem;
     font-weight: 500;
-    color: hsl(142 52% 52%);
+    color: hsl(215 72% 57%);
   }
 
   /* Utility to hide scrollbars while keeping functionality */

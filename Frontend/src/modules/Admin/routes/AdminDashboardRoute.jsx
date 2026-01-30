@@ -6,14 +6,10 @@ import { Sidebar } from '../components/Sidebar'
 import { DashboardPage } from '../pages/Dashboard'
 import { ProductsPage } from '../pages/Products'
 import { VendorsPage } from '../pages/Vendors'
-import { SellersPage } from '../pages/Sellers'
-import { UsersPage } from '../pages/Users'
 import { OrdersPage } from '../pages/Orders'
 import { FinancePage } from '../pages/Finance'
 import { OperationsPage } from '../pages/Operations'
 import { AnalyticsPage } from '../pages/Analytics'
-import { VendorWithdrawalsPage } from '../pages/VendorWithdrawals'
-import { SellerWithdrawalsPage } from '../pages/SellerWithdrawals'
 import { PaymentHistoryPage } from '../pages/PaymentHistory'
 import { OffersPage } from '../pages/Offers'
 import { RepaymentsPage } from '../pages/Repayments'
@@ -28,14 +24,10 @@ const routeConfig = [
   { id: 'dashboard', element: DashboardPage },
   { id: 'products', element: ProductsPage },
   { id: 'vendors', element: VendorsPage },
-  { id: 'sellers', element: SellersPage },
-  { id: 'users', element: UsersPage },
   { id: 'orders', element: OrdersPage },
   { id: 'finance', element: FinancePage },
   { id: 'operations', element: OperationsPage },
   { id: 'analytics', element: AnalyticsPage },
-  { id: 'vendor-withdrawals', element: VendorWithdrawalsPage },
-  { id: 'seller-withdrawals', element: SellerWithdrawalsPage },
   { id: 'payment-history', element: PaymentHistoryPage },
   { id: 'offers', element: OffersPage },
   { id: 'repayments', element: RepaymentsPage },

@@ -81,29 +81,7 @@ const links = [
       { id: 'vendors/on-track', label: 'On Track Vendors' },
       { id: 'vendors/out-of-track', label: 'Out of Track Vendors' },
       { id: 'vendors/purchase-requests', label: 'Purchase Requests' },
-    ]
-  },
-  {
-    id: 'sellers',
-    label: 'Satpura Partners',
-    icon: ShieldCheck,
-    description: 'Goals & earnings',
-    color: 'yellow',
-    suboptions: [
-      { id: 'sellers/active', label: 'Active Satpura Partners' },
-      { id: 'sellers/inactive', label: 'Inactive Satpura Partners' },
-    ]
-  },
-  {
-    id: 'users',
-    label: 'Users',
-    icon: Users2,
-    description: 'User status & help requests',
-    color: 'orange',
-    suboptions: [
-      { id: 'users/all', label: 'ALL' },
-      { id: 'users/active', label: 'Active' },
-      { id: 'users/inactive', label: 'Inactive' },
+      { id: 'vendors/rankings', label: 'Vendor Rankings' },
     ]
   },
   {
@@ -136,22 +114,6 @@ const links = [
     icon: Gift,
     description: 'Manage reward schemes & claims',
     color: 'purple',
-    suboptions: []
-  },
-  {
-    id: 'vendor-withdrawals',
-    label: 'Vendor Withdrawals',
-    icon: Factory,
-    description: 'Manage vendor withdrawal requests',
-    color: 'green',
-    suboptions: []
-  },
-  {
-    id: 'seller-withdrawals',
-    label: 'Satpura Partner Withdrawals',
-    icon: ShieldCheck,
-    description: 'Manage seller withdrawal requests',
-    color: 'yellow',
     suboptions: []
   },
   {
@@ -189,7 +151,6 @@ const links = [
     color: 'indigo',
     suboptions: [
       { id: 'analytics/sales', label: 'Sales Analytics' },
-      { id: 'analytics/users', label: 'User Analytics' },
       { id: 'analytics/vendors', label: 'Vendor Analytics' },
       { id: 'analytics/orders', label: 'Order Analytics' },
     ]

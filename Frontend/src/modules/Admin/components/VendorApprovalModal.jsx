@@ -162,7 +162,7 @@ export function VendorApprovalModal({ isOpen, onClose, vendor, onApprove, onReje
                   <p className="font-bold text-red-900">Overlapping Coverage Warning</p>
                   <p className="mt-1 text-red-800">
                     <strong>{conflictingVendorName}</strong> is located only <strong>{firstConflict.distanceKm} km</strong> away.
-                    Satpura Bio policy strictly limits one vendor per 20km radius.
+                    Canx International policy strictly limits one vendor per 20km radius.
                   </p>
                 </div>
               </div>

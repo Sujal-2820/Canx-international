@@ -46,6 +46,82 @@ class RepaymentCalculationService {
         };
 
         try {
+            // Fetch Vendor to check for overrides
+            let vendor = null;
+            if (creditPurchase.vendorId && typeof creditPurchase.vendorId === 'object' && creditPurchase.vendorId.creditPolicy) {
+                vendor = creditPurchase.vendorId;
+            } else if (creditPurchase.vendorId) {
+                const Vendor = require('../models/Vendor');
+                vendor = await Vendor.findById(creditPurchase.vendorId).select('creditPolicy').lean();
+            }
+
+            // Check for Special Agreement (Offline Settlement) for overrides
+            if (vendor && vendor.creditPolicy && vendor.creditPolicy.specialAgreement && vendor.creditPolicy.specialAgreement.active) {
+                const { agreedAmount, notes } = vendor.creditPolicy.specialAgreement;
+
+                // Return forced calculation based on offline agreement
+                calculation.tierApplied = 'Offline Agreement (Fixed Assessment)';
+                calculation.tierType = 'special_agreement';
+                calculation.finalPayable = agreedAmount;
+                calculation.baseAmount = baseAmount; // Keep original reference
+                calculation.discountAmount = 0;
+                calculation.interestAmount = 0;
+                calculation.savingsFromEarlyPayment = 0;
+                calculation.penaltyFromLatePayment = 0;
+
+                // Add note about override
+                calculation.overrideNote = notes;
+
+                return this._formatCalculation(calculation);
+            }
+
+            // Check for custom overrides (Tier overrides)
+            if (vendor && vendor.creditPolicy && vendor.creditPolicy.overrideGlobalTiers) {
+                const { customDiscountTiers, customInterestTiers } = vendor.creditPolicy;
+
+                // 1. Check Custom Discount Tier
+                const discountTier = customDiscountTiers.find(tier =>
+                    daysElapsed >= tier.periodStart && daysElapsed <= tier.periodEnd
+                );
+
+                if (discountTier) {
+                    calculation.discountTier = discountTier.tierName || 'Custom Discount';
+                    calculation.discountRate = discountTier.discountRate;
+                    calculation.discountAmount = (baseAmount * discountTier.discountRate) / 100;
+                    calculation.savingsFromEarlyPayment = calculation.discountAmount;
+                    calculation.finalPayable = baseAmount - calculation.discountAmount;
+                    calculation.tierApplied = discountTier.tierName || `Custom Discount (${discountTier.discountRate}%)`;
+                    calculation.tierId = discountTier._id;
+                    calculation.tierType = 'discount';
+                    return this._formatCalculation(calculation);
+                }
+
+                // 2. Check Custom Interest Tier
+                const interestTier = customInterestTiers.find(tier =>
+                    daysElapsed >= tier.periodStart && daysElapsed <= tier.periodEnd
+                );
+
+                if (interestTier) {
+                    calculation.interestTier = interestTier.tierName || 'Custom Interest';
+                    calculation.interestRate = interestTier.interestRate;
+                    calculation.interestAmount = (baseAmount * interestTier.interestRate) / 100;
+                    calculation.penaltyFromLatePayment = calculation.interestAmount;
+                    calculation.finalPayable = baseAmount + calculation.interestAmount;
+                    calculation.tierApplied = interestTier.tierName || `Custom Interest (${interestTier.interestRate}%)`;
+                    calculation.tierId = interestTier._id;
+                    calculation.tierType = 'interest';
+                    return this._formatCalculation(calculation);
+                }
+
+                // 3. Neutral Zone (if overriding but no tier matches)
+                calculation.tierApplied = 'Neutral Zone (Custom Policy)';
+                calculation.tierType = 'none';
+                calculation.finalPayable = baseAmount;
+                return this._formatCalculation(calculation);
+            }
+
+            // --- Default Global Logic (Fallback) ---
+
             // Step 1: Check for applicable discount tier (early payment)
             const discountTier = await RepaymentDiscount.findApplicableTier(daysElapsed);
 
@@ -128,6 +204,8 @@ class RepaymentCalculationService {
             return `🎉 You're saving ₹${calc.savingsFromEarlyPayment.toFixed(2)} by paying early! (${calc.discountRate}% discount)`;
         } else if (calc.tierType === 'interest') {
             return `⚠️ Late payment penalty of ₹${calc.penaltyFromLatePayment.toFixed(2)} applied (${calc.interestRate}% interest)`;
+        } else if (calc.tierType === 'special_agreement') {
+            return `🤝 Offline Agreement Active: Fixed repayment amount settled.`;
         } else {
             return `Standard repayment - no discount or interest applied`;
         }

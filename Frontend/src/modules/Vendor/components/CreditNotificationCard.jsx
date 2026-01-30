@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ClockIcon, AlertTriangleIcon, CheckCircleIcon, GiftIcon, BellIcon } from '../../User/components/icons'
+import { ClockIcon, AlertTriangleIcon, CheckCircleIcon, GiftIcon, BellIcon } from '../../../components/shared/catalog'
 import { cn } from '../../../lib/cn'
 import { Trans } from '../../../components/Trans'
 
@@ -54,10 +54,10 @@ export function CreditNotificationCard({ notification, onRead, onDismiss, compac
         if (type === 'repayment_success') {
             return {
                 icon: CheckCircleIcon,
-                bgColor: 'bg-green-50',
-                borderColor: 'border-green-200',
-                iconColor: 'text-green-600',
-                textColor: 'text-green-900'
+                bgColor: 'bg-blue-50',
+                borderColor: 'border-blue-200',
+                iconColor: 'text-blue-600',
+                textColor: 'text-blue-900'
             }
         }
 
@@ -184,8 +184,8 @@ export function CreditNotificationCard({ notification, onRead, onDismiss, compac
                     )}
                     {metadata.savings > 0 && (
                         <div className="flex justify-between text-[11px]">
-                            <span className="text-green-600"><Trans>Potential Savings</Trans>:</span>
-                            <span className="font-bold text-green-700">
+                            <span className="text-blue-600"><Trans>Potential Savings</Trans>:</span>
+                            <span className="font-bold text-blue-700">
                                 ₹{metadata.savings.toLocaleString('en-IN')}
                             </span>
                         </div>

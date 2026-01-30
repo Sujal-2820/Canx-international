@@ -41,6 +41,7 @@ const { generateToken } = require('../middleware/auth');
 const { isSpecialBypassNumber, SPECIAL_BYPASS_OTP } = require('../utils/phoneValidation');
 const { generateUniqueId } = require('../utils/generateUniqueId');
 const { createPaymentHistory, createProductAssignment, createNotification, createOffer } = require('../utils/createWithId');
+const { safeUserCount, safeSellerCount } = require('../utils/faultTolerantQuery');
 
 // Auto-finalize expired status update grace periods (runs in background)
 async function processExpiredStatusUpdates() {
@@ -427,20 +428,20 @@ exports.getDashboard = async (req, res, next) => {
       pendingWithdrawals,
       pendingIncentiveClaims,
     ] = await Promise.all([
-      // Users
-      User.countDocuments(),
-      User.countDocuments({ isActive: true, isBlocked: false }),
-      User.countDocuments({ isBlocked: true }),
+      // Users (fault-tolerant - returns 0 if User module unavailable)
+      safeUserCount(),
+      safeUserCount({ isActive: true, isBlocked: false }),
+      safeUserCount({ isBlocked: true }),
 
       // Vendors
       Vendor.countDocuments(),
       Vendor.countDocuments({ status: 'approved', isActive: true }),
       Vendor.countDocuments({ status: 'pending' }),
 
-      // Sellers
-      Seller.countDocuments(),
-      Seller.countDocuments({ status: 'approved', isActive: true }),
-      Seller.countDocuments({ status: 'pending' }),
+      // Sellers (fault-tolerant - returns 0 if Seller module unavailable)
+      safeSellerCount(),
+      safeSellerCount({ status: 'approved', isActive: true }),
+      safeSellerCount({ status: 'pending' }),
 
       // Products
       Product.countDocuments(),
@@ -1809,7 +1810,7 @@ exports.rejectVendor = async (req, res, next) => {
 exports.updateVendorCreditPolicy = async (req, res, next) => {
   try {
     const { vendorId } = req.params;
-    const { repaymentDays, penaltyRate } = req.body;
+    const { repaymentDays } = req.body;
 
     // Validate vendor ID
     if (!vendorId || !require('mongoose').Types.ObjectId.isValid(vendorId)) {
@@ -1843,27 +1844,76 @@ exports.updateVendorCreditPolicy = async (req, res, next) => {
       });
     }
 
-    if (penaltyRate !== undefined && (isNaN(penaltyRate) || penaltyRate < 0)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Penalty rate must be a valid number greater than or equal to 0',
-      });
-    }
 
     // Ensure creditPolicy object exists
     if (!vendor.creditPolicy) {
       vendor.creditPolicy = {
         repaymentDays: 30,
-        penaltyRate: 2,
       };
     }
 
-    // Update credit policy (no credit limit)
+    // Update credit policy
+    const { creditLimit } = req.body;
+
+    if (creditLimit !== undefined) {
+      if (isNaN(creditLimit) || creditLimit < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Credit limit must be a valid number greater than or equal to 0',
+        });
+      }
+      vendor.creditLimit = creditLimit;
+    }
+
     if (repaymentDays !== undefined) {
       vendor.creditPolicy.repaymentDays = repaymentDays;
     }
-    if (penaltyRate !== undefined) {
-      vendor.creditPolicy.penaltyRate = penaltyRate;
+
+    // Update custom override settings
+    const { overrideGlobalTiers, customDiscountTiers, customInterestTiers } = req.body;
+
+    if (overrideGlobalTiers !== undefined) {
+      vendor.creditPolicy.overrideGlobalTiers = overrideGlobalTiers;
+    }
+
+    if (customDiscountTiers !== undefined) {
+      // Basic validation could be added here
+      vendor.creditPolicy.customDiscountTiers = customDiscountTiers;
+    }
+
+    if (customInterestTiers !== undefined) {
+      vendor.creditPolicy.customInterestTiers = customInterestTiers;
+    }
+
+    // Update Special Agreement (Offline Settlement)
+    const { specialAgreement } = req.body;
+    if (specialAgreement) {
+      // Initialize if not present
+      if (!vendor.creditPolicy.specialAgreement) {
+        vendor.creditPolicy.specialAgreement = {};
+      }
+
+      if (specialAgreement.active !== undefined) {
+        vendor.creditPolicy.specialAgreement.active = specialAgreement.active;
+      }
+
+      if (specialAgreement.agreedAmount !== undefined) {
+        // Validation: Ensure amount is non-negative
+        if (specialAgreement.agreedAmount < 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Agreed amount cannot be negative',
+          });
+        }
+        vendor.creditPolicy.specialAgreement.agreedAmount = specialAgreement.agreedAmount;
+      }
+
+      if (specialAgreement.notes !== undefined) {
+        vendor.creditPolicy.specialAgreement.notes = specialAgreement.notes;
+      }
+
+      // Update timestamp when agreement is modified
+      vendor.creditPolicy.specialAgreement.updatedAt = new Date();
     }
 
     // Calculate due date if repayment days is set
@@ -2318,6 +2368,128 @@ exports.rejectVendorPurchase = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Delete vendor purchase invoice
+ * @route   DELETE /api/admin/vendors/purchases/:requestId
+ * @access  Private (Admin)
+ */
+exports.deleteVendorPurchase = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+
+    // Find the purchase record
+    const purchase = await CreditPurchase.findById(requestId);
+
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        message: 'Purchase invoice not found',
+      });
+    }
+
+    // If purchase was approved, we must revert the changes to vendor credit and product stock
+    if (purchase.status === 'approved') {
+      console.log(`[AdminDelete] Reverting approved purchase ${requestId}...`);
+
+      // 1. Revert Vendor Credit
+      const vendor = await Vendor.findById(purchase.vendorId);
+      if (vendor) {
+        const oldCreditUsed = vendor.creditUsed || 0;
+        vendor.creditUsed = Math.max(0, oldCreditUsed - purchase.totalAmount);
+        await vendor.save();
+        console.log(`[AdminDelete] Reverted credit for vendor ${vendor.name}: ${oldCreditUsed} -> ${vendor.creditUsed}`);
+      }
+
+      // 2. Revert Product Stock
+      for (const item of purchase.items) {
+        try {
+          const product = await Product.findById(item.productId);
+          if (product) {
+            // Check if it was a variant product
+            const hasVariantAttributes = item.attributeCombination &&
+              (item.attributeCombination instanceof Map ? item.attributeCombination.size > 0 : Object.keys(item.attributeCombination || {}).length > 0);
+
+            if (hasVariantAttributes && product.attributeStocks && product.attributeStocks.length > 0) {
+              const attributeCombination = item.attributeCombination instanceof Map
+                ? Object.fromEntries(item.attributeCombination)
+                : item.attributeCombination || {};
+
+              const matchingVariantIndex = product.attributeStocks.findIndex((variantStock) => {
+                if (!variantStock.attributes) return false;
+                const variantAttrs = variantStock.attributes instanceof Map
+                  ? Object.fromEntries(variantStock.attributes)
+                  : variantStock.attributes || {};
+
+                return Object.keys(attributeCombination).every(key => {
+                  return String(variantAttrs[key]) === String(attributeCombination[key]);
+                });
+              });
+
+              if (matchingVariantIndex !== -1) {
+                product.attributeStocks[matchingVariantIndex].displayStock = (product.attributeStocks[matchingVariantIndex].displayStock || 0) + item.quantity;
+                product.attributeStocks[matchingVariantIndex].actualStock = (product.attributeStocks[matchingVariantIndex].actualStock || 0) + item.quantity;
+
+                await Product.updateOne(
+                  { _id: item.productId },
+                  { $set: { attributeStocks: product.attributeStocks } }
+                );
+                console.log(`[AdminDelete] Reverted variant stock for ${product.name}`);
+              }
+            } else {
+              // Non-variant product
+              await Product.updateOne(
+                { _id: item.productId },
+                {
+                  $inc: {
+                    displayStock: item.quantity,
+                    actualStock: item.quantity,
+                  }
+                }
+              );
+              console.log(`[AdminDelete] Reverted standard stock for ${product.name}: +${item.quantity}`);
+            }
+          }
+        } catch (stockError) {
+          console.error(`[AdminDelete] Failed to revert stock for item ${item.productId}:`, stockError);
+        }
+      }
+
+      // 3. Revert Incentives
+      try {
+        const VendorIncentiveHistory = require('../models/VendorIncentiveHistory');
+        const PurchaseIncentive = require('../models/PurchaseIncentive');
+
+        const relatedIncentives = await VendorIncentiveHistory.find({ purchaseOrderId: requestId });
+        for (const claim of relatedIncentives) {
+          // Decrement currentRedemptions on the scheme
+          await PurchaseIncentive.updateOne(
+            { _id: claim.incentiveId },
+            { $inc: { currentRedemptions: -1 } }
+          );
+        }
+        // Remove incentive history records
+        await VendorIncentiveHistory.deleteMany({ purchaseOrderId: requestId });
+        console.log(`[AdminDelete] Reverted ${relatedIncentives.length} incentives related to purchase ${requestId}`);
+      } catch (incentiveError) {
+        console.error(`[AdminDelete] Error reverting incentives for purchase ${requestId}:`, incentiveError);
+      }
+    }
+
+    // Finally delete the purchase record
+    await CreditPurchase.findByIdAndDelete(requestId);
+    console.log(`[AdminDelete] Purchase invoice ${requestId} permanently removed from system.`);
+
+    res.status(200).json({
+      success: true,
+      data: { id: requestId },
+      message: 'Purchase invoice deleted successfully. Credit and stock have been reverted.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 /**
  * @desc    Mark stock as sent (in transit)
@@ -3827,6 +3999,81 @@ exports.rejectSellerChangeRequest = async (req, res, next) => {
  * @route   GET /api/admin/vendors/withdrawals
  * @access  Private (Admin)
  */
+
+/**
+ * @desc    Get vendor rankings based on performance metrics
+ * @route   GET /api/admin/vendors/rankings
+ * @access  Private (Admin)
+ */
+exports.getVendorRankings = async (req, res, next) => {
+  try {
+    const { sortBy = 'creditScore', order = 'desc', limit = 100 } = req.query;
+
+    const sortOrder = order === 'asc' ? 1 : -1;
+    let sortStage = {};
+
+    // Map frontend sort keys to backend fields
+    switch (sortBy) {
+      case 'orderFrequency':
+        sortStage = { orderCount: sortOrder };
+        break;
+      case 'repaymentFrequency':
+        sortStage = { 'creditHistory.totalRepaymentCount': sortOrder };
+        break;
+      case 'repaymentAmount':
+        sortStage = { 'creditHistory.totalRepaid': sortOrder };
+        break;
+      case 'creditScore':
+      default:
+        sortStage = { 'creditHistory.creditScore': sortOrder };
+        break;
+    }
+
+    const vendors = await Vendor.aggregate([
+      {
+        $match: {
+          status: 'approved', // Only rank approved vendors
+          isDeleted: { $ne: true }
+        }
+      },
+      {
+        $lookup: {
+          from: 'creditpurchases', // Collection name for CreditPurchase model
+          localField: '_id',
+          foreignField: 'vendorId',
+          as: 'purchases'
+        }
+      },
+      {
+        $project: {
+          name: 1,
+          vendorId: 1,
+          email: 1,
+          phone: 1,
+          shopName: 1,
+          'location.city': 1,
+          'location.state': 1,
+          creditHistory: 1,
+          performanceTier: 1,
+          orderCount: { $size: '$purchases' }, // Count total purchases for "Order Frequency"
+        }
+      },
+      { $sort: sortStage },
+      { $limit: parseInt(limit) }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        rankings: vendors
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getAllVendorWithdrawals = async (req, res, next) => {
   try {
     const { status, vendorId, page = 1, limit = 20, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;

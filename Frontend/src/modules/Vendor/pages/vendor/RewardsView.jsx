@@ -209,7 +209,7 @@ export function RewardsView({ navigate }) {
                                 <div className={cn(
                                     "w-12 h-12 rounded-2xl flex items-center justify-center",
                                     item.status === 'pending_approval' ? "bg-amber-50 text-amber-500" :
-                                        item.status === 'approved' ? "bg-green-50 text-green-500" : "bg-purple-50 text-purple-600"
+                                        item.status === 'approved' ? "bg-blue-50 text-blue-500" : "bg-purple-50 text-purple-600"
                                 )}>
                                     <Award className="w-6 h-6" />
                                 </div>

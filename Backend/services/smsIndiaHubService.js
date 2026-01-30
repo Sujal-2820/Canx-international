@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 /**
- * SMSIndia Hub SMS Service for Satpura Bio
+ * SMSIndia Hub SMS Service for Canx International
  * Handles OTP sending via SMSIndia Hub API
  */
 class SMSIndiaHubService {
@@ -112,8 +112,8 @@ class SMSIndiaHubService {
       }
 
       // CRITICAL: This template must match what is approved in your SMSIndia Hub / DLT portal.
-      // If you change the name to 'Satpura Bio' here, ensure the template is updated and approved there too.
-      const message = `Welcome to the Satpura Bio powered by SMSINDIAHUB. Your OTP for registration is ${otp}`;
+      // If you change the name to 'Canx International' here, ensure the template is updated and approved there too.
+      const message = `Welcome to Canx International powered by SMSINDIAHUB. Your OTP for registration is ${otp}`;
 
       // Build the API URL with query parameters
       const params = new URLSearchParams({
@@ -131,7 +131,7 @@ class SMSIndiaHubService {
       // Make GET request to SMSIndia Hub API
       const response = await axios.get(apiUrl, {
         headers: {
-          'User-Agent': 'SATPURABIO/1.0',
+          'User-Agent': 'CANX/1.0',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
         },
         timeout: 15000 // 15 second timeout
@@ -237,7 +237,7 @@ class SMSIndiaHubService {
       // Make GET request to SMSIndia Hub API
       const response = await axios.get(apiUrl, {
         headers: {
-          'User-Agent': 'IRASATHI/1.0',
+          'User-Agent': 'CANX/1.0',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
         },
         timeout: 15000

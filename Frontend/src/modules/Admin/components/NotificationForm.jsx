@@ -5,7 +5,6 @@ import { cn } from '../../../lib/cn'
 
 const TARGET_AUDIENCES = [
   { value: 'all', label: 'All Users', icon: Users },
-  { value: 'sellers', label: 'Satpura Partners', icon: ShieldCheck },
   { value: 'vendors', label: 'Vendors', icon: Building2 },
   { value: 'users', label: 'Users (Farmers)', icon: Users },
 ]

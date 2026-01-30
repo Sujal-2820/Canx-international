@@ -265,7 +265,7 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
                         <span
                           className={cn(
                             'font-semibold',
-                            vendorStock > 0 ? 'text-green-600' : 'text-red-600'
+                            vendorStock > 0 ? 'text-blue-600' : 'text-red-600'
                           )}
                         >
                           Your stock: {vendorStock} {unit}
@@ -297,7 +297,7 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
                         className={cn(
                           'flex-1 rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-all',
                           selection.accept
-                            ? 'border-green-500 bg-green-50 text-green-700'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
                             : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                         )}
                       >
@@ -334,7 +334,7 @@ export function OrderPartialEscalationModal({ isOpen, onClose, order, escalation
                         <span className="text-xs text-gray-600">of {requestedQty} {unit}</span>
                       </div>
                       {escalatedQty > 0 && escalatedQty < requestedQty && (
-                        <p className="text-xs text-green-600">
+                        <p className="text-xs text-blue-600">
                           You will fulfill: {requestedQty - escalatedQty} {unit}
                         </p>
                       )}

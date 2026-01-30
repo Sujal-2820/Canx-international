@@ -218,6 +218,18 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
+  const deleteVendorPurchase = useCallback(
+    (requestId) => {
+      return callApi(adminApi.deleteVendorPurchase, requestId).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_FINANCE_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
   const sendVendorPurchaseStock = useCallback(
     (requestId, deliveryData) => {
       return callApi(adminApi.sendVendorPurchaseStock, requestId, deliveryData).then((result) => {
@@ -281,79 +293,9 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
-  // Seller Management APIs
-  const getSellers = useCallback(
-    (params) => {
-      return callApi(adminApi.getSellers, params).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_DATA', payload: result.data })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const getSellerDetails = useCallback((sellerId) => callApi(adminApi.getSellerDetails, sellerId), [callApi])
-
-  const createSeller = useCallback(
-    (sellerData) => {
-      return callApi(adminApi.createSeller, sellerData).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const updateSeller = useCallback(
-    (sellerId, sellerData) => {
-      return callApi(adminApi.updateSeller, sellerId, sellerData).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const approveSeller = useCallback(
-    (sellerId) => {
-      return callApi(adminApi.approveSeller, sellerId).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const rejectSeller = useCallback(
-    (sellerId, rejectionData) => {
-      return callApi(adminApi.rejectSeller, sellerId, rejectionData).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const deleteSeller = useCallback(
-    (sellerId) => {
-      return callApi(adminApi.deleteSeller, sellerId).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
+  const getVendorRankings = useCallback(
+    (params) => callApi(adminApi.getVendorRankings, params),
+    [callApi]
   )
 
   // Vendor Withdrawal APIs
@@ -402,133 +344,11 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
-  // Seller Withdrawal APIs
-  const createSellerWithdrawalPaymentIntent = useCallback(
-    (requestId, data) => {
-      return callApi(adminApi.createSellerWithdrawalPaymentIntent, requestId, data)
-    },
-    [callApi],
-  )
-
-  const approveSellerWithdrawal = useCallback(
-    (requestId, data) => {
-      return callApi(adminApi.approveSellerWithdrawal, requestId, data).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const rejectSellerWithdrawal = useCallback(
-    (requestId, rejectionData) => {
-      return callApi(adminApi.rejectSellerWithdrawal, requestId, rejectionData).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const getSellerWithdrawalRequests = useCallback((params) => callApi(adminApi.getSellerWithdrawalRequests, params), [callApi])
-
-  // Seller Change Request APIs
-  const getSellerChangeRequests = useCallback(
-    (params) => {
-      return callApi(adminApi.getSellerChangeRequests, params).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const getSellerChangeRequestDetails = useCallback((requestId) => callApi(adminApi.getSellerChangeRequestDetails, requestId), [callApi])
-
-  const approveSellerChangeRequest = useCallback(
-    (requestId) => {
-      return callApi(adminApi.approveSellerChangeRequest, requestId).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const rejectSellerChangeRequest = useCallback(
-    (requestId, rejectionData) => {
-      return callApi(adminApi.rejectSellerChangeRequest, requestId, rejectionData).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_SELLERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
+  // Payment History APIs
 
   // Payment History APIs
   const getPaymentHistory = useCallback((params) => callApi(adminApi.getPaymentHistory, params), [callApi])
   const getPaymentHistoryStats = useCallback((params) => callApi(adminApi.getPaymentHistoryStats, params), [callApi])
-
-  // User Management APIs
-  const getUsers = useCallback(
-    (params) => {
-      return callApi(adminApi.getUsers, params).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_USERS_DATA', payload: result.data })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const getUserDetails = useCallback((userId) => callApi(adminApi.getUserDetails, userId), [callApi])
-
-  const blockUser = useCallback(
-    (userId, blockData) => {
-      return callApi(adminApi.blockUser, userId, blockData).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_USERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const deactivateUser = useCallback(
-    (userId, deactivateData) => {
-      return callApi(adminApi.deactivateUser, userId, deactivateData).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_USERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
-
-  const activateUser = useCallback(
-    (userId) => {
-      return callApi(adminApi.activateUser, userId).then((result) => {
-        if (result.data) {
-          dispatch({ type: 'SET_USERS_UPDATED', payload: true })
-        }
-        return result
-      })
-    },
-    [callApi, dispatch],
-  )
 
   // Order Management APIs
   const getOrders = useCallback(
@@ -757,9 +577,9 @@ export function useAdminApi() {
 
   const getUserAnalytics = useCallback(
     (params) => {
-      return callApi(adminApi.getUserAnalytics, params)
+      return { success: true, data: { summary: {} } } // Mock for removed module
     },
-    [callApi],
+    [],
   )
 
   const getVendorAnalytics = useCallback(
@@ -949,41 +769,16 @@ export function useAdminApi() {
     updateVendorCreditPolicy,
     approveVendorPurchase,
     rejectVendorPurchase,
+    deleteVendorPurchase,
     sendVendorPurchaseStock,
     confirmVendorPurchaseDelivery,
     getVendorPurchaseRequests,
     banVendor,
     unbanVendor,
     deleteVendor,
-    // Sellers
-    getSellers,
-    getSellerDetails,
-    createSeller,
-    updateSeller,
-    approveSeller,
-    rejectSeller,
-    deleteSeller,
-    getVendorWithdrawalRequests,
-    createVendorWithdrawalPaymentIntent,
-    approveVendorWithdrawal,
-    rejectVendorWithdrawal,
-    completeVendorWithdrawal,
-    createSellerWithdrawalPaymentIntent,
-    approveSellerWithdrawal,
-    rejectSellerWithdrawal,
-    getSellerWithdrawalRequests,
-    getSellerChangeRequests,
-    getSellerChangeRequestDetails,
-    approveSellerChangeRequest,
-    rejectSellerChangeRequest,
+    getVendorRankings,
     getPaymentHistory,
     getPaymentHistoryStats,
-    // Users
-    getUsers,
-    getUserDetails,
-    blockUser,
-    deactivateUser,
-    activateUser,
     // Orders
     getOrders,
     getOrderDetails,

@@ -16,10 +16,8 @@ import { useToast } from '../components/ToastNotification'
  */
 
 const TARGET_AUDIENCES = [
-    { value: 'all', label: 'All Users', icon: Users, description: 'Send to everyone on the platform' },
-    { value: 'users', label: 'Users (Farmers)', icon: Users, description: 'Send to all registered users' },
+    { value: 'all', label: 'All Registered Devices', icon: Users, description: 'Send to everyone on the platform' },
     { value: 'vendors', label: 'Vendors', icon: Building2, description: 'Send to all vendors' },
-    { value: 'sellers', label: 'Satpura Partners', icon: ShieldCheck, description: 'Send to all Satpura Partners' },
 ]
 
 const PRIORITY_OPTIONS = [
@@ -53,9 +51,9 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
     const [pushHistory, setPushHistory] = useState([
         {
             id: '1',
-            title: 'Welcome to Satpura Bio!',
+            title: 'Welcome to Canx International!',
             message: 'Thank you for joining our farming community.',
-            targetAudience: 'users',
+            targetAudience: 'all',
             sentAt: new Date(Date.now() - 86400000).toISOString(),
             deliveredCount: 1234,
             openedCount: 567,
@@ -243,7 +241,7 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
                     <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Push Notifications</p>
                     <h2 className="text-2xl font-bold text-gray-900">Push Notification Manager</h2>
                     <p className="text-sm text-gray-600 mt-1">
-                        Send custom push notifications to users, vendors, and Satpura Partners
+                        Send custom push notifications to registered devices and vendors
                     </p>
                 </div>
                 <button
@@ -420,7 +418,7 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-xs font-semibold text-gray-500">Satpura Bio</span>
+                                            <span className="text-xs font-semibold text-gray-500">Canx International</span>
                                             <span className="text-xs text-gray-400">now</span>
                                         </div>
                                         <p className="font-bold text-gray-900 truncate mt-0.5">

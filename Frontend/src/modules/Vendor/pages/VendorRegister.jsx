@@ -227,11 +227,11 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
   // --- Step 1: Info ---
   if (step === 'step1') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-8">
         <div className="w-full max-w-2xl space-y-5">
           <RegistrationHeader currentStep={1} />
 
-          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-5 md:p-6 shadow-xl backdrop-blur-sm">
+          <div className="rounded-3xl border border-blue-200/60 bg-white/90 p-5 md:p-6 shadow-xl backdrop-blur-sm">
             <form onSubmit={handleGoToStep2} className="space-y-5">
               {error && <ErrorAlert error={error} />}
 
@@ -351,7 +351,7 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all"
+                  className="flex-1 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all"
                 >
                   Next Step
                 </button>
@@ -366,11 +366,11 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
   // --- Step 2: Documents ---
   if (step === 'step2') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-8">
         <div className="w-full max-w-2xl space-y-5">
           <RegistrationHeader currentStep={2} />
 
-          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-5 md:p-6 shadow-xl backdrop-blur-sm">
+          <div className="rounded-3xl border border-blue-200/60 bg-white/90 p-5 md:p-6 shadow-xl backdrop-blur-sm">
             <form onSubmit={handleFinalSubmit} className="space-y-5">
               {error && <ErrorAlert error={error} />}
 
@@ -423,10 +423,10 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
                     name="termsAccepted"
                     checked={form.termsAccepted}
                     onChange={handleChange}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-xs text-gray-600 leading-relaxed">
-                    I hereby certify that the information provided above is true to the best of my knowledge. I agree to the <button type="button" className="text-green-600 font-semibold hover:underline">Terms & Conditions</button> and <button type="button" className="text-green-600 font-semibold hover:underline">Privacy Policy</button> of Satpura Bio Organic.
+                    I hereby certify that the information provided above is true to the best of my knowledge. I agree to the <button type="button" className="text-blue-600 font-semibold hover:underline">Terms & Conditions</button> and <button type="button" className="text-blue-600 font-semibold hover:underline">Privacy Policy</button> of Canx International.
                   </span>
                 </label>
               </div>
@@ -443,7 +443,7 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
+                  className="flex-1 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
                 >
                   {loading ? 'Submitting...' : 'Register Now'}
                 </button>
@@ -458,9 +458,9 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
   // --- Step: OTP ---
   if (step === 'otp') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-8">
         <div className="w-full max-w-md space-y-5">
-          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm">
+          <div className="rounded-3xl border border-blue-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm">
             <OtpVerification
               phone={form.phone}
               onVerify={handleVerifyOtp}
@@ -491,23 +491,23 @@ function RegistrationHeader({ currentStep }) {
     <div className="text-center space-y-3 mb-2">
       {/* Brand Identity */}
       <div className="flex flex-col items-center mb-6">
-        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-2 shadow-sm border border-green-100 p-2 overflow-hidden">
-          <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="w-full h-full object-contain" />
+        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-2 shadow-sm border border-blue-100 p-2 overflow-hidden">
+          <img src="/canxLogo.png" alt="Canx International" className="w-full h-full object-contain" />
         </div>
         <div className="flex flex-col -space-y-1">
-          <span className="text-lg font-black text-slate-900 tracking-tighter uppercase">Satpura <span className="text-green-600">Bio</span></span>
+          <span className="text-lg font-black text-slate-900 tracking-tighter uppercase">Canx <span className="text-blue-600">International</span></span>
           <span className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">Organic Solutions</span>
         </div>
       </div>
 
       <div className="flex justify-center items-center gap-2 mb-2">
         <StepIndicator active={currentStep === 1} completed={currentStep > 1} label="1" />
-        <div className={cn("w-12 h-0.5 rounded-full", currentStep > 1 ? "bg-green-600" : "bg-gray-200")} />
+        <div className={cn("w-12 h-0.5 rounded-full", currentStep > 1 ? "bg-blue-600" : "bg-gray-200")} />
         <StepIndicator active={currentStep === 2} completed={currentStep > 2} label="2" />
-        <div className={cn("w-12 h-0.5 rounded-full", currentStep > 2 ? "bg-green-600" : "bg-gray-200")} />
+        <div className={cn("w-12 h-0.5 rounded-full", currentStep > 2 ? "bg-blue-600" : "bg-gray-200")} />
         <StepIndicator active={currentStep === 3} completed={false} label="3" />
       </div>
-      <p className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Step {currentStep} of 2</p>
+      <p className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">Step {currentStep} of 2</p>
       <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">
         {currentStep === 1 ? 'Business & KYC' : 'Verify Documents'}
       </h1>
@@ -524,8 +524,8 @@ function StepIndicator({ active, completed, label }) {
   return (
     <div className={cn(
       "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300",
-      completed ? "bg-green-600 text-white" :
-        active ? "bg-green-100 text-green-700 ring-2 ring-green-600 ring-offset-2" :
+      completed ? "bg-blue-600 text-white" :
+        active ? "bg-blue-100 text-blue-700 ring-2 ring-blue-600 ring-offset-2" :
           "bg-gray-100 text-gray-400"
     )}>
       {completed ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg> : label}
@@ -544,7 +544,7 @@ function FormInput({ label, name, type = 'text', value, onChange, placeholder, r
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20 transition-all font-medium"
+        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
       />
     </div>
   )

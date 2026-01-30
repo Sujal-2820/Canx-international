@@ -124,11 +124,38 @@ const vendorSchema = new mongoose.Schema({
       type: Number,
       default: 30,
     },
-    penaltyRate: {
-      type: Number,
-      default: 2, // 2% default penalty rate (DEPRECATED)
-    },
     dueDate: Date,
+    overrideGlobalTiers: {
+      type: Boolean,
+      default: false,
+    },
+    customDiscountTiers: [{
+      tierName: String,
+      periodStart: Number,
+      periodEnd: Number,
+      discountRate: Number,
+    }],
+    customInterestTiers: [{
+      tierName: String,
+      periodStart: Number,
+      periodEnd: Number,
+      interestRate: Number,
+    }],
+    specialAgreement: {
+      active: {
+        type: Boolean,
+        default: false,
+      },
+      agreedAmount: {
+        type: Number,
+        default: 0,
+      },
+      notes: {
+        type: String,
+        trim: true,
+      },
+      updatedAt: Date,
+    },
   },
 
   // ============================================================================

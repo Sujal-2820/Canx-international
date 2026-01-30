@@ -118,10 +118,10 @@ export function AdminLogin({ onSubmit }) {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white mb-4 overflow-hidden border border-gray-200">
-            <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="h-full w-full object-contain p-2" />
+            <img src="/canxLogo.png" alt="Canx International" className="h-full w-full object-contain p-2" />
           </div>
           <p className="text-xs uppercase tracking-wide text-gray-600 font-semibold">Admin Access</p>
-          <h1 className="text-3xl font-bold text-gray-900">Sign in to Satpura Bio</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Sign in to Canx International</h1>
           <p className="text-sm text-gray-600">Enter your phone number to access admin dashboard</p>
         </div>
 

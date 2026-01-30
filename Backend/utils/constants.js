@@ -23,7 +23,7 @@ const ADVANCE_PAYMENT_PERCENTAGE = 30;
 const REMAINING_PAYMENT_PERCENTAGE = 70;
 const FULL_PAYMENT_PERCENTAGE = 100;
 
-// Satpura Partner Commission Structure
+// Canx Partner Commission Structure
 const IRA_PARTNER_COMMISSION_RATE_LOW = parseFloat(process.env.IRA_PARTNER_COMMISSION_RATE_LOW) || 2; // 2%
 const IRA_PARTNER_COMMISSION_RATE_HIGH = parseFloat(process.env.IRA_PARTNER_COMMISSION_RATE_HIGH) || 3; // 3%
 const IRA_PARTNER_COMMISSION_THRESHOLD = parseInt(process.env.IRA_PARTNER_COMMISSION_THRESHOLD) || 50000;

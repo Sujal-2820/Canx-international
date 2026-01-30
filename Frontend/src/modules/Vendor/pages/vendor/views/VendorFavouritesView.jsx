@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useVendorState, useVendorDispatch } from '../../../context/VendorContext'
-import { ProductCard } from '../../../../User/components/ProductCard'
-import { HeartIcon } from '../../../../Vendor/components/icons'
+import { ProductCard, HeartIcon } from '../../../../../components/shared/catalog'
 import { cn } from '../../../../../lib/cn'
-import * as userApi from '../../../../User/services/userApi'
+import * as catalogApi from '../../../../../services/catalogApi'
 import { TransText } from '../../../../../components/TransText'
 import { Trans } from '../../../../../components/Trans'
+import '../../../../../styles/product-card.css'
 
 export function VendorFavouritesView({ onProductClick, onAddToCart, onRemoveFromFavourites }) {
     const { favourites } = useVendorState()
@@ -20,7 +20,7 @@ export function VendorFavouritesView({ onProductClick, onAddToCart, onRemoveFrom
             try {
                 const productPromises = favourites.map(async (id) => {
                     try {
-                        const result = await userApi.getProductDetails(id)
+                        const result = await catalogApi.getProductDetails(id)
                         if (result.success && result.data?.product) {
                             return result.data.product
                         }

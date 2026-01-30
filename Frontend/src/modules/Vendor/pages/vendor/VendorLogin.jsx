@@ -150,9 +150,9 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
 
   if (step === 'otp') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-8">
         <div className="w-full max-w-md space-y-5">
-          <div className="rounded-3xl border border-green-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm">
+          <div className="rounded-3xl border border-blue-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm">
             <OtpVerification
               phone={form.phone}
               onVerify={handleVerifyOtp}
@@ -169,25 +169,25 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 px-4 py-8">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-8">
       <div className="w-full max-w-md space-y-5">
         <div className="text-center space-y-3 mb-2">
           {/* Brand Identity */}
           <div className="flex flex-col items-center mb-6">
-            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-2 shadow-sm border border-green-100 p-2 overflow-hidden">
-              <img src="/assets/Satpura-1.webp" alt="Satpura Bio" className="w-full h-full object-contain" />
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-2 shadow-sm border border-blue-100 p-2 overflow-hidden">
+              <img src="/canxLogo.png" alt="Canx International" className="w-full h-full object-contain" />
             </div>
             <div className="flex flex-col -space-y-1">
-              <span className="text-lg font-black text-slate-900 tracking-tighter uppercase">Satpura <span className="text-green-600">Bio</span></span>
+              <span className="text-lg font-black text-slate-900 tracking-tighter uppercase">Canx <span className="text-blue-600">International</span></span>
               <span className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">Organic Solutions</span>
             </div>
           </div>
-          <p className="text-[10px] uppercase tracking-wide text-green-600 font-bold">Welcome Back</p>
+          <p className="text-[10px] uppercase tracking-wide text-blue-600 font-bold">Welcome Back</p>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">Vendor Login</h1>
           <p className="text-xs text-gray-500">Enter your contact number to continue</p>
         </div>
 
-        <div className="rounded-3xl border border-green-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm">
+        <div className="rounded-3xl border border-blue-200/60 bg-white/90 p-6 md:p-8 shadow-xl backdrop-blur-sm">
           <form onSubmit={handleRequestOtp} className="space-y-5">
             {error && (
               <div className="rounded-2xl bg-red-50 border border-red-200 p-4">
@@ -212,7 +212,7 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-full bg-gradient-to-r from-green-600 to-green-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-full bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-3.5 text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Sending OTP...' : 'Continue'}
             </button>
@@ -222,7 +222,7 @@ export function VendorLogin({ onSuccess, onSwitchToRegister }) {
               <button
                 type="button"
                 onClick={onSwitchToRegister}
-                className="text-green-600 font-semibold hover:underline"
+                className="text-blue-600 font-semibold hover:underline"
               >
                 Sign up
               </button>

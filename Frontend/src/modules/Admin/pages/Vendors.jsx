@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Building2, CreditCard, MapPin, ShieldAlert, Edit2, Eye, Package, Ban, Unlock, CheckCircle, XCircle, ArrowLeft, Calendar, FileText, ExternalLink, Search, MoreVertical, User, Phone, Mail, Store, Info } from 'lucide-react'
+import { Building2, CreditCard, MapPin, ShieldAlert, Edit2, Eye, Package, Ban, Unlock, CheckCircle, XCircle, ArrowLeft, Calendar, FileText, ExternalLink, Search, MoreVertical, User, Phone, Mail, Store, Info, Trash2, ArrowUpDown } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { Timeline } from '../components/Timeline'
@@ -71,7 +71,6 @@ const columns = [
   { Header: 'Coverage', accessor: 'coverageRadius' },
   { Header: 'Credit Limit', accessor: 'creditLimit' },
   { Header: 'Repayment', accessor: 'repayment' },
-  { Header: 'Penalty Rate', accessor: 'penalty' },
   { Header: 'Status', accessor: 'status' },
   { Header: 'Outstanding Dues', accessor: 'dues' },
   { Header: 'Actions', accessor: 'actions' },
@@ -88,8 +87,10 @@ export function VendorsPage({ subRoute = null, navigate }) {
     updateVendorCreditPolicy,
     updateVendor,
     getVendorPurchaseRequests,
+    getVendorRankings,
     approveVendorPurchase,
     rejectVendorPurchase,
+    deleteVendorPurchase,
     loading,
   } = useAdminApi()
   const { success, error: showError, warning: showWarning } = useToast()
@@ -113,6 +114,14 @@ export function VendorsPage({ subRoute = null, navigate }) {
   const [banType, setBanType] = useState('temporary')
   const [banReason, setBanReason] = useState('')
   const [revocationReason, setRevocationReason] = useState('')
+  const [deletionReason, setDeletionReason] = useState('')
+
+  // Rankings state
+  const [rankings, setRankings] = useState([])
+  const [rankingsSort, setRankingsSort] = useState('creditScore')
+  const [rankingsOrder, setRankingsOrder] = useState('desc')
+  const [rankingsLoading, setRankingsLoading] = useState(false)
+
   const [purchaseRejectReason, setPurchaseRejectReason] = useState(null) // null = not showing, '' = showing input
   const [searchQuery, setSearchQuery] = useState('')
   const [processingPurchase, setProcessingPurchase] = useState(false) // Local loading state for purchase actions
@@ -137,7 +146,6 @@ export function VendorsPage({ subRoute = null, navigate }) {
       creditLimit: creditLimit >= 100000 ? `₹${(creditLimit / 100000).toFixed(1)} L` : `₹${creditLimit.toLocaleString('en-IN')}`,
       dues: dues >= 100000 ? `₹${(dues / 100000).toFixed(1)} L` : `₹${dues.toLocaleString('en-IN')}`,
       repayment: vendor.repaymentDays ? `${vendor.repaymentDays} days` : vendor.repayment || 'N/A',
-      penalty: vendor.penaltyRate ? `${vendor.penaltyRate}%` : vendor.penalty || 'N/A',
       coverageRadius: vendor.coverageRadius ? `${vendor.coverageRadius} km` : 'N/A',
       coverageCompliance: isFlagged ? 'Conflict' : 'Compliant',
     }
@@ -211,10 +219,35 @@ export function VendorsPage({ subRoute = null, navigate }) {
     }
   }, [getVendorPurchaseRequests])
 
+  const fetchRankings = useCallback(async () => {
+    setRankingsLoading(true)
+    try {
+      const result = await getVendorRankings({ sortBy: rankingsSort, order: rankingsOrder, limit: 100 })
+      if (result.data?.rankings) {
+        setRankings(result.data.rankings)
+      }
+    } catch (error) {
+      console.error('Failed to fetch rankings:', error)
+    } finally {
+      setRankingsLoading(false)
+    }
+  }, [getVendorRankings, rankingsSort, rankingsOrder])
+
+  const handleViewDetails = (vendor) => {
+    setSelectedVendorForDetail(vendor)
+    setCurrentView('detail')
+  }
+
+  // Initial fetch
   useEffect(() => {
-    fetchVendors()
-    fetchPurchaseRequests()
-  }, [fetchVendors, fetchPurchaseRequests])
+    if (subRoute === 'purchase-requests') {
+      fetchPurchaseRequests()
+    } else if (subRoute === 'rankings') {
+      fetchRankings()
+    } else {
+      fetchVendors()
+    }
+  }, [fetchVendors, fetchPurchaseRequests, fetchRankings, subRoute])
 
   // Handle purchase-requests subRoute - show purchase requests view
   useEffect(() => {
@@ -362,6 +395,27 @@ export function VendorsPage({ subRoute = null, navigate }) {
       }
     } catch (error) {
       showError(error.message || 'Failed to reject vendor', 5000)
+    }
+  }
+
+  const handleDeletePurchaseRequest = async (requestId) => {
+    if (window.confirm('Are you sure you want to permanently delete this purchase invoice? This action cannot be undone.')) {
+      try {
+        const result = await deleteVendorPurchase(requestId)
+        if (result.success) {
+          success('Purchase invoice deleted successfully')
+          fetchPurchaseRequests()
+          // If we were viewing this request, go back to list
+          if (selectedPurchaseRequest?.id === requestId || selectedPurchaseRequest?._id === requestId) {
+            setCurrentView(null)
+            setSelectedPurchaseRequest(null)
+          }
+        } else {
+          showError(result.error?.message || 'Failed to delete purchase invoice')
+        }
+      } catch (error) {
+        showError('An error occurred while deleting the invoice')
+      }
     }
   }
 
@@ -1708,11 +1762,153 @@ export function VendorsPage({ subRoute = null, navigate }) {
                   >
                     <Eye className="h-4 w-4" />
                   </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDeletePurchaseRequest(request.id || request._id)
+                    }}
+                    className="ml-2 flex h-9 w-9 items-center justify-center rounded-lg border border-red-300 bg-white text-red-600 transition-all hover:border-red-500 hover:bg-red-50"
+                    title="Delete invoice"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               ))}
             </div>
           </div>
         )}
+      </div>
+    )
+  }
+
+  if (subRoute === 'rankings') {
+    const handleSort = (key) => {
+      if (rankingsSort === key) {
+        setRankingsOrder(rankingsOrder === 'desc' ? 'asc' : 'desc')
+      } else {
+        setRankingsSort(key)
+        setRankingsOrder('desc')
+      }
+    }
+
+    const SortIcon = ({ column }) => {
+      if (rankingsSort !== column) return <ArrowUpDown className="ml-1 h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-50" />
+      return <ArrowUpDown className={cn("ml-1 h-3 w-3 text-blue-600", rankingsOrder === 'asc' && "rotate-180")} />
+    }
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Step 3 • Vendor Management</p>
+          <h2 className="text-2xl font-bold text-gray-900">Vendor Rankings</h2>
+          <p className="text-sm text-gray-600">
+            Top performing vendors based on order frequency, repayments, and credit score.
+          </p>
+        </div>
+
+        <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-[0_4px_15px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)]">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-gray-600">
+                <tr>
+                  <th className="px-6 py-4 font-semibold text-gray-900 rounded-l-xl">Rank</th>
+                  <th className="px-6 py-4 font-semibold text-gray-900">Vendor</th>
+                  <th
+                    className="group cursor-pointer px-6 py-4 font-semibold text-gray-900 hover:bg-gray-100 transition-colors"
+                    onClick={() => handleSort('orderFrequency')}
+                  >
+                    <div className="flex items-center">
+                      Order Frequency
+                      <SortIcon column="orderFrequency" />
+                    </div>
+                  </th>
+                  <th
+                    className="group cursor-pointer px-6 py-4 font-semibold text-gray-900 hover:bg-gray-100 transition-colors"
+                    onClick={() => handleSort('repaymentFrequency')}
+                  >
+                    <div className="flex items-center">
+                      Repayment Freq.
+                      <SortIcon column="repaymentFrequency" />
+                    </div>
+                  </th>
+                  <th
+                    className="group cursor-pointer px-6 py-4 font-semibold text-gray-900 hover:bg-gray-100 transition-colors"
+                    onClick={() => handleSort('repaymentAmount')}
+                  >
+                    <div className="flex items-center">
+                      Repaid Amount
+                      <SortIcon column="repaymentAmount" />
+                    </div>
+                  </th>
+                  <th
+                    className="group cursor-pointer px-6 py-4 font-semibold text-gray-900 hover:bg-gray-100 transition-colors rounded-r-xl"
+                    onClick={() => handleSort('creditScore')}
+                  >
+                    <div className="flex items-center">
+                      Credit Score
+                      <SortIcon column="creditScore" />
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {rankingsLoading ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                      Loading rankings...
+                    </td>
+                  </tr>
+                ) : rankings.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                      No ranking data available.
+                    </td>
+                  </tr>
+                ) : (
+                  rankings.map((vendor, index) => (
+                    <tr
+                      key={vendor._id}
+                      className="transition-colors hover:bg-gray-50 cursor-pointer"
+                      onClick={() => handleViewDetails(vendor)}
+                    >
+                      <td className="px-6 py-4 font-medium text-gray-900">
+                        {index + 1}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-gray-900">{vendor.name}</div>
+                        <div className="text-xs text-gray-500">{vendor.shopName}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-gray-900">{vendor.orderCount || 0}</div>
+                        <div className="text-xs text-gray-500">Orders</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-gray-900">{vendor.creditHistory?.totalRepaymentCount || 0}</div>
+                        <div className="text-xs text-gray-500">Repayments</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-green-600">₹{(vendor.creditHistory?.totalRepaid || 0).toLocaleString('en-IN')}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "font-bold px-2 py-0.5 rounded-md text-xs",
+                            (vendor.creditHistory?.creditScore || 0) >= 80 ? "bg-green-100 text-green-700" :
+                              (vendor.creditHistory?.creditScore || 0) >= 50 ? "bg-yellow-100 text-yellow-700" :
+                                "bg-red-100 text-red-700"
+                          )}>
+                            {vendor.creditHistory?.creditScore || 0}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     )
   }

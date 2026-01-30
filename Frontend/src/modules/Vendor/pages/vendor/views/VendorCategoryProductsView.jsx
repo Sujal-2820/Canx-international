@@ -1,11 +1,21 @@
 import { useMemo, useState, useEffect } from 'react'
-import { ProductCard } from '../../../../User/components/ProductCard'
-import { ChevronLeftIcon, FilterIcon } from '../../../../Vendor/components/icons'
+import { ProductCard, ChevronLeftIcon, FilterIcon } from '../../../../../components/shared/catalog'
 import { cn } from '../../../../../lib/cn'
-import * as userApi from '../../../../User/services/userApi'
+import * as catalogApi from '../../../../../services/catalogApi'
 import { useVendorApi } from '../../../hooks/useVendorApi'
 import { TransText } from '../../../../../components/TransText'
 import { Trans } from '../../../../../components/Trans'
+import '../../../../../styles/product-card.css'
+
+const formatCategoryName = (name) => {
+    if (!name) return name
+    // Add spaces before 'Fertilizer' if camelCased or concatenated
+    const fertilizerMatch = name.match(/(\w+)(Fertilizer)/i)
+    if (fertilizerMatch && fertilizerMatch[1] && fertilizerMatch[2] && !name.includes(' ')) {
+        return `${fertilizerMatch[1]} ${fertilizerMatch[2]}`
+    }
+    return name
+}
 
 export function VendorCategoryProductsView({ categoryId, onProductClick, onAddToCart, onBack, onToggleFavourite, favourites = [] }) {
     const [selectedCategory, setSelectedCategory] = useState(categoryId || 'all')
@@ -26,9 +36,30 @@ export function VendorCategoryProductsView({ categoryId, onProductClick, onAddTo
     useEffect(() => {
         const loadCategories = async () => {
             try {
-                const result = await userApi.getCategories()
-                if (result.success && result.data?.categories) {
-                    setCategories(result.data.categories)
+                // Fetch products first for fallback if needed
+                const productsResult = await getProducts({ limit: 100 })
+                let fallbackCategories = []
+                if (productsResult.data?.products) {
+                    const uniqueCats = Array.from(new Set(productsResult.data.products.map(p => p.category).filter(Boolean)))
+                    fallbackCategories = uniqueCats.map(name => ({
+                        id: name.toLowerCase().replace(/\s+/g, '-'),
+                        name: name,
+                        fallback: true
+                    }))
+                }
+
+                const result = await catalogApi.getCategories()
+                if (result.success && (Array.isArray(result.data) || result.data?.categories)) {
+                    const rawCats = Array.isArray(result.data) ? result.data : (result.data.categories || [])
+                    const standardized = rawCats.map(cat => ({
+                        id: cat._id || cat.id,
+                        name: cat.name || '',
+                        image: cat.image?.url || cat.image || cat.icon || cat.imageUrl || null,
+                        emoji: cat.emoji || '📦'
+                    }))
+                    setCategories(standardized.length > 0 ? standardized : fallbackCategories)
+                } else {
+                    setCategories(fallbackCategories)
                 }
             } catch (error) {
                 console.error('Error loading categories:', error)
@@ -172,7 +203,7 @@ export function VendorCategoryProductsView({ categoryId, onProductClick, onAddTo
                 <div className="user-category-products-view__header-content">
                     <div className="user-category-products-view__header-text">
                         <h2 className="user-category-products-view__title">
-                            {category ? <TransText>{category.name}</TransText> : <Trans>All Products</Trans>}
+                            {category ? <TransText>{formatCategoryName(category.name)}</TransText> : <Trans>All Products</Trans>}
                         </h2>
                         <p className="user-category-products-view__subtitle">
                             {filteredProducts.length} <Trans>{filteredProducts.length === 1 ? 'product' : 'products'}</Trans> <Trans>available</Trans>
@@ -297,7 +328,7 @@ export function VendorCategoryProductsView({ categoryId, onProductClick, onAddTo
                             )}
                             onClick={() => setSelectedCategory(cat._id || cat.id)}
                         >
-                            {cat.name === 'All' ? <Trans>All</Trans> : <TransText>{cat.name}</TransText>}
+                            {cat.name === 'All' ? <Trans>All</Trans> : <TransText>{formatCategoryName(cat.name)}</TransText>}
                         </button>
                     ))}
                 </div>

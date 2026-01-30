@@ -58,7 +58,7 @@ export function VendorIncentivesView() {
         switch (rewardType) {
             case 'cashback':
             case 'bonus_credit':
-                return 'bg-green-50 text-green-700 border-green-200'
+                return 'bg-blue-50 text-blue-700 border-blue-200'
             case 'voucher':
                 return 'bg-blue-50 text-blue-700 border-blue-200'
             case 'gym_membership':
@@ -90,7 +90,7 @@ export function VendorIncentivesView() {
         const badges = {
             pending: { color: 'bg-yellow-50 text-yellow-700 border-yellow-200', label: 'Pending Approval' },
             pending_approval: { color: 'bg-yellow-50 text-yellow-700 border-yellow-200', label: 'Pending Approval' },
-            approved: { color: 'bg-green-50 text-green-700 border-green-200', label: 'Approved' },
+            approved: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Approved' },
             claimed: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Claimed' },
             rejected: { color: 'bg-red-50 text-red-700 border-red-200', label: 'Rejected' }
         }
@@ -100,7 +100,7 @@ export function VendorIncentivesView() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
         )
     }
@@ -108,7 +108,7 @@ export function VendorIncentivesView() {
     return (
         <div className="pb-24 space-y-6">
             {/* Header */}
-            <div className="bg-gradient-to-r from-green-600 to-green-700 -mx-4 px-4 py-6 text-white">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 -mx-4 px-4 py-6 text-white">
                 <div className="flex items-center gap-3 mb-2">
                     <GiftIcon className="h-8 w-8" />
                     <div>
@@ -125,7 +125,7 @@ export function VendorIncentivesView() {
                     className={cn(
                         "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all",
                         activeTab === 'available'
-                            ? "bg-white text-green-700 shadow-sm"
+                            ? "bg-white text-blue-700 shadow-sm"
                             : "text-gray-600 hover:text-gray-900"
                     )}
                 >
@@ -136,7 +136,7 @@ export function VendorIncentivesView() {
                     className={cn(
                         "flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all",
                         activeTab === 'earned'
-                            ? "bg-white text-green-700 shadow-sm"
+                            ? "bg-white text-blue-700 shadow-sm"
                             : "text-gray-600 hover:text-gray-900"
                     )}
                 >
@@ -159,10 +159,10 @@ export function VendorIncentivesView() {
                             return (
                                 <div
                                     key={scheme._id || index}
-                                    className="bg-white rounded-2xl border-2 border-gray-100 overflow-hidden hover:border-green-200 transition-all"
+                                    className="bg-white rounded-2xl border-2 border-gray-100 overflow-hidden hover:border-blue-200 transition-all"
                                 >
                                     {/* Header */}
-                                    <div className="bg-gradient-to-r from-green-50 to-blue-50 p-4 border-b border-gray-100">
+                                    <div className="bg-gradient-to-r from-blue-50 to-blue-50 p-4 border-b border-gray-100">
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="flex-1">
                                                 <h3 className="font-bold text-gray-900 text-base mb-1">
@@ -173,7 +173,7 @@ export function VendorIncentivesView() {
                                                 </p>
                                             </div>
                                             <div className="flex-shrink-0">
-                                                <RewardIcon className="h-8 w-8 text-green-600" />
+                                                <RewardIcon className="h-8 w-8 text-blue-600" />
                                             </div>
                                         </div>
                                     </div>
@@ -191,26 +191,26 @@ export function VendorIncentivesView() {
                                         </div>
 
                                         {/* Threshold & Reward */}
-                                        <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
+                                        <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
                                             <div className="flex items-center justify-between">
                                                 <div>
-                                                    <p className="text-[10px] text-green-700 font-medium uppercase tracking-wide mb-1">
+                                                    <p className="text-[10px] text-blue-700 font-medium uppercase tracking-wide mb-1">
                                                         <Trans>Order Value Required</Trans>
                                                     </p>
-                                                    <p className="text-2xl font-black text-green-800">
+                                                    <p className="text-2xl font-black text-blue-800">
                                                         ₹{Number(scheme.minPurchaseAmount).toLocaleString('en-IN')}
                                                         {scheme.maxPurchaseAmount && (
-                                                            <span className="text-sm font-normal text-green-600 ml-1">
+                                                            <span className="text-sm font-normal text-blue-600 ml-1">
                                                                 - ₹{Number(scheme.maxPurchaseAmount).toLocaleString('en-IN')}
                                                             </span>
                                                         )}
                                                     </p>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="text-[10px] text-green-700 font-medium uppercase tracking-wide mb-1">
+                                                    <p className="text-[10px] text-blue-700 font-medium uppercase tracking-wide mb-1">
                                                         <Trans>You'll Receive</Trans>
                                                     </p>
-                                                    <p className="text-xl font-black text-green-800">
+                                                    <p className="text-xl font-black text-blue-800">
                                                         {formatRewardValue(scheme)}
                                                     </p>
                                                 </div>
@@ -232,7 +232,7 @@ export function VendorIncentivesView() {
                                                 )}
                                                 {scheme.conditions.minOrderCount > 1 && (
                                                     <div className="flex items-center gap-2 text-xs text-gray-600">
-                                                        <CheckIcon className="h-4 w-4 text-green-500" />
+                                                        <CheckIcon className="h-4 w-4 text-blue-500" />
                                                         <span><Trans>Minimum {scheme.conditions.minOrderCount} orders required</Trans></span>
                                                     </div>
                                                 )}
@@ -303,7 +303,7 @@ export function VendorIncentivesView() {
                                     <div className="bg-gray-50 rounded-lg p-3">
                                         <p className="text-xs text-gray-700 font-medium">
                                             <Trans>Reward Value</Trans>:{' '}
-                                            <span className="text-green-700 font-bold">
+                                            <span className="text-blue-700 font-bold">
                                                 {reward.incentiveSnapshot?.rewardValue || reward.rewardValue || 'Contact Admin'}
                                             </span>
                                         </p>

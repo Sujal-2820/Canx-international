@@ -1,7 +1,7 @@
 {
-  "name": "satpura-bio-backend",
+  "name": "canx-international-backend",
   "version": "1.0.0",
-  "description": "Satpura Bio - Fertilizer Management Ecosystem Backend API",
+  "description": "Canx International - Fertilizer Management Ecosystem Backend API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -38,7 +38,7 @@
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^5.1.0",
+    "express": "^5.2.1",
     "firebase-admin": "^13.6.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",

@@ -94,7 +94,7 @@ export function RewardsWidget({
                                     <div className={cn(
                                         "w-2 h-2 rounded-full mt-1.5",
                                         item.status === 'pending_approval' ? "bg-amber-400 animate-pulse" :
-                                            item.status === 'approved' ? "bg-green-500" : "bg-purple-600"
+                                            item.status === 'approved' ? "bg-blue-500" : "bg-purple-600"
                                     )} />
                                     <div className="flex-1 min-w-0">
                                         <div className="text-[11px] font-bold text-gray-800 line-clamp-1 uppercase">
@@ -107,7 +107,7 @@ export function RewardsWidget({
                                             <div className={cn(
                                                 "text-[9px] font-black uppercase px-1.5 py-0.5 rounded",
                                                 item.status === 'pending_approval' ? "bg-amber-50 text-amber-600" :
-                                                    item.status === 'approved' ? "bg-green-50 text-green-600" : "bg-purple-50 text-purple-600"
+                                                    item.status === 'approved' ? "bg-blue-50 text-blue-600" : "bg-purple-50 text-purple-600"
                                             )}>
                                                 {item.status.replace(/_/g, ' ')}
                                             </div>

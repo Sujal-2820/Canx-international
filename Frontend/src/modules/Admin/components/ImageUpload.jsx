@@ -74,7 +74,7 @@ export function ImageUpload({ images = [], onChange, maxImages = 4, disabled = f
       // croppingAspectRatio: 1, // Removed to allow any aspect ratio
       croppingShowDimensions: true,
       croppingDefaultSelectionRatio: 0.9,
-      folder: 'satpura-bio/products', // Organize images in folder
+      folder: 'canx/products', // Organize images in folder
       transformation: [
         {
           width: 1200,

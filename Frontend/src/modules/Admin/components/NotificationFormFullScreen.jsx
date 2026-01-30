@@ -5,7 +5,6 @@ import { useAdminApi } from '../hooks/useAdminApi'
 
 const TARGET_AUDIENCES = [
   { value: 'all', label: 'All Users', icon: Users },
-  { value: 'sellers', label: 'Satpura Partners', icon: ShieldCheck },
   { value: 'vendors', label: 'Vendors', icon: Building2 },
   { value: 'users', label: 'Users (Farmers)', icon: Users },
 ]
@@ -65,9 +64,6 @@ export function NotificationFormFullScreen({ notification, onSave, onDelete, onC
         if (formData.targetAudience === 'vendors') {
           const result = await fetchVendors({ limit: 200 })
           data = (result?.vendors || []).map(v => ({ id: v._id || v.id, name: v.businessName || v.name, phone: v.phone }))
-        } else if (formData.targetAudience === 'sellers') {
-          const result = await fetchSellers({ limit: 200 })
-          data = (result?.sellers || []).map(s => ({ id: s._id || s.id, name: s.name, phone: s.phone }))
         } else if (formData.targetAudience === 'users') {
           const result = await fetchUsers({ limit: 200 })
           data = (result?.users || []).map(u => ({ id: u._id || u.id, name: u.name, phone: u.phone }))
@@ -179,7 +175,7 @@ export function NotificationFormFullScreen({ notification, onSave, onDelete, onC
           <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Step 8 • Operational Controls</p>
           <h2 className="text-2xl font-bold text-gray-900">{notification ? 'Edit Notification' : 'Add Notification'}</h2>
           <p className="text-sm text-gray-600">
-            Create or update platform notifications for users, vendors, and Satpura partners.
+            Create or update platform notifications for users and vendors.
           </p>
         </div>
       </div>

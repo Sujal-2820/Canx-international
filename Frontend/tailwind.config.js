@@ -11,10 +11,10 @@ export default {
           secondary: 'hsl(220 18% 18%)',
         },
         brand: {
-          DEFAULT: 'hsl(142 52% 52%)',
+          DEFAULT: 'hsl(215 72% 37%)',
           foreground: 'hsl(0 0% 99%)',
-          soft: 'hsl(142 45% 25%)',
-          light: 'hsl(142 50% 35%)',
+          soft: 'hsl(215 45% 15%)',
+          light: 'hsl(215 50% 25%)',
         },
         muted: {
           DEFAULT: 'hsl(220 15% 25%)',
