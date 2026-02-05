@@ -15,7 +15,6 @@ import { useVendorApi } from '../../../hooks/useVendorApi'
 import { getPrimaryImageUrl } from '../../../../../utils/productImages'
 import { Trans } from '../../../../../components/Trans'
 import { TransText } from '../../../../../components/TransText'
-import { GoogleMapsLocationPicker } from '../../../../../components/GoogleMapsLocationPicker'
 
 export function VendorCheckoutView({ onBack, onOrderPlaced }) {
     const { cart, profile, settings } = useVendorState()
@@ -29,7 +28,12 @@ export function VendorCheckoutView({ onBack, onOrderPlaced }) {
 
     // Address Editing State
     const [isEditingAddress, setIsEditingAddress] = useState(false)
-    const [tempLocation, setTempLocation] = useState(null)
+    const [tempLocation, setTempLocation] = useState({
+        address: profile?.location?.address || '',
+        city: profile?.location?.city || '',
+        state: profile?.location?.state || '',
+        pincode: profile?.location?.pincode || ''
+    })
     const [isUpdatingAddress, setIsUpdatingAddress] = useState(false)
 
     // Wholesale Order Requirements (New)
@@ -44,15 +48,8 @@ export function VendorCheckoutView({ onBack, onOrderPlaced }) {
     const [confirmationText, setConfirmationText] = useState('')
     const [policyAccepted, setPolicyAccepted] = useState(false)
 
-    // Dynamically get the primary discount rate (usually 0-5 or 0-30 days)
-    const CASH_DISCOUNT_PERCENT = useMemo(() => {
-        if (repaymentRules.discountTiers && repaymentRules.discountTiers.length > 0) {
-            // Find the tier that starts at 0 (or the earliest one)
-            const sortedByStart = [...repaymentRules.discountTiers].sort((a, b) => a.start - b.start)
-            return sortedByStart[0].rate
-        }
-        return 0 // Fallback
-    }, [repaymentRules.discountTiers])
+    // Dynamically get the primary discount rate (Fixed at 7% for Scenario 1)
+    const CASH_DISCOUNT_PERCENT = 7
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -98,7 +95,8 @@ export function VendorCheckoutView({ onBack, onOrderPlaced }) {
         const baseTotal = subtotal + delivery
 
         // Calculate 7% discount if paying "cash" (online) now
-        const cashDiscount = paymentMode === 'cash' ? (baseTotal * CASH_DISCOUNT_PERCENT) / 100 : 0
+        const discountRate = paymentMode === 'cash' ? 7 : 0
+        const cashDiscount = Math.round((baseTotal * discountRate) / 100)
         const finalTotal = baseTotal - cashDiscount
 
         return {
@@ -210,11 +208,52 @@ export function VendorCheckoutView({ onBack, onOrderPlaced }) {
 
                 {isEditingAddress ? (
                     <div className="space-y-4 animate-in fade-in slide-in-from-top duration-300">
-                        <GoogleMapsLocationPicker
-                            initialLocation={profile.location}
-                            onLocationSelect={(loc) => setTempLocation(loc)}
-                            label={<Trans>Update Delivery Address</Trans>}
-                        />
+                        <div className="space-y-3">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-gray-700">Complete Address</label>
+                                <textarea
+                                    value={tempLocation.address}
+                                    onChange={(e) => setTempLocation(prev => ({ ...prev, address: e.target.value }))}
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 transition-all resize-none"
+                                    rows={2}
+                                    placeholder="Building, Street, Landmark..."
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-700">City</label>
+                                    <input
+                                        type="text"
+                                        value={tempLocation.city}
+                                        onChange={(e) => setTempLocation(prev => ({ ...prev, city: e.target.value }))}
+                                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 transition-all font-medium"
+                                        placeholder="City"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-700">State</label>
+                                    <input
+                                        type="text"
+                                        value={tempLocation.state}
+                                        onChange={(e) => setTempLocation(prev => ({ ...prev, state: e.target.value }))}
+                                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 transition-all font-medium"
+                                        placeholder="State"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-gray-700">Pincode</label>
+                                <input
+                                    type="text"
+                                    value={tempLocation.pincode}
+                                    onChange={(e) => setTempLocation(prev => ({ ...prev, pincode: e.target.value }))}
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs focus:ring-1 focus:ring-blue-500 transition-all font-medium"
+                                    placeholder="Pincode"
+                                />
+                            </div>
+                        </div>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setIsEditingAddress(false)}
@@ -223,11 +262,11 @@ export function VendorCheckoutView({ onBack, onOrderPlaced }) {
                                 <Trans>Cancel</Trans>
                             </button>
                             <button
-                                disabled={!tempLocation || isUpdatingAddress}
+                                disabled={!tempLocation.address || !tempLocation.city || !tempLocation.state || !tempLocation.pincode || isUpdatingAddress}
                                 onClick={handleUpdateAddress}
                                 className={cn(
                                     "flex-2 py-2 px-4 text-xs font-bold rounded-xl transition-all",
-                                    !tempLocation || isUpdatingAddress
+                                    (!tempLocation.address || !tempLocation.city || !tempLocation.state || !tempLocation.pincode || isUpdatingAddress)
                                         ? "bg-gray-100 text-gray-400"
                                         : "bg-blue-600 text-white"
                                 )}
@@ -333,7 +372,7 @@ export function VendorCheckoutView({ onBack, onOrderPlaced }) {
                             <span className="font-bold text-sm text-gray-900"><Trans>Instant Cash Payment</Trans></span>
                         </div>
                         <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold uppercase">
-                            <Trans>REWARD: 7% Off</Trans>
+                            <Trans>REWARD: {CASH_DISCOUNT_PERCENT}% Off</Trans>
                         </span>
                     </div>
                     <p className="text-[11px] text-gray-500 mb-2"><Trans>Pay immediately for the highest cash discount benefit.</Trans></p>
@@ -468,11 +507,19 @@ export function VendorCheckoutView({ onBack, onOrderPlaced }) {
                         <div className="bg-white/70 p-3 rounded-lg border border-orange-100">
                             <p className="text-[10px] text-gray-700 leading-relaxed space-y-1">
                                 <span className="block font-semibold text-orange-800"><Trans>Important Terms:</Trans></span>
-                                <span className="block">• <Trans>Repayment within 0-15 days: 5% discount</Trans></span>
-                                <span className="block">• <Trans>Repayment within 16-30 days: 2% discount</Trans></span>
-                                <span className="block">• <Trans>Repayment after 45 days: 2% interest charge</Trans></span>
-                                <span className="block">• <Trans>Repayment after 61 days: 5% interest charge</Trans></span>
-                                <span className="block font-semibold text-orange-800 mt-2"><Trans>Your bank details will be securely stored for settlement processing.</Trans></span>
+                                {repaymentRules.discountTiers && repaymentRules.discountTiers.map((tier) => (
+                                    <span key={tier.id} className="block">
+                                        • <Trans>Repayment within {tier.start}-{tier.end} days: {tier.rate}% discount</Trans>
+                                    </span>
+                                ))}
+                                {repaymentRules.interestTiers && repaymentRules.interestTiers.map((tier) => (
+                                    <span key={tier.id} className="block">
+                                        • <Trans>Repayment after {tier.start} days: {tier.rate}% interest charge</Trans>
+                                    </span>
+                                ))}
+                                {(!repaymentRules.discountTiers?.length && !repaymentRules.interestTiers?.length) && (
+                                    <span className="block italic text-gray-400"><Trans>Standard credit terms apply.</Trans></span>
+                                )}
                             </p>
                         </div>
 

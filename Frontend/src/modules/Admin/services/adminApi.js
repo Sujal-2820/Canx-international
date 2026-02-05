@@ -1203,6 +1203,34 @@ export async function deleteVendorPurchase(requestId) {
 
 
 /**
+ * Mark Vendor Purchase as Being Processed (Packing)
+ * POST /admin/vendors/purchases/:requestId/process
+ * 
+ * @param {string} requestId - Purchase request ID
+ * @param {Object} deliveryData - { deliveryNotes?: string }
+ * @returns {Promise<Object>} - { message: string, purchase: Object }
+ */
+export async function processVendorPurchaseStock(requestId, deliveryData) {
+  const response = await apiRequest(`/admin/vendors/purchases/${requestId}/process`, {
+    method: 'POST',
+    body: JSON.stringify(deliveryData || {}),
+  })
+
+  // Transform backend response to frontend format
+  if (response.success && response.data) {
+    return {
+      success: true,
+      data: {
+        purchase: response.data.purchase ? transformPurchaseRequest(response.data.purchase) : undefined,
+        message: response.data.message || 'Stock marked as processing',
+      },
+    }
+  }
+
+  return response
+}
+
+/**
  * Send Stock for Vendor Purchase
  * POST /admin/vendors/purchases/:requestId/send
  * 

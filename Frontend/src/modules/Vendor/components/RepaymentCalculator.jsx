@@ -10,19 +10,21 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Calendar, Calculator, TrendingDown, TrendingUp, DollarSign, Info, CheckCircle, Loader, ArrowRight, ChevronRight } from 'lucide-react'
+import { Calendar, Calculator, TrendingDown, TrendingUp, DollarSign, Info, CheckCircle, Loader, ArrowRight, ChevronRight, AlertCircle } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 import { Trans } from '../../../components/Trans'
 
 export function RepaymentCalculator({ vendorApi, onSuccess }) {
     const [purchases, setPurchases] = useState([])
     const [selectedPurchase, setSelectedPurchase] = useState(null)
-    const [repaymentDate, setRepaymentDate] = useState(new Date().toISOString().split('T')[0])
+    // Repayment date is always today - enforced by backend
+    const today = new Date().toISOString().split('T')[0]
     const [calculation, setCalculation] = useState(null)
     const [projection, setProjection] = useState(null)
     const [isLoading, setIsLoading] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showProjection, setShowProjection] = useState(false)
+    const [day0Error, setDay0Error] = useState(null) // Track Day 0 restriction
 
     // Load pending purchases on mount
     useEffect(() => {
@@ -64,10 +66,25 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
             if (vendorApi?.calculateRepayment) {
                 const res = await vendorApi.calculateRepayment({
                     purchaseId: selectedPurchase._id,
-                    repaymentDate: new Date(repaymentDate).toISOString()
+                    // Always use today's date - backend will enforce this
+                    repaymentDate: new Date().toISOString()
                 })
+
+                // Check for Day 0 restriction error
+                if (res.error && res.error.isDay0) {
+                    setDay0Error({
+                        message: res.error.message,
+                        guidance: res.error.guidance,
+                        earliestDate: res.error.earliestRepaymentDate
+                    })
+                    setCalculation(null)
+                    setIsLoading(false)
+                    return
+                }
+
                 if (res.data) {
                     setCalculation(res.data)
+                    setDay0Error(null) // Clear any previous Day 0 error
                     setIsLoading(false)
                     return
                 }
@@ -75,7 +92,7 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
 
             // Mock calculation fallback
             const daysElapsed = Math.floor(
-                (new Date(repaymentDate) - new Date(selectedPurchase.createdAt)) / (1000 * 60 * 60 * 24)
+                (new Date() - new Date(selectedPurchase.createdAt)) / (1000 * 60 * 60 * 24)
             )
 
             let discountRate = 0
@@ -140,12 +157,27 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                 const res = await vendorApi.submitRepayment(selectedPurchase._id, {
                     repaymentAmount: calculation.finalPayable,
                     paymentMode: 'online',
-                    transactionId: 'TXN-' + Date.now()
+                    transactionId: 'TXN-' + Date.now(),
+                    // Backend will use current server time, not client time
+                    repaymentDate: new Date().toISOString()
                 })
+
+                // Check for Day 0 restriction error
+                if (res.error && res.error.isDay0) {
+                    setDay0Error({
+                        message: res.error.message,
+                        guidance: res.error.guidance,
+                        earliestDate: res.error.earliestRepaymentDate
+                    })
+                    setIsSubmitting(false)
+                    return
+                }
+
                 if (res.success) {
                     if (onSuccess) onSuccess()
                     setCalculation(null)
                     setSelectedPurchase(null)
+                    setDay0Error(null) // Clear any Day 0 error
                     loadPendingPurchases()
                 }
             }
@@ -165,42 +197,62 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                 <div className="space-y-3">
                     <p className="px-2 text-[10px] text-gray-400 uppercase tracking-widest"><Trans>Select a due to settle</Trans></p>
                     <div className="grid grid-cols-1 gap-3">
-                        {purchases.map((p) => (
-                            <button
-                                key={p._id}
-                                onClick={() => {
-                                    setSelectedPurchase(p)
-                                    setCalculation(null)
-                                }}
-                                className={cn(
-                                    "p-4 rounded-2xl border text-left transition-all flex items-center justify-between group",
-                                    selectedPurchase?._id === p._id
-                                        ? "bg-blue-50 border-blue-200 ring-1 ring-blue-600 shadow-sm"
-                                        : "bg-white border-gray-100 hover:border-gray-300"
-                                )}
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className={cn(
-                                        "h-10 w-10 rounded-xl flex items-center justify-center transition-colors",
-                                        selectedPurchase?._id === p._id ? "bg-blue-600 text-white" : "bg-gray-50 text-gray-400 group-hover:bg-gray-100"
-                                    )}>
-                                        <DollarSign className="w-5 h-5" />
+                        {purchases.map((p) => {
+                            // Check if this purchase is on Day 0
+                            const purchaseDate = new Date(p.createdAt);
+                            const purchaseDateOnly = new Date(purchaseDate.getFullYear(), purchaseDate.getMonth(), purchaseDate.getDate());
+                            const currentDateOnly = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+                            const daysSincePurchase = Math.floor((currentDateOnly - purchaseDateOnly) / (1000 * 60 * 60 * 24));
+                            const isDay0 = daysSincePurchase === 0;
+
+                            return (
+                                <button
+                                    key={p._id}
+                                    onClick={() => {
+                                        setSelectedPurchase(p)
+                                        setCalculation(null)
+                                        // Clear Day 0 error when selecting a different purchase
+                                        if (!isDay0) {
+                                            setDay0Error(null)
+                                        }
+                                    }}
+                                    className={cn(
+                                        "p-4 rounded-2xl border text-left transition-all flex items-center justify-between group",
+                                        selectedPurchase?._id === p._id
+                                            ? "bg-blue-50 border-blue-200 ring-1 ring-blue-600 shadow-sm"
+                                            : "bg-white border-gray-100 hover:border-gray-300"
+                                    )}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={cn(
+                                            "h-10 w-10 rounded-xl flex items-center justify-center transition-colors",
+                                            selectedPurchase?._id === p._id ? "bg-blue-600 text-white" : "bg-gray-50 text-gray-400 group-hover:bg-gray-100"
+                                        )}>
+                                            <DollarSign className="w-5 h-5" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-sm text-gray-900 leading-none">
+                                                    {p.creditPurchaseId || `Order #${String(p._id).slice(-4)}`}
+                                                </p>
+                                                {isDay0 && (
+                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-semibold uppercase tracking-wide rounded-full">
+                                                        Day 0
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[10px] text-gray-500 mt-1 uppercase">
+                                                {new Date(p.createdAt).toLocaleDateString()} • {formatCurrency(p.totalAmount)}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-sm text-gray-900 leading-none">
-                                            {p.creditPurchaseId || `Order #${String(p._id).slice(-4)}`}
-                                        </p>
-                                        <p className="text-[10px] text-gray-500 mt-1 uppercase">
-                                            {new Date(p.createdAt).toLocaleDateString()} • {formatCurrency(p.totalAmount)}
-                                        </p>
+                                    <div className="flex items-center gap-2">
+                                        {selectedPurchase?._id === p._id && <CheckCircle className="w-4 h-4 text-blue-600" />}
+                                        <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400 group-hover:translate-x-0.5 transition-all" />
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {selectedPurchase?._id === p._id && <CheckCircle className="w-4 h-4 text-blue-600" />}
-                                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400 group-hover:translate-x-0.5 transition-all" />
-                                </div>
-                            </button>
-                        ))}
+                                </button>
+                            )
+                        })}
                     </div>
                 </div>
             )}
@@ -220,17 +272,16 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                     {/* Selection Area */}
                     <div className="space-y-4">
                         <div className="space-y-1.5">
-                            <label className="text-xs text-gray-500 ml-1"><Trans>Repayment Effective Date</Trans></label>
+                            <label className="text-xs text-gray-500 ml-1"><Trans>Repayment Date</Trans></label>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="relative">
                                     <input
                                         type="date"
-                                        value={repaymentDate}
-                                        onChange={(e) => {
-                                            setRepaymentDate(e.target.value)
-                                            setCalculation(null)
-                                        }}
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:border-blue-600 focus:ring-0 transition-all outline-none"
+                                        value={today}
+                                        min={today}
+                                        max={today}
+                                        disabled
+                                        className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 cursor-not-allowed transition-all outline-none"
                                     />
                                     <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                                 </div>
@@ -243,6 +294,36 @@ export function RepaymentCalculator({ vendorApi, onSuccess }) {
                                     <span><Trans>Calculate</Trans></span>
                                 </button>
                             </div>
+                            <div className="flex items-start gap-2 px-1">
+                                <Info className="w-3.5 h-3.5 text-blue-500 mt-0.5 flex-shrink-0" />
+                                <p className="text-[10px] text-gray-500 leading-relaxed">
+                                    <Trans>Repayments are processed for the current date only to ensure accurate discount/interest calculation and prevent manipulation.</Trans>
+                                </p>
+                            </div>
+
+                            {/* Day 0 Restriction Alert */}
+                            {day0Error && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+                                    <div className="flex items-start gap-3">
+                                        <div className="h-8 w-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                                            <AlertCircle className="w-4 h-4 text-amber-600" />
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <h4 className="text-sm font-semibold text-amber-900">
+                                                <Trans>Day 0 - Repayment Not Available</Trans>
+                                            </h4>
+                                            <p className="text-xs text-amber-700 leading-relaxed">
+                                                {day0Error.guidance}
+                                            </p>
+                                            <div className="mt-2 pt-2 border-t border-amber-200">
+                                                <p className="text-[10px] text-amber-600 font-medium">
+                                                    <Trans>Earliest Repayment Date:</Trans> <span className="font-semibold">{day0Error.earliestDate}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 

@@ -1688,34 +1688,8 @@ exports.approveVendor = async (req, res, next) => {
       });
     }
 
-    // Check geographic rule: No vendor within 20km radius
-    // Using MongoDB geospatial query
-    const nearbyVendors = await Vendor.find({
-      _id: { $ne: vendorId }, // Exclude current vendor
-      status: 'approved',
-      isActive: true,
-      'location.coordinates': {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: [vendor.location.coordinates.lng, vendor.location.coordinates.lat],
-          },
-          $maxDistance: VENDOR_COVERAGE_RADIUS_KM * 1000, // Convert km to meters
-        },
-      },
-    });
-
-    if (nearbyVendors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot approve vendor. Another approved vendor exists within ${VENDOR_COVERAGE_RADIUS_KM}km radius.`,
-        nearbyVendor: {
-          id: nearbyVendors[0]._id,
-          name: nearbyVendors[0].name,
-          distance: 'within 20km',
-        },
-      });
-    }
+    // Geographic rule (20km radius) removed per user request.
+    // Any vendor can be approved regardless of proximity to others.
 
     // Approve vendor and set default credit policy
     vendor.status = 'approved';
@@ -2353,7 +2327,22 @@ exports.rejectVendorPurchase = async (req, res, next) => {
     }
     await purchase.save();
 
-    // TODO: Send rejection notification to vendor with reason
+    // Send rejection notification to vendor with reason
+    try {
+      const VendorNotification = require('../models/VendorNotification');
+      await VendorNotification.createNotification({
+        vendorId: purchase.vendorId,
+        type: 'credit_purchase_rejected',
+        title: 'Stock Purchase Rejected',
+        message: `Your stock purchase of ₹${purchase.totalAmount} has been rejected.${reason ? ` Reason: ${reason}` : ''}`,
+        relatedEntityType: 'credit_purchase',
+        relatedEntityId: purchase._id,
+        priority: 'high',
+        metadata: { purchaseId: purchase.creditPurchaseId, reason }
+      });
+    } catch (notifError) {
+      console.error('Failed to send purchase rejection notification:', notifError);
+    }
 
     console.log(`❌ Purchase rejected: ₹${purchase.totalAmount}${reason ? ` - Reason: ${reason}` : ''}`);
 
@@ -2492,6 +2481,64 @@ exports.deleteVendorPurchase = async (req, res, next) => {
 
 
 /**
+ * @desc    Mark purchase as being processed (packing/readying)
+ * @route   POST /api/admin/vendors/purchases/:requestId/process
+ * @access  Private (Admin)
+ */
+exports.processVendorPurchase = async (req, res, next) => {
+  try {
+    const { requestId } = req.params;
+    const { deliveryNotes } = req.body;
+
+    const purchase = await CreditPurchase.findById(requestId);
+
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        message: 'Purchase request not found',
+      });
+    }
+
+    if (purchase.status !== 'approved') {
+      return res.status(400).json({
+        success: false,
+        message: `Purchase can only be processed if approved. Current status: ${purchase.status}`,
+      });
+    }
+
+    purchase.deliveryStatus = 'processing';
+    if (deliveryNotes) {
+      purchase.deliveryNotes = deliveryNotes;
+    }
+    await purchase.save();
+
+    // SEND VENDOR NOTIFICATION: Purchase Processing
+    try {
+      const VendorNotification = require('../models/VendorNotification');
+      await VendorNotification.createNotification({
+        vendorId: purchase.vendorId,
+        type: 'credit_purchase_processing',
+        title: 'Order Processing',
+        message: `Your stock purchase #${purchase.creditPurchaseId || purchase._id} is now being processed.`,
+        relatedEntityType: 'credit_purchase',
+        relatedEntityId: purchase._id,
+        priority: 'normal',
+        metadata: { purchaseId: purchase.creditPurchaseId, status: 'processing' }
+      });
+    } catch (notifError) {
+      console.error('Failed to send purchase processing notification:', notifError);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: { purchase, message: 'Stock marked as processing (packing)' },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * @desc    Mark stock as sent (in transit)
  * @route   POST /api/admin/vendors/purchases/:requestId/send
  * @access  Private (Admin)
@@ -2522,6 +2569,23 @@ exports.sendVendorPurchaseStock = async (req, res, next) => {
       purchase.deliveryNotes = deliveryNotes;
     }
     await purchase.save();
+
+    // SEND VENDOR NOTIFICATION: Purchase Dispatched
+    try {
+      const VendorNotification = require('../models/VendorNotification');
+      await VendorNotification.createNotification({
+        vendorId: purchase.vendorId,
+        type: 'credit_purchase_dispatched',
+        title: 'Order Dispatched',
+        message: `Your stock purchase #${purchase.creditPurchaseId || purchase._id} has been dispatched and is on the way.`,
+        relatedEntityType: 'credit_purchase',
+        relatedEntityId: purchase._id,
+        priority: 'high',
+        metadata: { purchaseId: purchase.creditPurchaseId, status: 'dispatched' }
+      });
+    } catch (notifError) {
+      console.error('Failed to send purchase dispatch notification:', notifError);
+    }
 
     res.status(200).json({
       success: true,
@@ -2621,6 +2685,23 @@ exports.confirmVendorPurchaseDelivery = async (req, res, next) => {
       purchase.deliveryNotes = deliveryNotes;
     }
     await purchase.save();
+
+    // SEND VENDOR NOTIFICATION: Purchase Delivered
+    try {
+      const VendorNotification = require('../models/VendorNotification');
+      await VendorNotification.createNotification({
+        vendorId: purchase.vendorId,
+        type: 'credit_purchase_delivered',
+        title: 'Order Delivered',
+        message: `Your stock purchase #${purchase.creditPurchaseId || purchase._id} has been successfully delivered and added to your inventory.`,
+        relatedEntityType: 'credit_purchase',
+        relatedEntityId: purchase._id,
+        priority: 'high',
+        metadata: { purchaseId: purchase.creditPurchaseId, status: 'delivered' }
+      });
+    } catch (notifError) {
+      console.error('Failed to send purchase delivery notification:', notifError);
+    }
 
     res.status(200).json({
       success: true,

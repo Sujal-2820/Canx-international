@@ -25,11 +25,11 @@ const initialState = {
   paymentMethods: [],
   favourites: [],
   notifications: [],
-  assignedVendor: null, // Vendor assigned based on location (20km radius)
+  assignedVendor: null, // Vendor assigned to this user
   vendorAvailability: {
-    vendorAvailable: false,
-    canPlaceOrder: false,
-    isInBufferZone: false, // Within 300m buffer (20km to 20.3km) - no warning shown
+    vendorAvailable: true, // Rule removed
+    canPlaceOrder: true,
+    isInBufferZone: false,
   },
   realtimeConnected: false,
 }

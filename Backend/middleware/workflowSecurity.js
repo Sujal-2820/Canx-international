@@ -12,62 +12,12 @@ const Vendor = require('../models/Vendor');
 const { VENDOR_COVERAGE_RADIUS_KM } = require('../utils/constants');
 
 /**
- * Verify vendor location doesn't conflict with existing vendors (20km rule)
- * This is used during registration to prevent multiple vendors in same area
+ * Verify vendor location conflict check (DEPRECATED)
+ * This rule has been removed per user request.
  */
 exports.verifyVendorLocation = async (req, res, next) => {
-  try {
-    const { location } = req.body;
-
-    if (!location || !location.coordinates || !location.coordinates.lat || !location.coordinates.lng) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid location coordinates are required',
-      });
-    }
-
-    // Use MongoDB session for transaction safety (prevents race conditions)
-    const session = await mongoose.startSession();
-    
-    try {
-      await session.withTransaction(async () => {
-        // Check if another vendor exists within 20km using geospatial query
-        const nearbyVendors = await Vendor.find({
-          status: { $in: ['pending', 'approved'] }, // Check both pending and approved
-          'location.coordinates': {
-            $near: {
-              $geometry: {
-                type: 'Point',
-                coordinates: [location.coordinates.lng, location.coordinates.lat],
-              },
-              $maxDistance: VENDOR_COVERAGE_RADIUS_KM * 1000, // Convert km to meters
-            },
-          },
-        }).session(session).limit(1);
-
-        if (nearbyVendors.length > 0) {
-          const nearbyVendor = nearbyVendors[0];
-          throw new Error(`VENDOR_EXISTS: Another vendor already exists within ${VENDOR_COVERAGE_RADIUS_KM}km radius`);
-        }
-      });
-
-      // If transaction succeeds, continue
-      next();
-    } catch (error) {
-      if (error.message.startsWith('VENDOR_EXISTS:')) {
-        return res.status(400).json({
-          success: false,
-          message: error.message.replace('VENDOR_EXISTS: ', ''),
-          businessRule: `Only one vendor is allowed per ${VENDOR_COVERAGE_RADIUS_KM}km radius. Please choose a different location.`,
-        });
-      }
-      throw error;
-    } finally {
-      await session.endSession();
-    }
-  } catch (error) {
-    next(error);
-  }
+  // Rule removed - allow all locations
+  next();
 };
 
 /**
@@ -94,7 +44,7 @@ exports.verifySingleRole = (req, res, next) => {
   if (req.user && req.user.role) {
     const allowedRoles = ['admin', 'vendor', 'seller', 'user'];
     const userRole = req.user.role;
-    
+
     // Ensure role is valid
     if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({
@@ -126,10 +76,10 @@ exports.withTransaction = (handler) => {
     try {
       // Attach session to request for use in handler
       req.dbSession = session;
-      
+
       // Execute handler
       await handler(req, res, next);
-      
+
       // If response hasn't been sent yet, commit transaction
       if (!res.headersSent) {
         await session.commitTransaction();

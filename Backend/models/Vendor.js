@@ -3,9 +3,7 @@ const mongoose = require('mongoose');
 /**
  * Vendor Schema
  * 
- * Regional distributors (1 per 20km radius)
  * Registration requires location verification via Google Maps API
- * Geographic Coverage Rule: Only 1 vendor allowed per 20 km radius
  */
 const vendorSchema = new mongoose.Schema({
   vendorId: {
@@ -92,18 +90,12 @@ const vendorSchema = new mongoose.Schema({
     state: String,
     pincode: String,
     coordinates: {
-      lat: {
-        type: Number,
-        required: true,
-      },
-      lng: {
-        type: Number,
-        required: true,
-      },
+      lat: { type: Number, required: false },
+      lng: { type: Number, required: false },
     },
     coverageRadius: {
       type: Number,
-      default: 20, // 20 km radius
+      default: 0, // DEPRECATED: Rule removed
     },
   },
   status: {

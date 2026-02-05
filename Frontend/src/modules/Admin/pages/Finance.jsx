@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BadgeIndianRupee, Sparkles, Building2, Eye, AlertCircle, Package, CheckCircle, XCircle, ArrowLeft, Calendar, MoreVertical, Trash2 } from 'lucide-react'
+import { BadgeIndianRupee, Sparkles, Building2, Eye, AlertCircle, Package, CheckCircle, XCircle, ArrowLeft, Calendar, MoreVertical, Trash2, Truck } from 'lucide-react'
 import { StatusBadge } from '../components/StatusBadge'
 import { ProgressList } from '../components/ProgressList'
 import { Timeline } from '../components/Timeline'
@@ -357,6 +357,15 @@ export function FinancePage({ subRoute = null, navigate }) {
                 setOpenActionsDropdown(null)
               },
               className: 'text-gray-700 hover:bg-gray-50'
+            },
+            {
+              label: 'Manage Logistics',
+              icon: Truck,
+              onClick: () => {
+                navigate('vendors/logistics')
+                setOpenActionsDropdown(null)
+              },
+              className: 'text-blue-700 hover:bg-blue-50 font-bold'
             }
           ]
 
@@ -813,7 +822,7 @@ export function FinancePage({ subRoute = null, navigate }) {
                             <span className="text-sm font-semibold text-gray-900">{product.name || product}</span>
                             {product.quantity && (
                               <span className="text-xs text-gray-500">
-                                Qty: {product.quantity} {product.unit || 'kg'}
+                                Qty: {product.quantity}
                               </span>
                             )}
                           </div>
@@ -935,7 +944,7 @@ export function FinancePage({ subRoute = null, navigate }) {
             </div>
 
             {/* Delivery Actions (Visible after approval) */}
-            {request.status === 'approved' && request.deliveryStatus !== 'delivered' && (
+            {request.status === 'approved' && (
               <div className="mt-8 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-6">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
@@ -945,29 +954,18 @@ export function FinancePage({ subRoute = null, navigate }) {
                 </div>
 
                 <div className="flex flex-wrap gap-4">
-                  {request.deliveryStatus === 'pending' && (
-                    <button
-                      type="button"
-                      onClick={() => handleSendStock(request.id)}
-                      disabled={approvingPurchase}
-                      className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      <Package className="h-4 w-4" />
-                      Dispatch Stock (Mark Sent)
-                    </button>
-                  )}
-
-                  {request.deliveryStatus === 'in_transit' && (
-                    <button
-                      type="button"
-                      onClick={() => handleConfirmDelivery(request.id)}
-                      disabled={approvingPurchase}
-                      className="flex items-center gap-2 rounded-xl bg-pink-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:bg-pink-700 disabled:opacity-50"
-                    >
-                      <CheckCircle className="h-4 w-4" />
-                      Confirm Receipt (Actual Stock Transfer)
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => navigate('vendors/logistics')}
+                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:bg-blue-700"
+                  >
+                    <Truck className="h-4 w-4" />
+                    Manage Stock Logistics
+                  </button>
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    Updates to processing, dispatch, and delivery are now managed in the dedicated logistics screen.
+                  </p>
                 </div>
               </div>
             )}

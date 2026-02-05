@@ -27,6 +27,7 @@ export function VendorOrdersView() {
     const {
         getCreditPurchases,
         getCreditInfo,
+        getCreditSummary,
         getCreditPurchaseDetails,
         getPendingPurchases,
         calculateRepaymentAmount,
@@ -55,7 +56,7 @@ export function VendorOrdersView() {
         try {
             const [ordersRes, creditRes] = await Promise.all([
                 getCreditPurchases({ limit: 100 }), // Get many for local filtering
-                getCreditInfo()
+                getCreditSummary() // Get full credit summary with stats
             ])
 
             if (ordersRes.data?.purchases) {
@@ -69,7 +70,7 @@ export function VendorOrdersView() {
         } finally {
             setLoading(false)
         }
-    }, [getCreditPurchases, getCreditInfo])
+    }, [getCreditPurchases, getCreditSummary])
 
     useEffect(() => {
         loadData()
@@ -92,12 +93,27 @@ export function VendorOrdersView() {
     }, [orders, activeTab])
 
     const getStatusTone = (status) => {
-        const s = status.toLowerCase()
+        if (!status) return 'gray'
+        const s = status.toLowerCase().replace(/_/g, ' ')
         if (['pending', 'awaiting'].includes(s)) return 'warn'
-        if (['processing', 'approved', 'dispatched'].includes(s)) return 'info'
-        if (['completed', 'delivered', 'paid'].includes(s)) return 'success'
-        if (['rejected', 'cancelled'].includes(s)) return 'error'
+        if (['processing', 'approved', 'dispatched', 'in transit', 'scheduled'].includes(s)) return 'info'
+        if (['completed', 'delivered', 'paid', 'fully paid', 'fully repaid'].includes(s)) return 'success'
+        if (['rejected', 'cancelled', 'expired'].includes(s)) return 'error'
         return 'gray'
+    }
+
+    const getStatusDisplay = (order) => {
+        // If the order is fully paid, that's the most important status to show
+        if (order.repaymentStatus === 'completed' || order.cycleStatus === 'fully_paid' || order.status === 'fully_paid') {
+            return 'Fully Repaid'
+        }
+
+        // Otherwise use the delivery or general status
+        const status = order.deliveryStatus && order.deliveryStatus !== 'pending'
+            ? order.deliveryStatus
+            : order.status
+
+        return status.replace(/_/g, ' ')
     }
 
     const formatCurrency = (val) => `₹${Number(val || 0).toLocaleString('en-IN')}`
@@ -140,7 +156,7 @@ export function VendorOrdersView() {
 
             {/* Credit Status Widget - Integrated into the page */}
             <div className="px-4">
-                <CreditSummaryWidget creditData={creditInfo} compact />
+                <CreditSummaryWidget creditData={creditInfo} />
             </div>
 
             {/* Internal Tabs */}
@@ -210,12 +226,13 @@ export function VendorOrdersView() {
                                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">#{order.requestId?.slice(-6) || order._id?.slice(-6)}</span>
                                                         <span className={cn(
                                                             "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
-                                                            getStatusTone(order.status) === 'warn' ? "bg-orange-50 text-orange-600 border border-orange-100" :
-                                                                getStatusTone(order.status) === 'info' ? "bg-blue-50 text-blue-600 border border-blue-100" :
-                                                                    getStatusTone(order.status) === 'success' ? "bg-green-50 text-green-600 border border-green-100" :
-                                                                        "bg-gray-50 text-gray-600 border border-gray-100"
+                                                            getStatusTone(getStatusDisplay(order)) === 'warn' ? "bg-orange-50 text-orange-600 border border-orange-100" :
+                                                                getStatusTone(getStatusDisplay(order)) === 'info' ? "bg-blue-50 text-blue-600 border border-blue-100" :
+                                                                    getStatusTone(getStatusDisplay(order)) === 'success' ? "bg-green-50 text-green-600 border border-green-100" :
+                                                                        getStatusTone(getStatusDisplay(order)) === 'error' ? "bg-red-50 text-red-600 border border-red-100" :
+                                                                            "bg-gray-50 text-gray-600 border border-gray-100"
                                                         )}>
-                                                            <Trans>{order.status}</Trans>
+                                                            <Trans>{getStatusDisplay(order)}</Trans>
                                                         </span>
                                                     </div>
                                                     <p className="text-sm font-bold text-gray-900">{formatCurrency(order.totalAmount)}</p>
@@ -262,19 +279,20 @@ export function VendorOrdersView() {
 
                         <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm">
                             <div className="p-6 border-b border-gray-50 bg-gray-50/30">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                                    <div className="min-w-0 flex-1">
                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Order Detail</span>
-                                        <h3 className="text-xl font-bold text-gray-900">#{selectedOrder.requestId || selectedOrder._id}</h3>
+                                        <h3 className="text-base sm:text-lg font-bold text-gray-900 break-all">#{selectedOrder.requestId || selectedOrder._id}</h3>
                                     </div>
                                     <span className={cn(
-                                        "px-3 py-1 rounded-full text-xs font-bold uppercase",
-                                        getStatusTone(selectedOrder.status) === 'warn' ? "bg-orange-100 text-orange-700" :
-                                            getStatusTone(selectedOrder.status) === 'info' ? "bg-blue-100 text-blue-700" :
-                                                getStatusTone(selectedOrder.status) === 'success' ? "bg-green-100 text-green-700" :
-                                                    "bg-gray-100 text-gray-700"
+                                        "px-3 py-1 rounded-full text-xs font-bold uppercase whitespace-nowrap",
+                                        getStatusTone(getStatusDisplay(selectedOrder)) === 'warn' ? "bg-orange-100 text-orange-700" :
+                                            getStatusTone(getStatusDisplay(selectedOrder)) === 'info' ? "bg-blue-100 text-blue-700" :
+                                                getStatusTone(getStatusDisplay(selectedOrder)) === 'success' ? "bg-green-100 text-green-700" :
+                                                    getStatusTone(getStatusDisplay(selectedOrder)) === 'error' ? "bg-red-100 text-red-700" :
+                                                        "bg-gray-100 text-gray-700"
                                     )}>
-                                        {selectedOrder.status}
+                                        <Trans>{getStatusDisplay(selectedOrder)}</Trans>
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
@@ -307,11 +325,11 @@ export function VendorOrdersView() {
                                                         <PackageIcon className="h-5 w-5 text-blue-500" />
                                                     </div>
                                                     <div>
-                                                        <p className="text-xs font-bold text-gray-900">{item.productName || item.name || <Trans>Unnamed Product</Trans>}</p>
+                                                        <p className="text-xs font-bold text-gray-900">{item.productName || item.productId?.name || item.name || <Trans>Unnamed Product</Trans>}</p>
                                                         <p className="text-[10px] text-gray-400">Qty: {item.quantity} {item.unit || 'units'}</p>
                                                     </div>
                                                 </div>
-                                                <p className="text-xs font-bold text-gray-900">{formatCurrency(item.price * item.quantity)}</p>
+                                                <p className="text-xs font-bold text-gray-900">{formatCurrency(item.totalPrice || (item.unitPrice * item.quantity) || (item.price * item.quantity))}</p>
                                             </div>
                                         ))}
                                     </div>

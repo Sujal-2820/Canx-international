@@ -81,6 +81,7 @@ const links = [
       { id: 'vendors/on-track', label: 'On Track Vendors' },
       { id: 'vendors/out-of-track', label: 'Out of Track Vendors' },
       { id: 'vendors/purchase-requests', label: 'Purchase Requests' },
+      { id: 'vendors/orders', label: 'Vendor Orders' },
       { id: 'vendors/rankings', label: 'Vendor Rankings' },
     ]
   },

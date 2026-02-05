@@ -209,10 +209,7 @@ export function CheckoutPage() {
   }
 
   const handlePlaceOrder = () => {
-    if (!vendorAvailability?.canPlaceOrder && !vendorAvailability?.isInBufferZone) {
-      setError('No vendor available in your region. You cannot place orders at this location.')
-      return
-    }
+    // Proximity checks removed per user request (20km rule retired)
     if (!deliveryAddress) {
       setError('Please update your delivery address in settings before placing an order')
       return
@@ -244,12 +241,7 @@ export function CheckoutPage() {
 
     // Block order placement if no vendor available (beyond 20.3km)
     // Allow if in buffer zone (20km to 20.3km)
-    if (!vendorAvailability?.canPlaceOrder && !vendorAvailability?.isInBufferZone) {
-      setError('No vendor available in your region. You cannot place orders at this location.')
-      setShowPaymentConfirm(false)
-      setPendingOrder(null)
-      return
-    }
+    // Proximity checks removed per user request (20km rule retired)
     if (!deliveryAddress) {
       setError('Please update your delivery address in settings before placing an order')
       setShowPaymentConfirm(false)

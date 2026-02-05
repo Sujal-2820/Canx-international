@@ -62,10 +62,53 @@ exports.calculateRepayment = async (req, res, next) => {
             });
         }
 
-        // Calculate repayment amount
+        // SECURITY: Always use current server date, ignore client-provided date
+        // This prevents vendors from manipulating the date to get better discounts
+        const currentDate = new Date();
+        const repaymentDateToUse = currentDate;
+
+        // If a date was provided by client, validate it's today (with tolerance for timezone)
+        if (repaymentDate) {
+            const providedDate = new Date(repaymentDate);
+            const daysDifference = Math.abs(
+                (providedDate.setHours(0, 0, 0, 0) - currentDate.setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)
+            );
+
+            if (daysDifference > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Repayments can only be processed for the current date',
+                    providedDate: providedDate.toISOString().split('T')[0],
+                    serverDate: new Date().toISOString().split('T')[0]
+                });
+            }
+        }
+
+        // CRITICAL: Day 0 Restriction - Credit cycle starts from Day 1
+        // Day 0 = Purchase date (order placement day)
+        // Day 1 = Next day after purchase (credit cycle begins)
+        // Vendors cannot repay on Day 0
+        const purchaseDate = new Date(purchase.createdAt);
+        const purchaseDateOnly = new Date(purchaseDate.getFullYear(), purchaseDate.getMonth(), purchaseDate.getDate());
+        const currentDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+
+        const daysSincePurchase = Math.floor((currentDateOnly - purchaseDateOnly) / (1000 * 60 * 60 * 24));
+
+        if (daysSincePurchase === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Repayment cannot be processed on the same day as purchase (Day 0). Credit cycle starts from Day 1.',
+                isDay0: true,
+                purchaseDate: purchaseDate.toISOString(),
+                earliestRepaymentDate: new Date(purchaseDateOnly.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                guidance: 'You can start repaying from tomorrow onwards. Your credit cycle begins the day after your purchase.'
+            });
+        }
+
+        // Calculate repayment amount using current server date
         const calculation = await RepaymentCalculationService.calculateRepaymentAmount(
             purchase,
-            repaymentDate ? new Date(repaymentDate) : new Date()
+            repaymentDateToUse
         );
 
         res.status(200).json({
@@ -177,10 +220,34 @@ exports.submitRepayment = async (req, res, next) => {
             });
         }
 
-        // Calculate expected repayment amount
+        // SECURITY: Always use current server date for repayment
+        // This prevents vendors from manipulating the date via console/API tools
+        const currentDate = new Date();
+
+        // CRITICAL: Day 0 Restriction - Credit cycle starts from Day 1
+        // Prevent repayment on the same day as purchase
+        const purchaseDate = new Date(purchase.createdAt);
+        const purchaseDateOnly = new Date(purchaseDate.getFullYear(), purchaseDate.getMonth(), purchaseDate.getDate());
+        const currentDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+
+        const daysSincePurchase = Math.floor((currentDateOnly - purchaseDateOnly) / (1000 * 60 * 60 * 24));
+
+        if (daysSincePurchase === 0) {
+            await session.abortTransaction();
+            return res.status(400).json({
+                success: false,
+                message: 'Repayment cannot be processed on Day 0 (purchase date). Please wait until tomorrow.',
+                isDay0: true,
+                purchaseDate: purchaseDate.toISOString(),
+                earliestRepaymentDate: new Date(purchaseDateOnly.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                guidance: 'Your credit cycle starts from Day 1, which is tomorrow. You can repay starting from the next day after your purchase.'
+            });
+        }
+
+        // Calculate expected repayment amount using current server date
         const calculation = await RepaymentCalculationService.calculateRepaymentAmount(
             purchase,
-            new Date()
+            currentDate
         );
 
         // Verify repayment amount matches calculation
@@ -215,10 +282,10 @@ exports.submitRepayment = async (req, res, next) => {
             vendorId: vendor._id,
             purchaseOrderId: purchase._id,
 
-            // Timeline
+            // Timeline - use current server date
             purchaseDate: purchase.createdAt,
             dueDate: new Date(purchase.createdAt.getTime() + (30 * 24 * 60 * 60 * 1000)), // 30 days from purchase
-            repaymentDate: new Date(),
+            repaymentDate: currentDate, // Use server date, not client-provided date
             daysElapsed: calculation.daysElapsed,
 
             // Amounts
@@ -278,6 +345,23 @@ exports.submitRepayment = async (req, res, next) => {
         purchase.status = 'repaid';
         purchase.deliveredAt = new Date(); // Using deliveredAt to store repayment date
         await purchase.save({ session });
+
+        // SEND VENDOR NOTIFICATION: Repayment Success
+        try {
+            const VendorNotification = require('../models/VendorNotification');
+            await VendorNotification.createNotification({
+                vendorId: vendor._id,
+                type: 'repayment_success',
+                title: 'Repayment Successful',
+                message: `Your repayment of ₹${calculation.finalPayable} for purchase #${purchase.creditPurchaseId || purchase._id} was successful. Your credit limit has been restored.`,
+                relatedEntityType: 'repayment',
+                relatedEntityId: repayment[0]._id,
+                priority: 'normal',
+                metadata: { amount: calculation.finalPayable, purchaseId: purchase.creditPurchaseId }
+            });
+        } catch (notifError) {
+            console.error('Failed to send repayment success notification:', notifError);
+        }
 
         // Commit transaction
         await session.commitTransaction();

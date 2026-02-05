@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useVendorState, useVendorDispatch } from '../../../context/VendorContext'
 import { useVendorApi } from '../../../hooks/useVendorApi'
-import { useToast } from '../../../components/ToastNotification'
-import { GoogleMapsLocationPicker } from '../../../../../components/GoogleMapsLocationPicker'
 import {
     UserIcon,
     PackageIcon,
@@ -21,6 +19,7 @@ import {
 import { cn } from '../../../../../lib/cn'
 import { Trans } from '../../../../../components/Trans'
 import { TransText } from '../../../../../components/TransText'
+import { useToast } from '../../../components/ToastNotification'
 
 export function VendorProfileView({ onNavigate, onLogout }) {
     const { profile } = useVendorState()
@@ -32,7 +31,12 @@ export function VendorProfileView({ onNavigate, onLogout }) {
     const [editedName, setEditedName] = useState(profile?.name || '')
 
     const [showLocationPanel, setShowLocationPanel] = useState(false)
-    const [selectedLocation, setSelectedLocation] = useState(null)
+    const [selectedLocation, setSelectedLocation] = useState({
+        address: profile?.location?.address || '',
+        city: profile?.location?.city || '',
+        state: profile?.location?.state || '',
+        pincode: profile?.location?.pincode || ''
+    })
 
     const [showSupportPanel, setShowSupportPanel] = useState(false)
     const [showReportPanel, setShowReportPanel] = useState(false)
@@ -214,17 +218,57 @@ export function VendorProfileView({ onNavigate, onLogout }) {
                             </button>
                         </div>
                         <div className="user-account-view__panel-body p-6 space-y-6">
-                            <GoogleMapsLocationPicker
-                                label={<Trans>New Delivery Location</Trans>}
-                                initialLocation={profile?.location}
-                                onLocationSelect={(loc) => setSelectedLocation(loc)}
-                            />
+                            <div className="space-y-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-700">Complete Address</label>
+                                    <textarea
+                                        value={selectedLocation.address}
+                                        onChange={(e) => setSelectedLocation(prev => ({ ...prev, address: e.target.value }))}
+                                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium resize-none"
+                                        rows={2}
+                                        placeholder="Building, Street, Landmark..."
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700">City</label>
+                                        <input
+                                            type="text"
+                                            value={selectedLocation.city}
+                                            onChange={(e) => setSelectedLocation(prev => ({ ...prev, city: e.target.value }))}
+                                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
+                                            placeholder="e.g. Kolhapur"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-gray-700">State</label>
+                                        <input
+                                            type="text"
+                                            value={selectedLocation.state}
+                                            onChange={(e) => setSelectedLocation(prev => ({ ...prev, state: e.target.value }))}
+                                            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
+                                            placeholder="e.g. Maharashtra"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-700">Pincode</label>
+                                    <input
+                                        type="text"
+                                        value={selectedLocation.pincode}
+                                        onChange={(e) => setSelectedLocation(prev => ({ ...prev, pincode: e.target.value }))}
+                                        className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all font-medium"
+                                        placeholder="416001"
+                                    />
+                                </div>
+                            </div>
 
                             <button
-                                type="button"
-                                disabled={!selectedLocation}
+                                disabled={!selectedLocation.address || !selectedLocation.city || !selectedLocation.state || !selectedLocation.pincode}
                                 onClick={async () => {
-                                    if (!selectedLocation) return
+                                    if (!selectedLocation.address || !selectedLocation.city || !selectedLocation.state || !selectedLocation.pincode) return
                                     try {
                                         const result = await updateVendorProfile({ location: selectedLocation })
                                         if (result.data) {
@@ -243,7 +287,7 @@ export function VendorProfileView({ onNavigate, onLogout }) {
                                 }}
                                 className={cn(
                                     "w-full py-4 rounded-2xl font-bold transition-all shadow-lg",
-                                    selectedLocation ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                    (selectedLocation.address && selectedLocation.city && selectedLocation.state && selectedLocation.pincode) ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-gray-200 text-gray-500 cursor-not-allowed"
                                 )}
                             >
                                 <Trans>Update Address</Trans>

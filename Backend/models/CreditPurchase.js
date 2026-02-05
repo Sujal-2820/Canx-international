@@ -115,7 +115,7 @@ const creditPurchaseSchema = new mongoose.Schema({
   },
   deliveryStatus: {
     type: String,
-    enum: ['pending', 'scheduled', 'in_transit', 'delivered'],
+    enum: ['pending', 'processing', 'scheduled', 'in_transit', 'delivered'],
     default: 'pending',
   },
   expectedDeliveryAt: Date,

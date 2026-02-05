@@ -366,115 +366,8 @@ exports.register = async (req, res, next) => {
       });
     }
 
-    // CRITICAL: Verify region uniqueness - Only 1 vendor allowed per region (city + state)
-    // First check: Region-based check (city + state) - STRICT REGION RULE
-    if (location.city && location.state) {
-      const cityNormalized = location.city.trim().toLowerCase();
-      const stateNormalized = location.state.trim().toLowerCase();
-
-      console.log(`🔍 Checking for existing vendor in region: ${location.city}, ${location.state}`);
-
-      // Check if another vendor exists in the same region (city + state)
-      const existingVendorInRegion = await Vendor.findOne({
-        phone: { $ne: normalizedPhone }, // Exclude current vendor if exists
-        status: { $in: ['pending', 'approved'] }, // Check both pending and approved
-        isActive: true,
-        'banInfo.isBanned': false,
-        'location.city': { $regex: new RegExp(`^${cityNormalized}$`, 'i') },
-        'location.state': { $regex: new RegExp(`^${stateNormalized}$`, 'i') },
-      });
-
-      if (existingVendorInRegion) {
-        console.log(`❌ Vendor registration blocked: Another vendor exists in ${location.city}, ${location.state}`);
-        console.log(`   Existing vendor: ${existingVendorInRegion.name} (${existingVendorInRegion.phone})`);
-        return res.status(400).json({
-          success: false,
-          message: `A vendor already exists in ${location.city}, ${location.state}. Only one vendor is allowed per region.`,
-          existingVendor: {
-            id: existingVendorInRegion._id,
-            name: existingVendorInRegion.name,
-            phone: existingVendorInRegion.phone,
-            status: existingVendorInRegion.status,
-            location: {
-              city: existingVendorInRegion.location.city,
-              state: existingVendorInRegion.location.state,
-            },
-          },
-          businessRule: 'Only one vendor is allowed per region (city + state). Please choose a different region.',
-        });
-      }
-
-      console.log(`✅ No existing vendor found in region: ${location.city}, ${location.state}`);
-    }
-
-    // CRITICAL: Verify 20km radius rule - Only 1 vendor allowed per 20km radius (for coordinates-based check)
-    // Use transaction to prevent race conditions during concurrent registrations
-    if (location.coordinates && location.coordinates.lat && location.coordinates.lng) {
-      const session = await mongoose.startSession();
-
-      try {
-        await session.withTransaction(async () => {
-          // Check if another approved vendor exists within 20km
-          // Using MongoDB geospatial query with 2dsphere index
-          const nearbyVendors = await Vendor.find({
-            phone: { $ne: normalizedPhone }, // Exclude current vendor if exists
-            status: 'approved', // Only check approved vendors
-            isActive: true, // Only check active vendors
-            'banInfo.isBanned': false, // Exclude banned vendors
-            'location.coordinates': {
-              $near: {
-                $geometry: {
-                  type: 'Point',
-                  coordinates: [location.coordinates.lng, location.coordinates.lat],
-                },
-                $maxDistance: VENDOR_COVERAGE_RADIUS_KM * 1000, // Convert km to meters (20000 meters)
-              },
-            },
-          }).session(session).limit(1);
-
-          if (nearbyVendors.length > 0) {
-            const nearbyVendor = nearbyVendors[0];
-            throw new Error(`VENDOR_EXISTS: Another vendor already exists within ${VENDOR_COVERAGE_RADIUS_KM}km radius`);
-          }
-        });
-      } catch (error) {
-        await session.endSession();
-        if (error.message.startsWith('VENDOR_EXISTS:')) {
-          // Get vendor details for error message (outside transaction)
-          const nearbyVendor = await Vendor.findOne({
-            phone: { $ne: normalizedPhone },
-            status: 'approved',
-            isActive: true,
-            'banInfo.isBanned': false,
-            'location.coordinates': {
-              $near: {
-                $geometry: {
-                  type: 'Point',
-                  coordinates: [location.coordinates.lng, location.coordinates.lat],
-                },
-                $maxDistance: VENDOR_COVERAGE_RADIUS_KM * 1000,
-              },
-            },
-          }).limit(1);
-
-          return res.status(400).json({
-            success: false,
-            message: error.message.replace('VENDOR_EXISTS: ', ''),
-            nearbyVendor: nearbyVendor ? {
-              id: nearbyVendor._id,
-              name: nearbyVendor.name,
-              phone: nearbyVendor.phone,
-              status: nearbyVendor.status,
-              location: nearbyVendor.location,
-            } : null,
-            businessRule: `Only one vendor is allowed per ${VENDOR_COVERAGE_RADIUS_KM}km radius. Please choose a different location.`,
-          });
-        }
-        throw error;
-      } finally {
-        await session.endSession();
-      }
-    }
+    // Exclusivity rules (Region and 20km radius) have been removed per user request.
+    // Multiple vendors can now register in the same area.
 
     // Generate unique vendor ID
     const vendorId = await generateUniqueId(Vendor, 'VND', 'vendorId', 101);
@@ -3679,35 +3572,49 @@ exports.requestCreditPurchase = async (req, res, next) => {
       });
     }
 
-    const requiredBankFields = ['accountName', 'accountNumber', 'bankName', 'ifsc'];
-    const missingField = requiredBankFields.find((field) => !bankDetails[field] || !bankDetails[field].trim());
-    if (missingField) {
-      return res.status(400).json({
-        success: false,
-        message: 'Complete bank details are required (account holder, number, bank name, IFSC).',
-      });
+    const paymentMode = req.body.paymentMode || 'credit';
+
+    if (paymentMode === 'cash') {
+      const requiredBankFields = ['accountName', 'accountNumber', 'bankName', 'ifsc'];
+      const missingField = requiredBankFields.find((field) => !bankDetails[field] || !bankDetails[field].trim());
+      if (missingField) {
+        return res.status(400).json({
+          success: false,
+          message: 'Complete bank details are required (account holder, number, bank name, IFSC) for cash payments.',
+        });
+      }
     }
 
-    const sanitizedBankDetails = {
-      accountName: bankDetails.accountName.trim(),
-      accountNumber: bankDetails.accountNumber.toString().trim(),
-      bankName: bankDetails.bankName.trim(),
-      ifsc: bankDetails.ifsc.trim().toUpperCase(),
-      branch: bankDetails.bankBranch?.trim() || bankDetails.branch?.trim() || '',
+    let sanitizedBankDetails = {
+      accountName: '',
+      accountNumber: '',
+      bankName: '',
+      ifsc: '',
+      branch: '',
     };
 
-    if (sanitizedBankDetails.accountNumber.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Account number looks incomplete.',
-      });
-    }
+    if (paymentMode === 'cash') {
+      sanitizedBankDetails = {
+        accountName: (bankDetails.accountName || '').trim(),
+        accountNumber: (bankDetails.accountNumber || '').toString().trim(),
+        bankName: (bankDetails.bankName || '').trim(),
+        ifsc: (bankDetails.ifsc || '').trim().toUpperCase(),
+        branch: bankDetails.bankBranch?.trim() || bankDetails.branch?.trim() || '',
+      };
 
-    if (sanitizedBankDetails.ifsc.length < 4) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please enter a valid IFSC code.',
-      });
+      if (sanitizedBankDetails.accountNumber.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Account number looks incomplete.',
+        });
+      }
+
+      if (sanitizedBankDetails.ifsc.length < 4) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please enter a valid IFSC code.',
+        });
+      }
     }
 
     const productIds = [...new Set(items.map((item) => item.productId))];
@@ -3803,6 +3710,10 @@ exports.requestCreditPurchase = async (req, res, next) => {
       return itemPayload;
     });
 
+    // Calculate discount for Cash Payment (Scenario 1)
+    const cashDiscount = paymentMode === 'cash' ? Math.round((totalAmount * 7) / 100) : 0;
+    const finalTotalAmount = totalAmount - cashDiscount;
+
     if (totalAmount < MIN_VENDOR_PURCHASE) {
       return res.status(400).json({
         success: false,
@@ -3844,7 +3755,7 @@ exports.requestCreditPurchase = async (req, res, next) => {
       creditPurchaseId,
       vendorId: vendor._id,
       items: purchaseItems,
-      totalAmount,
+      totalAmount: finalTotalAmount,
       status: 'pending',
       notes: notes?.trim() || undefined,
       reason: reason.trim(),
@@ -3855,7 +3766,7 @@ exports.requestCreditPurchase = async (req, res, next) => {
       outstandingDuesAmount: totalUnpaidAmount,
     });
 
-    console.log(`✅ Credit purchase requested: ₹${totalAmount} by vendor ${vendor.name} - ${vendor._id}`);
+    console.log(`✅ Credit purchase requested: ₹${finalTotalAmount} by vendor ${vendor.name} - ${vendor._id}`);
 
     res.status(201).json({
       success: true,
@@ -3869,14 +3780,15 @@ exports.requestCreditPurchase = async (req, res, next) => {
     try {
       await adminTaskController.createTaskInternal({
         title: 'New Credit Purchase Request',
-        description: `Vendor "${vendor.name}" (${vendor.phone}) requested stock worth ₹${totalAmount.toLocaleString('en-IN')}. Reason: ${reason.substring(0, 100)}...`,
+        description: `Vendor "${vendor.name}" (${vendor.phone}) requested stock with final value ₹${finalTotalAmount.toLocaleString('en-IN')} (Gross: ₹${totalAmount.toLocaleString('en-IN')}). Reason: ${reason.substring(0, 100)}...`,
         category: 'finance',
         priority: 'high',
         link: '/vendors/purchase-requests',
         relatedId: purchase._id,
         metadata: {
           vendorName: vendor.name,
-          amount: totalAmount,
+          amount: finalTotalAmount,
+          grossAmount: totalAmount,
           purchaseId: purchase.creditPurchaseId
         }
       });
@@ -5630,3 +5542,45 @@ exports.deleteNotification = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get vendor notifications
+ * @route   GET /api/vendors/notifications
+ * @access  Private (Vendor)
+ */
+exports.getNotifications = async (req, res, next) => {
+  try {
+    const vendor = req.vendor;
+    const { page = 1, limit = 50 } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const notifications = await VendorNotification.find({ vendorId: vendor._id })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    const total = await VendorNotification.countDocuments({ vendorId: vendor._id });
+    const unreadCount = await VendorNotification.countDocuments({
+      vendorId: vendor._id,
+      isRead: false
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        notifications,
+        unreadCount,
+        pagination: {
+          currentPage: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          totalItems: total,
+          itemsPerPage: limitNum,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

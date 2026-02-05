@@ -230,6 +230,18 @@ export function useAdminApi() {
     [callApi, dispatch],
   )
 
+  const processVendorPurchaseStock = useCallback(
+    (requestId, deliveryData) => {
+      return callApi(adminApi.processVendorPurchaseStock, requestId, deliveryData).then((result) => {
+        if (result.data) {
+          dispatch({ type: 'SET_FINANCE_UPDATED', payload: true })
+        }
+        return result
+      })
+    },
+    [callApi, dispatch],
+  )
+
   const sendVendorPurchaseStock = useCallback(
     (requestId, deliveryData) => {
       return callApi(adminApi.sendVendorPurchaseStock, requestId, deliveryData).then((result) => {
@@ -770,6 +782,7 @@ export function useAdminApi() {
     approveVendorPurchase,
     rejectVendorPurchase,
     deleteVendorPurchase,
+    processVendorPurchaseStock,
     sendVendorPurchaseStock,
     confirmVendorPurchaseDelivery,
     getVendorPurchaseRequests,

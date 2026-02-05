@@ -4,7 +4,6 @@ import { OtpVerification } from '../../../components/auth/OtpVerification'
 import { useVendorDispatch } from '../context/VendorContext'
 import { VendorStatusMessage } from '../components/VendorStatusMessage'
 import { DocumentUpload } from '../components/DocumentUpload'
-import { GoogleMapsLocationPicker } from '../../../components/GoogleMapsLocationPicker'
 import * as vendorApi from '../services/vendorApi'
 import { PhoneInput } from '../../../components/PhoneInput'
 import { cn } from '../../../lib/cn'
@@ -26,6 +25,9 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
     agentName: '',
     shopName: '',
     shopAddress: '',
+    city: '',
+    state: '',
+    pincode: '',
     location: null,
     gstNumber: '',
     panNumber: '',
@@ -87,7 +89,9 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
 
     if (!shopName.trim()) return 'Shop name is required'
     if (!shopAddress.trim()) return 'Shop address is required'
-    if (!location?.coordinates) return 'Please select shop location on map'
+    if (!form.city.trim()) return 'City is required'
+    if (!form.state.trim()) return 'State is required'
+    if (!form.pincode.trim() || !/^\d{6}$/.test(form.pincode)) return 'Valid 6-digit Pincode is required'
 
     // GST Validation
     const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/
@@ -303,12 +307,32 @@ export function VendorRegister({ onSuccess, onSwitchToLogin }) {
                   placeholder="Building, Street, Landmark..."
                   required
                 />
-                <GoogleMapsLocationPicker
-                  onLocationSelect={(location) => handleValueChange('location', location)}
-                  initialLocation={form.location}
-                  required={true}
-                  label="Pin Shop Location on Map"
-                />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <FormInput
+                    label="City"
+                    name="city"
+                    value={form.city}
+                    onChange={handleChange}
+                    placeholder="e.g. Kolhapur"
+                    required
+                  />
+                  <FormInput
+                    label="State"
+                    name="state"
+                    value={form.state}
+                    onChange={handleChange}
+                    placeholder="e.g. Maharashtra"
+                    required
+                  />
+                  <FormInput
+                    label="Pincode"
+                    name="pincode"
+                    value={form.pincode}
+                    onChange={handleChange}
+                    placeholder="416001"
+                    required
+                  />
+                </div>
               </div>
 
               <div className="space-y-4 border-t border-gray-100 pt-5">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Building2, CreditCard, MapPin, ShieldAlert, Edit2, Eye, Package, Ban, Unlock, CheckCircle, XCircle, ArrowLeft, Calendar, FileText, ExternalLink, Search, MoreVertical, User, Phone, Mail, Store, Info, Trash2, ArrowUpDown } from 'lucide-react'
+import { Building2, CreditCard, MapPin, ShieldAlert, Edit2, Eye, Package, Ban, Unlock, CheckCircle, XCircle, ArrowLeft, Calendar, FileText, ExternalLink, Search, MoreVertical, User, Phone, Mail, Store, Info, Trash2, ArrowUpDown, Truck, AlertCircle } from 'lucide-react'
 import { DataTable } from '../components/DataTable'
 import { StatusBadge } from '../components/StatusBadge'
 import { Timeline } from '../components/Timeline'
@@ -234,8 +234,9 @@ export function VendorsPage({ subRoute = null, navigate }) {
   }, [getVendorRankings, rankingsSort, rankingsOrder])
 
   const handleViewDetails = (vendor) => {
-    setSelectedVendorForDetail(vendor)
-    setCurrentView('detail')
+    const originalVendor = withCoverageMeta(getRawVendorById(vendor.id) || vendor)
+    setSelectedVendorForDetail(originalVendor)
+    setCurrentView('vendorDetail')
   }
 
   // Initial fetch
@@ -629,6 +630,15 @@ export function VendorsPage({ subRoute = null, navigate }) {
                 setOpenActionsDropdown(null)
               },
               className: 'text-gray-700 hover:bg-gray-50'
+            },
+            {
+              label: 'Manage Logistics',
+              icon: Truck,
+              onClick: () => {
+                navigate('vendors/logistics')
+                setOpenActionsDropdown(null)
+              },
+              className: 'text-blue-700 hover:bg-blue-50 font-bold'
             }
           ]
 
@@ -847,9 +857,18 @@ export function VendorsPage({ subRoute = null, navigate }) {
                     </div>
                   </div>
                 </div>
-                <StatusBadge tone={vendor.status === 'On Track' || vendor.status === 'on_track' ? 'success' : vendor.status === 'Delayed' || vendor.status === 'delayed' ? 'warning' : 'neutral'}>
-                  {vendor.status || 'Unknown'}
-                </StatusBadge>
+                <div className="flex flex-col items-end gap-2">
+                  <StatusBadge tone={vendor.status === 'On Track' || vendor.status === 'on_track' ? 'success' : vendor.status === 'Delayed' || vendor.status === 'delayed' ? 'warning' : 'neutral'}>
+                    {vendor.status || 'Unknown'}
+                  </StatusBadge>
+                  <button
+                    onClick={() => navigate('vendors/logistics')}
+                    className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-lg transition-all hover:bg-blue-700"
+                  >
+                    <Truck className="h-4 w-4" />
+                    Manage Logistics
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1265,7 +1284,7 @@ export function VendorsPage({ subRoute = null, navigate }) {
                             <span className="text-sm font-semibold text-gray-900">{product.name || product}</span>
                             {product.quantity && (
                               <span className="text-xs text-gray-500">
-                                Qty: {product.quantity} {product.unit || 'kg'}
+                                Qty: {product.quantity}
                               </span>
                             )}
                           </div>
@@ -1349,44 +1368,69 @@ export function VendorsPage({ subRoute = null, navigate }) {
               >
                 Cancel
               </button>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (purchaseRejectReason === null) {
-                      setPurchaseRejectReason('')
-                    } else {
-                      handleRejectWithReason()
-                    }
-                  }}
-                  disabled={processingPurchase}
-                  className="flex items-center gap-2 rounded-xl border border-red-300 bg-white px-6 py-3 text-sm font-bold text-red-600 transition-all hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <XCircle className="h-4 w-4" />
-                  {purchaseRejectReason === null ? 'Reject' : 'Confirm Rejection'}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    const notes = purchaseApprovalNotes || ''
-                    const trimmedNotes = notes.trim()
-                    console.log('Approve button clicked:', { notes, trimmedNotes, purchaseApprovalNotes })
-                    if (!trimmedNotes) {
-                      showError('Short description is required for approval', 3000)
-                      return
-                    }
-                    handleApprovePurchase(request.id, trimmedNotes)
-                  }}
-                  disabled={processingPurchase || !(purchaseApprovalNotes || '').trim()}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 text-sm font-bold text-white shadow-[0_4px_15px_rgba(34,197,94,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all hover:shadow-[0_6px_20px_rgba(34,197,94,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  {processingPurchase ? 'Processing...' : 'Approve Request'}
-                </button>
-              </div>
+              {request.status === 'pending' && (
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (purchaseRejectReason === null) {
+                        setPurchaseRejectReason('')
+                      } else {
+                        handleRejectWithReason()
+                      }
+                    }}
+                    disabled={processingPurchase}
+                    className="flex items-center gap-2 rounded-xl border border-red-300 bg-white px-6 py-3 text-sm font-bold text-red-600 transition-all hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    {purchaseRejectReason === null ? 'Reject' : 'Confirm Rejection'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const notes = purchaseApprovalNotes || ''
+                      const trimmedNotes = notes.trim()
+                      if (!trimmedNotes) {
+                        showError('Short description is required for approval', 3000)
+                        return
+                      }
+                      handleApprovePurchase(request.id, trimmedNotes)
+                    }}
+                    disabled={processingPurchase || !(purchaseApprovalNotes || '').trim()}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 text-sm font-bold text-white shadow-[0_4px_15px_rgba(34,197,94,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all hover:shadow-[0_6px_20px_rgba(34,197,94,0.4),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    {processingPurchase ? 'Processing...' : 'Approve Request'}
+                  </button>
+                </div>
+              )}
             </div>
+
+            {/* Logistics Status (Visible if approved) */}
+            {request.status === 'approved' && (
+              <div className="mt-8 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50/50 p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900">Stock Delivery Workflow</h4>
+                    <p className="text-xs text-gray-600">Current Phase: <span className="font-semibold uppercase text-blue-600">{request.deliveryStatus || 'Pending'}</span></p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('vendors/logistics')}
+                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:bg-blue-700"
+                  >
+                    <Truck className="h-4 w-4" />
+                    Manage Stock Logistics
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  This request has been approved. Logistics updates (packing, dispatch, delivery) are now managed in the dedicated logistics screen.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -19,11 +19,13 @@ import { PushNotificationsPage } from '../pages/PushNotifications'
 import { RepaymentConfigPage } from '../pages/RepaymentConfig'
 import { IncentiveConfigPage } from '../pages/IncentiveConfig'
 import { CategoriesPage } from '../pages/Categories'
+import { VendorOrdersPage } from '../pages/VendorOrders'
 
 const routeConfig = [
   { id: 'dashboard', element: DashboardPage },
   { id: 'products', element: ProductsPage },
   { id: 'vendors', element: VendorsPage },
+  { id: 'vendors/orders', element: VendorOrdersPage },
   { id: 'orders', element: OrdersPage },
   { id: 'finance', element: FinancePage },
   { id: 'operations', element: OperationsPage },
@@ -52,9 +54,14 @@ function AdminDashboardContent({ activeRoute, setActiveRoute, onExit }) {
   }, [activeRoute])
 
   const ActivePageComponent = useMemo(() => {
-    const match = routeConfig.find((route) => route.id === pageId)
-    return match?.element ?? DashboardPage
-  }, [pageId])
+    // First, try to match the full route (e.g., 'vendors/orders')
+    const fullMatch = routeConfig.find((route) => route.id === activeRoute)
+    if (fullMatch) return fullMatch.element
+
+    // If no full match, fall back to matching just the pageId
+    const pageMatch = routeConfig.find((route) => route.id === pageId)
+    return pageMatch?.element ?? DashboardPage
+  }, [activeRoute, pageId])
 
   const navigate = useCallback((route) => {
     setActiveRoute(route)

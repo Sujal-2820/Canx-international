@@ -6,14 +6,7 @@ import { cn } from '../../../lib/cn'
 export function VendorApprovalModal({ isOpen, onClose, vendor, onApprove, onReject, loading }) {
   if (!vendor) return null
 
-  const hasCoverageConflict = vendor.coverageConflicts?.length > 0
   const hasLocation = vendor.location?.coordinates?.lat && vendor.location?.coordinates?.lng
-  const firstConflict = hasCoverageConflict ? vendor.coverageConflicts[0] : null
-  const conflictingVendorName = firstConflict
-    ? firstConflict.vendorA.id === vendor.id
-      ? firstConflict.vendorB.name
-      : firstConflict.vendorA.name
-    : null
 
   const handleApprove = () => {
     onApprove(vendor.id)
@@ -142,43 +135,30 @@ export function VendorApprovalModal({ isOpen, onClose, vendor, onApprove, onReje
           <KYCBadge label="Aadhaar Number" value={vendor.aadhaarNumber} icon={ShieldCheck} />
         </div>
 
-        {/* Geo Validation */}
+        {/* Geo Validation (Rule Retired) */}
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-sm font-bold text-blue-900">Coverage Compliance</h4>
-              <p className="mt-1 text-xs text-blue-700">Vendor Exclusivity Check (20km radius rule)</p>
+              <p className="mt-1 text-xs text-blue-700">Radius-based exclusivity rule has been retired.</p>
             </div>
-            <StatusBadge tone={hasCoverageConflict ? 'warning' : 'success'}>
-              {hasCoverageConflict ? 'Conflict Detected' : 'Compliant'}
+            <StatusBadge tone="success">
+              Verified
             </StatusBadge>
           </div>
 
-          {hasCoverageConflict && firstConflict ? (
-            <div className="mt-4 rounded-xl border border-red-200 bg-red-100 p-4 text-xs">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-600" />
-                <div>
-                  <p className="font-bold text-red-900">Overlapping Coverage Warning</p>
-                  <p className="mt-1 text-red-800">
-                    <strong>{conflictingVendorName}</strong> is located only <strong>{firstConflict.distanceKm} km</strong> away.
-                    Canx International policy strictly limits one vendor per 20km radius.
-                  </p>
-                </div>
-              </div>
+          <div className="mt-4 flex items-center gap-4 text-xs font-medium text-blue-800">
+            <div className="flex items-center gap-1">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span>Location Validated</span>
             </div>
-          ) : (
-            <div className="mt-4 flex items-center gap-4 text-xs font-medium text-blue-800">
-              <div className="flex items-center gap-1">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span>Geospatial Rule Validated</span>
-              </div>
-              <span>•</span>
-              <span>Radius: {vendor.coverageRadius || 20} km</span>
-              <span>•</span>
-              <span>Coords: {hasLocation ? `${vendor.location.coordinates.lat.toFixed(4)}, ${vendor.location.coordinates.lng.toFixed(4)}` : 'N/A'}</span>
-            </div>
-          )}
+            {hasLocation && (
+              <>
+                <span>•</span>
+                <span>Coords: {vendor.location.coordinates.lat.toFixed(4)}, {vendor.location.coordinates.lng.toFixed(4)}</span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Documents */}
@@ -218,10 +198,10 @@ export function VendorApprovalModal({ isOpen, onClose, vendor, onApprove, onReje
             <button
               type="button"
               onClick={handleApprove}
-              disabled={loading || hasCoverageConflict}
+              disabled={loading}
               className={cn(
                 'flex items-center gap-2 rounded-xl px-10 py-3 text-sm font-black text-white transition-all',
-                loading || hasCoverageConflict
+                loading
                   ? 'bg-gray-300 shadow-none cursor-not-allowed'
                   : 'bg-gradient-to-r from-green-600 to-green-700 shadow-lg hover:shadow-green-200'
               )}

@@ -441,7 +441,7 @@ export function VendorCartView({ onUpdateQuantity, onRemove, onCheckout, onAddTo
                 {/* Timeline Slider */}
                 <div className="relative pt-10 px-2 pb-2">
                     <div
-                        className="absolute top-0 pointer-events-none z-10 flex flex-col items-center"
+                        className="absolute top-[-6px] pointer-events-none z-10 flex flex-col items-center"
                         style={{
                             left: `${sliderProgress}%`,
                             transform: `translateX(-${sliderProgress}%)`

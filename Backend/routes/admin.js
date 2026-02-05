@@ -242,6 +242,7 @@ router.post('/vendors/purchases/:requestId/approve', authorizeAdmin, adminContro
  * @access  Private (Admin)
  */
 router.post('/vendors/purchases/:requestId/reject', authorizeAdmin, adminController.rejectVendorPurchase);
+router.post('/vendors/purchases/:requestId/process', authorizeAdmin, adminController.processVendorPurchase);
 router.post('/vendors/purchases/:requestId/send', authorizeAdmin, adminController.sendVendorPurchaseStock);
 router.post('/vendors/purchases/:requestId/confirm-delivery', authorizeAdmin, adminController.confirmVendorPurchaseDelivery);
 router.delete('/vendors/purchases/:requestId', authorizeAdmin, adminController.deleteVendorPurchase);
