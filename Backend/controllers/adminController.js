@@ -1979,10 +1979,44 @@ exports.getAllVendorPurchases = async (req, res, next) => {
       total = filteredPurchases.length;
     }
 
+    // Add vendor performance data to each purchase
+    const purchasesWithPerformance = await Promise.all(filteredPurchases.map(async (purchase) => {
+      const vendor = purchase.vendorId;
+
+      if (!vendor) {
+        return {
+          ...purchase.toObject(),
+          vendorPerformance: null
+        };
+      }
+
+      // Calculate outstanding dues (unpaid purchases)
+      const outstandingPurchases = await CreditPurchase.find({
+        vendorId: vendor._id,
+        status: { $in: ['approved', 'sent'] }
+      });
+
+      const outstandingAmount = outstandingPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+      const creditLimit = vendor.creditLimit || 0;
+      const creditUsed = vendor.creditUsed || 0;
+      const creditUtilization = creditLimit > 0 ? (creditUsed / creditLimit) * 100 : 0;
+
+      return {
+        ...purchase.toObject(),
+        vendorPerformance: {
+          creditLimit,
+          creditUsed,
+          outstandingAmount,
+          hasOutstandingDues: outstandingAmount > 0,
+          creditUtilization: Math.round(creditUtilization * 10) / 10 // Round to 1 decimal
+        }
+      };
+    }));
+
     res.status(200).json({
       success: true,
       data: {
-        purchases: filteredPurchases,
+        purchases: purchasesWithPerformance,
         pagination: {
           currentPage: pageNum,
           totalPages: Math.ceil(total / limitNum),
