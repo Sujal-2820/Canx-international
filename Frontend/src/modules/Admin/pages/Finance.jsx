@@ -1077,31 +1077,17 @@ export function FinancePage({ subRoute = null, navigate }) {
         <div className="space-y-4 rounded-3xl border border-pink-200 bg-white p-6 shadow-[0_4px_15px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8)]">
           <h3 className="text-lg font-bold text-pink-700">Global Parameters</h3>
           <p className="text-sm text-gray-600">
-            Set default advances, minimum order values, and vendor purchase thresholds for the platform.
+            Set minimum vendor purchase threshold for credit orders on the platform.
           </p>
           <div className="space-y-3">
             {financialParameters ? (
               <>
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.8)]">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-gray-900">User Advance Payment %</p>
-                    <StatusBadge tone="success">{financialParameters.userAdvancePaymentPercent || 30}%</StatusBadge>
-                  </div>
-                  <p className="mt-2 text-xs text-gray-600">Default advance for all user orders</p>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.8)]">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-gray-900">Minimum User Order</p>
-                    <StatusBadge tone="success">₹{financialParameters.minimumUserOrder?.toLocaleString('en-IN') || '2,000'}</StatusBadge>
-                  </div>
-                  <p className="mt-2 text-xs text-gray-600">Minimum order value for user purchases</p>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.8)]">
-                  <div className="flex items-center justify-between">
                     <p className="text-sm font-bold text-gray-900">Minimum Vendor Purchase</p>
                     <StatusBadge tone="success">₹{financialParameters.minimumVendorPurchase?.toLocaleString('en-IN') || '50,000'}</StatusBadge>
                   </div>
-                  <p className="mt-2 text-xs text-gray-600">Minimum purchase value for vendor orders</p>
+                  <p className="mt-2 text-xs text-gray-600">Minimum purchase value required for vendor credit orders</p>
                 </div>
               </>
             ) : (

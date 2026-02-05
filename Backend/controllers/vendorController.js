@@ -17,6 +17,7 @@ const PaymentHistory = require('../models/PaymentHistory');
 const CreditRepayment = require('../models/CreditRepayment');
 const VendorNotification = require('../models/VendorNotification');
 const UserNotification = require('../models/UserNotification');
+const AdminSettings = require('../models/AdminSettings');
 const razorpayService = require('../services/razorpayService');
 
 const { sendOTP } = require('../utils/otp');
@@ -3714,10 +3715,14 @@ exports.requestCreditPurchase = async (req, res, next) => {
     const cashDiscount = paymentMode === 'cash' ? Math.round((totalAmount * 7) / 100) : 0;
     const finalTotalAmount = totalAmount - cashDiscount;
 
-    if (totalAmount < MIN_VENDOR_PURCHASE) {
+    // Get dynamic minimum vendor purchase from AdminSettings
+    const adminSettings = await AdminSettings.findOne();
+    const minVendorPurchase = adminSettings?.minimumVendorPurchase || MIN_VENDOR_PURCHASE;
+
+    if (totalAmount < minVendorPurchase) {
       return res.status(400).json({
         success: false,
-        message: `Minimum order value is ₹${MIN_VENDOR_PURCHASE.toLocaleString('en-IN')}.`,
+        message: `Minimum order value is ₹${minVendorPurchase.toLocaleString('en-IN')}.`,
       });
     }
 

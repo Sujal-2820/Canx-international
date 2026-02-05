@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Settings, Percent, IndianRupee, AlertCircle } from 'lucide-react'
+import { Settings, IndianRupee, AlertCircle } from 'lucide-react'
 import { cn } from '../../../lib/cn'
 
 export function FinancialParametersForm({ parameters, onSave, onCancel, loading }) {
   const [formData, setFormData] = useState({
-    userAdvancePaymentPercent: 30,
-    minimumUserOrder: 2000,
     minimumVendorPurchase: 50000,
   })
   const [errors, setErrors] = useState({})
@@ -13,8 +11,6 @@ export function FinancialParametersForm({ parameters, onSave, onCancel, loading 
   useEffect(() => {
     if (parameters) {
       setFormData({
-        userAdvancePaymentPercent: parameters.userAdvancePaymentPercent || 30,
-        minimumUserOrder: parameters.minimumUserOrder || 2000,
         minimumVendorPurchase: parameters.minimumVendorPurchase || 50000,
       })
     }
@@ -29,17 +25,14 @@ export function FinancialParametersForm({ parameters, onSave, onCancel, loading 
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    
+
     const newErrors = {}
-    
-    if (formData.userAdvancePaymentPercent < 0 || formData.userAdvancePaymentPercent > 100) {
-      newErrors.userAdvancePaymentPercent = 'Advance payment must be between 0% and 100%'
-    }
-    if (formData.minimumUserOrder < 0) {
-      newErrors.minimumUserOrder = 'Minimum order must be a positive value'
-    }
+
     if (formData.minimumVendorPurchase < 0) {
       newErrors.minimumVendorPurchase = 'Minimum vendor purchase must be a positive value'
+    }
+    if (formData.minimumVendorPurchase < 1000) {
+      newErrors.minimumVendorPurchase = 'Minimum vendor purchase should be at least ₹1,000'
     }
 
     setErrors(newErrors)
@@ -50,65 +43,6 @@ export function FinancialParametersForm({ parameters, onSave, onCancel, loading 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* User Advance Payment % */}
-      <div>
-        <label htmlFor="advancePercent" className="mb-2 flex items-center gap-2 text-sm font-bold text-gray-900">
-          <Percent className="h-4 w-4" />
-          User Advance Payment % <span className="text-red-500">*</span>
-        </label>
-        <div className="relative">
-          <input
-            type="number"
-            id="advancePercent"
-            min="0"
-            max="100"
-            step="0.1"
-            value={formData.userAdvancePaymentPercent}
-            onChange={(e) => handleChange('userAdvancePaymentPercent', parseFloat(e.target.value) || 0)}
-            className={cn(
-              'w-full rounded-xl border px-4 py-3 pr-12 text-sm font-semibold transition-all focus:outline-none focus:ring-2',
-              errors.userAdvancePaymentPercent
-                ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
-                : 'border-gray-300 bg-white focus:border-pink-500 focus:ring-pink-500/50',
-            )}
-          />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-500">%</span>
-        </div>
-        {errors.userAdvancePaymentPercent && (
-          <p className="mt-1 text-xs text-red-600">{errors.userAdvancePaymentPercent}</p>
-        )}
-        <p className="mt-1 text-xs text-gray-500">Default advance payment percentage for all user orders</p>
-      </div>
-
-      {/* Minimum User Order */}
-      <div>
-        <label htmlFor="minUserOrder" className="mb-2 flex items-center gap-2 text-sm font-bold text-gray-900">
-          <IndianRupee className="h-4 w-4" />
-          Minimum Order for User <span className="text-red-500">*</span>
-        </label>
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-500">₹</span>
-          <input
-            type="number"
-            id="minUserOrder"
-            min="0"
-            step="100"
-            value={formData.minimumUserOrder}
-            onChange={(e) => handleChange('minimumUserOrder', parseFloat(e.target.value) || 0)}
-            className={cn(
-              'w-full rounded-xl border px-4 py-3 pl-8 text-sm font-semibold transition-all focus:outline-none focus:ring-2',
-              errors.minimumUserOrder
-                ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
-                : 'border-gray-300 bg-white focus:border-pink-500 focus:ring-pink-500/50',
-            )}
-          />
-        </div>
-        {errors.minimumUserOrder && (
-          <p className="mt-1 text-xs text-red-600">{errors.minimumUserOrder}</p>
-        )}
-        <p className="mt-1 text-xs text-gray-500">Minimum order value required for user purchases</p>
-      </div>
-
       {/* Minimum Vendor Purchase */}
       <div>
         <label htmlFor="minVendorPurchase" className="mb-2 flex items-center gap-2 text-sm font-bold text-gray-900">
@@ -120,7 +54,7 @@ export function FinancialParametersForm({ parameters, onSave, onCancel, loading 
           <input
             type="number"
             id="minVendorPurchase"
-            min="0"
+            min="1000"
             step="1000"
             value={formData.minimumVendorPurchase}
             onChange={(e) => handleChange('minimumVendorPurchase', parseFloat(e.target.value) || 0)}
@@ -135,7 +69,7 @@ export function FinancialParametersForm({ parameters, onSave, onCancel, loading 
         {errors.minimumVendorPurchase && (
           <p className="mt-1 text-xs text-red-600">{errors.minimumVendorPurchase}</p>
         )}
-        <p className="mt-1 text-xs text-gray-500">Minimum purchase value required for vendor orders</p>
+        <p className="mt-1 text-xs text-gray-500">Minimum purchase value required for vendor credit orders</p>
       </div>
 
       {/* Info Box */}
@@ -145,9 +79,10 @@ export function FinancialParametersForm({ parameters, onSave, onCancel, loading 
           <div className="text-xs text-blue-900">
             <p className="font-bold">Parameter Guidelines</p>
             <ul className="mt-2 space-y-1 list-disc list-inside">
-              <li>Changes will apply to all new orders</li>
-              <li>Existing orders will not be affected</li>
-              <li>Vendor credit policies may override these defaults</li>
+              <li>This minimum applies to all vendor credit purchase requests</li>
+              <li>Vendors cannot request credit purchases below this threshold</li>
+              <li>Changes will apply immediately to new purchase requests</li>
+              <li>Existing pending requests will not be affected</li>
             </ul>
           </div>
         </div>

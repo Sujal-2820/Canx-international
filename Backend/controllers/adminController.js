@@ -7353,11 +7353,10 @@ exports.getCredits = async (req, res, next) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
 
-    // Build query for vendors with credit
+    // Build query for vendors - show ALL vendors, not just those with credit used
     const query = {
       status: 'approved',
       isActive: true,
-      creditUsed: { $gt: 0 }, // Only vendors with outstanding credit
     };
 
     // Pagination
@@ -7375,14 +7374,17 @@ exports.getCredits = async (req, res, next) => {
 
     // Calculate credit information for each vendor
     const creditDetails = vendors.map(vendor => {
-      const remaining = vendor.creditPolicy.limit - vendor.creditUsed;
-      const utilization = vendor.creditPolicy.limit > 0
-        ? (vendor.creditUsed / vendor.creditPolicy.limit) * 100
+      // Use creditLimit from vendor model, not creditPolicy.limit
+      const creditLimit = vendor.creditLimit || 0;
+      const creditUsed = vendor.creditUsed || 0;
+      const remaining = creditLimit - creditUsed;
+      const utilization = creditLimit > 0
+        ? (creditUsed / creditLimit) * 100
         : 0;
 
       // Check if overdue
       const now = new Date();
-      const dueDate = vendor.creditPolicy.dueDate;
+      const dueDate = vendor.creditPolicy?.dueDate;
       const isOverdue = dueDate && now > dueDate;
       const daysOverdue = isOverdue && dueDate
         ? Math.floor((now - dueDate) / (1000 * 60 * 60 * 24))
@@ -7390,9 +7392,9 @@ exports.getCredits = async (req, res, next) => {
 
       // Calculate penalty if overdue
       let penalty = 0;
-      if (isOverdue && vendor.creditPolicy.penaltyRate > 0) {
+      if (isOverdue && vendor.creditPolicy?.penaltyRate > 0) {
         const dailyPenaltyRate = vendor.creditPolicy.penaltyRate / 100;
-        penalty = vendor.creditUsed * dailyPenaltyRate * daysOverdue;
+        penalty = creditUsed * dailyPenaltyRate * daysOverdue;
       }
 
       // Determine status
@@ -7411,22 +7413,22 @@ exports.getCredits = async (req, res, next) => {
         vendorName: vendor.name,
         vendorPhone: vendor.phone,
         location: vendor.location,
-        creditLimit: vendor.creditPolicy.limit,
-        creditUsed: vendor.creditUsed,
+        creditLimit: creditLimit,
+        creditUsed: creditUsed,
         creditRemaining: remaining,
         creditUtilization: Math.round(utilization * 100) / 100,
-        dueDate: vendor.creditPolicy.dueDate,
+        dueDate: vendor.creditPolicy?.dueDate,
         isOverdue,
         daysOverdue,
         penalty,
-        penaltyRate: vendor.creditPolicy.penaltyRate,
+        penaltyRate: vendor.creditPolicy?.penaltyRate || 0,
         status: creditStatus,
       };
     });
 
     // Aggregate totals
-    const totalOutstanding = vendors.reduce((sum, v) => sum + v.creditUsed, 0);
-    const totalLimit = vendors.reduce((sum, v) => sum + v.creditPolicy.limit, 0);
+    const totalOutstanding = vendors.reduce((sum, v) => sum + (v.creditUsed || 0), 0);
+    const totalLimit = vendors.reduce((sum, v) => sum + (v.creditLimit || 0), 0);
     const overdueCount = creditDetails.filter(c => c.isOverdue).length;
     const dueSoonCount = creditDetails.filter(c => c.status === 'dueSoon' && !c.isOverdue).length;
     const totalPenalty = creditDetails.reduce((sum, c) => sum + c.penalty, 0);

@@ -17,7 +17,8 @@ import { useToast } from '../components/ToastNotification'
 
 const TARGET_AUDIENCES = [
     { value: 'all', label: 'All Registered Devices', icon: Users, description: 'Send to everyone on the platform' },
-    { value: 'vendors', label: 'Vendors', icon: Building2, description: 'Send to all vendors' },
+    { value: 'vendors', label: 'All Vendors', icon: Building2, description: 'Send to all vendors' },
+    { value: 'specific_vendor', label: 'Specific Vendor', icon: Building2, description: 'Send to a selected vendor' },
 ]
 
 const PRIORITY_OPTIONS = [
@@ -29,8 +30,11 @@ const PRIORITY_OPTIONS = [
 
 export function PushNotificationsPage({ subRoute = null, navigate }) {
     const { success, error, info } = useToast()
+    const { getVendors } = useAdminApi()
     const [activeTab, setActiveTab] = useState('create') // 'create' | 'history'
     const [showCreateForm, setShowCreateForm] = useState(false)
+    const [vendors, setVendors] = useState([])
+    const [loadingVendors, setLoadingVendors] = useState(false)
 
     // Form state
     const [formData, setFormData] = useState({
@@ -39,6 +43,7 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
         targetAudience: 'all',
         targetMode: 'all', // 'all' or 'specific'
         targetRecipients: [],
+        selectedVendorId: '', // For specific vendor selection
         priority: 'normal',
         scheduledAt: null,
         imageUrl: '',
@@ -71,6 +76,24 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
         },
     ])
 
+    // Fetch vendors on mount
+    useEffect(() => {
+        const fetchVendors = async () => {
+            setLoadingVendors(true)
+            try {
+                const result = await getVendors({ status: 'approved', limit: 1000 })
+                if (result.data?.vendors) {
+                    setVendors(result.data.vendors)
+                }
+            } catch (err) {
+                console.error('Failed to fetch vendors:', err)
+            } finally {
+                setLoadingVendors(false)
+            }
+        }
+        fetchVendors()
+    }, [getVendors])
+
     const handleFormChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }))
         if (formErrors[field]) {
@@ -91,6 +114,9 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
         }
         if (formData.message.length > 240) {
             errors.message = 'Message must be 240 characters or less for optimal display'
+        }
+        if (formData.targetAudience === 'specific_vendor' && !formData.selectedVendorId) {
+            errors.selectedVendorId = 'Please select a vendor'
         }
         setFormErrors(errors)
         return Object.keys(errors).length === 0
