@@ -5,28 +5,64 @@ import { cn } from '../../../lib/cn'
 
 export function VendorInvoice({ order, vendor, onClose }) {
     const [isFocused, setIsFocused] = useState(true)
+    const [isLocked, setIsLocked] = useState(false) // Manual lock for sensitive events
 
     useEffect(() => {
-        const handleBlur = () => setIsFocused(false)
-        const handleFocus = () => setIsFocused(true)
+        let unlockTimeout;
+
+        const handleBlur = () => {
+            setIsFocused(false)
+            // Clear any pending unlock
+            if (unlockTimeout) clearTimeout(unlockTimeout)
+        }
+
+        const handleFocus = () => {
+            setIsFocused(true)
+            // Keep it blurred for 2.5 seconds after focus returns to defeat fast screenshot tools
+            setIsLocked(true)
+            unlockTimeout = setTimeout(() => {
+                setIsLocked(false)
+            }, 2500)
+        }
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState !== 'visible') {
+                setIsFocused(false)
+            } else {
+                handleFocus()
+            }
+        }
+
+        const handlePrint = (e) => {
+            setIsFocused(false)
+            setIsLocked(true) // Hard lock
+            setTimeout(() => setIsLocked(false), 5000)
+            e.preventDefault()
+            return false
+        }
         const handleContextMenu = (e) => e.preventDefault()
 
         const handleKeyDown = (e) => {
-            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
-
             if (
                 e.key === 'PrintScreen' ||
-                (isMac && e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4' || e.key === '5')) ||
-                (e.ctrlKey && (e.key === 'p' || e.key === 'P' || e.key === 's' || e.key === 'S')) ||
-                (e.metaKey && (e.key === 'p' || e.key === 'P' || e.key === 's' || e.key === 'S'))
+                e.keyCode === 44 || // Legacy PrintScreen
+                (e.ctrlKey && (e.key === 'p' || e.key === 's')) ||
+                (e.metaKey && (e.key === 'p' || e.key === 's'))
             ) {
+                // Force an immediate, long-duration blur
+                setIsFocused(false)
+                setIsLocked(true)
+                setTimeout(() => setIsLocked(false), 5000)
+
+                alert('Security Protocol: Content protected against capture.')
                 e.preventDefault()
-                alert('This document is secure. Screenshots and printing are disabled.')
             }
         }
 
         window.addEventListener('blur', handleBlur)
         window.addEventListener('focus', handleFocus)
+        window.addEventListener('visibilitychange', handleVisibilityChange)
+        window.addEventListener('beforeprint', handlePrint)
         window.addEventListener('contextmenu', handleContextMenu)
         window.addEventListener('keydown', handleKeyDown)
 
@@ -41,6 +77,8 @@ export function VendorInvoice({ order, vendor, onClose }) {
         return () => {
             window.removeEventListener('blur', handleBlur)
             window.removeEventListener('focus', handleFocus)
+            window.removeEventListener('visibilitychange', handleVisibilityChange)
+            window.removeEventListener('beforeprint', handlePrint)
             window.removeEventListener('contextmenu', handleContextMenu)
             window.removeEventListener('keydown', handleKeyDown)
             clearInterval(detectDevTools)
@@ -55,8 +93,9 @@ export function VendorInvoice({ order, vendor, onClose }) {
         <div
             id="invoice-secure-viewport"
             className={cn(
-                "fixed inset-0 z-[100] bg-white flex flex-col transition-all duration-500",
-                !isFocused && "filter blur-[40px] grayscale brightness-50 pointer-events-none select-none"
+                "fixed inset-0 z-[100] bg-white flex flex-col transition-all ease-in-out",
+                (isFocused && !isLocked) ? "duration-1000" : "duration-0",
+                (!isFocused || isLocked) && "filter blur-[64px] grayscale brightness-50 pointer-events-none select-none"
             )}
             style={{
                 userSelect: 'none',
@@ -65,9 +104,9 @@ export function VendorInvoice({ order, vendor, onClose }) {
                 MozUserSelect: 'none'
             }}
         >
-            {!isFocused && (
-                <div className="absolute inset-0 z-[110] flex items-center justify-center text-white text-center p-10 bg-black/40 backdrop-blur-sm">
-                    <div className="space-y-4 max-w-xs animate-in zoom-in duration-300">
+            {(!isFocused || isLocked) && (
+                <div className="absolute inset-0 z-[110] flex items-center justify-center text-white text-center p-10 bg-black/40 backdrop-blur-sm animate-in fade-in duration-75">
+                    <div className="space-y-4 max-w-xs animate-in zoom-in duration-75">
                         <div className="h-20 w-20 bg-white/10 rounded-full flex items-center justify-center mx-auto ring-1 ring-white/20">
                             <ReportIcon className="h-10 w-10 text-white" />
                         </div>

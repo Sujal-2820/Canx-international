@@ -17,7 +17,13 @@ class RepaymentCalculationService {
      */
     static async calculateRepaymentAmount(creditPurchase, repaymentDate = new Date()) {
         const purchaseDate = creditPurchase.createdAt;
-        const baseAmount = creditPurchase.totalAmount;
+        // USE OUTSTANDING AMOUNT FOR CALCULATION
+        // If outstandingAmount is available and consistent, use it. Otherwise fallback to totalAmount.
+        // For new purchases, outstandingAmount == totalAmount initially.
+        // For partial paid, outstandingAmount < totalAmount.
+        const baseAmount = (creditPurchase.outstandingAmount !== undefined && creditPurchase.outstandingAmount !== null)
+            ? creditPurchase.outstandingAmount
+            : creditPurchase.totalAmount;
 
         // Calculate days elapsed
         const daysElapsed = Math.floor(

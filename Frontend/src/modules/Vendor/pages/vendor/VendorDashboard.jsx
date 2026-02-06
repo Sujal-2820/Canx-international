@@ -43,6 +43,7 @@ import { RepaymentCalculator } from '../../components/RepaymentCalculator'
 import { CreditSummaryWidget } from '../../components/CreditSummaryWidget'
 import { RewardsWidget } from '../../components/RewardsWidget'
 import * as catalogApi from '../../../../services/catalogApi'
+import * as vendorApi from '../../services/vendorApi'
 
 // New Catalog Views
 import { VendorHomeView } from './views/VendorHomeView'
@@ -5573,7 +5574,14 @@ function CreditView({ openPanel }) {
             getPendingPurchases: async () => ({ data: { purchases: pendingPurchases } }),
             calculateRepayment: calculateRepaymentAmount,
             getRepaymentProjection,
-            submitRepayment
+            submitRepayment,
+            initiateRepayment: (purchaseId, data) => {
+              console.log('🔍 [VendorDashboard wrapper] purchaseId:', purchaseId)
+              console.log('🔍 [VendorDashboard wrapper] data:', data)
+              console.log('🔍 [VendorDashboard wrapper] data type:', typeof data)
+              console.log('🔍 [VendorDashboard wrapper] data keys:', Object.keys(data || {}))
+              return vendorApi.initiateRepayment(purchaseId, data)
+            }
           }}
           onSuccess={() => {
             setRepaymentRefreshKey(prev => prev + 1)

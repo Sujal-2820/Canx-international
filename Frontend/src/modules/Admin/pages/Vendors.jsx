@@ -268,13 +268,23 @@ export function VendorsPage({ subRoute = null, navigate }) {
     }
   }, [subRoute, fetchPurchaseRequests, currentView])
 
-  // Refresh when vendors are updated
+  // Handle detail/ID sub-route for direct navigation
   useEffect(() => {
-    if (vendorsState.updated) {
-      fetchVendors()
-      fetchPurchaseRequests()
+    if (subRoute && subRoute.startsWith('detail/')) {
+      const vendorId = subRoute.split('/')[1]
+      if (vendorId) {
+        // Try to find in current list
+        const vendor = allVendorsList.find(v => v.id === vendorId || v._id === vendorId)
+        if (vendor) {
+          handleViewVendorDetails(vendor)
+        } else if (rawVendors.length > 0) {
+          // Try raw vendors if list filter is active
+          const rawVendor = rawVendors.find(v => v.id === vendorId || v._id === vendorId)
+          if (rawVendor) handleViewVendorDetails(rawVendor)
+        }
+      }
     }
-  }, [vendorsState.updated, fetchVendors, fetchPurchaseRequests])
+  }, [subRoute, allVendorsList, rawVendors])
 
   const getVendorCoverageConflicts = (vendorId) => {
     if (!coverageReport?.conflicts) {

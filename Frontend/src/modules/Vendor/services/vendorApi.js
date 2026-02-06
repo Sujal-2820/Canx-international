@@ -940,7 +940,38 @@ export async function getRepaymentProjection(purchaseId) {
 }
 
 /**
- * Submit Repayment
+ * Initiate Repayment (Online/Razorpay)
+ * POST /vendors/credit/repayment/:purchaseId/initiate
+ */
+export async function initiateRepayment(purchaseId, data = {}) {
+  let url = `/vendors/credit/repayment/${purchaseId}/initiate`
+  if (data.amount) {
+    url += `?amount=${data.amount}`
+  }
+
+  console.log('🔍 [vendorApi.initiateRepayment] URL:', url)
+  console.log('🔍 [vendorApi.initiateRepayment] Data:', data)
+  console.log('🔍 [vendorApi.initiateRepayment] Body:', JSON.stringify(data))
+
+  return apiRequest(url, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  })
+}
+
+/**
+ * Verify Repayment (Razorpay Signature)
+ * POST /vendors/credit/repayment/:purchaseId/verify
+ */
+export async function verifyRepayment(purchaseId, data) {
+  return apiRequest(`/vendors/credit/repayment/${purchaseId}/verify`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Submit Repayment (Manual/Offline)
  * POST /vendors/credit/repayment/:purchaseId/submit
  * 
  * @param {string} purchaseId - Purchase ID

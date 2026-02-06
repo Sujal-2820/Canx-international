@@ -17,7 +17,7 @@ const PaymentHistory = require('../models/PaymentHistory');
 const CreditRepayment = require('../models/CreditRepayment');
 const VendorNotification = require('../models/VendorNotification');
 const UserNotification = require('../models/UserNotification');
-const AdminSettings = require('../models/AdminSettings');
+const Settings = require('../models/Settings');
 const razorpayService = require('../services/razorpayService');
 
 const { sendOTP } = require('../utils/otp');
@@ -939,9 +939,9 @@ exports.getProfile = async (req, res, next) => {
           status: vendor.status,
           isActive: vendor.isActive,
           credit: {
-            limit: vendor.creditPolicy.limit,
-            used: vendor.creditUsed,
-            remaining: vendor.creditPolicy.limit - vendor.creditUsed,
+            limit: vendor.creditLimit || 0,
+            used: vendor.creditUsed || 0,
+            remaining: (vendor.creditLimit || 0) - (vendor.creditUsed || 0),
             dueDate: vendor.creditPolicy.dueDate,
             penaltyRate: vendor.creditPolicy.penaltyRate,
           },
@@ -3715,9 +3715,9 @@ exports.requestCreditPurchase = async (req, res, next) => {
     const cashDiscount = paymentMode === 'cash' ? Math.round((totalAmount * 7) / 100) : 0;
     const finalTotalAmount = totalAmount - cashDiscount;
 
-    // Get dynamic minimum vendor purchase from AdminSettings
-    const adminSettings = await AdminSettings.findOne();
-    const minVendorPurchase = adminSettings?.minimumVendorPurchase || MIN_VENDOR_PURCHASE;
+    // Get dynamic minimum vendor purchase from Settings
+    const financialParams = await Settings.getSetting('FINANCIAL_PARAMETERS', {});
+    const minVendorPurchase = financialParams.minimumVendorPurchase || MIN_VENDOR_PURCHASE;
 
     if (totalAmount < minVendorPurchase) {
       return res.status(400).json({
@@ -5273,8 +5273,8 @@ exports.confirmRepayment = async (req, res, next) => {
           },
           vendor: {
             creditUsed: newCreditUsed,
-            creditLimit: vendorDoc.creditPolicy.limit || 0,
-            creditRemaining: (vendorDoc.creditPolicy.limit || 0) - newCreditUsed,
+            creditLimit: vendorDoc.creditLimit || 0,
+            creditRemaining: (vendorDoc.creditLimit || 0) - newCreditUsed,
           },
         },
         message: 'Repayment completed successfully',

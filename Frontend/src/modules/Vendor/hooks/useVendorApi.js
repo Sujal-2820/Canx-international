@@ -298,6 +298,31 @@ export function useVendorApi() {
     [callApi]
   )
 
+  const initiateRepayment = useCallback(
+    (purchaseId, data) => callApi(vendorApi.initiateRepayment, purchaseId, data),
+    [callApi]
+  )
+
+  const verifyRepayment = useCallback(
+    (purchaseId, verificationData) => {
+      return callApi(vendorApi.verifyRepayment, purchaseId, verificationData).then((result) => {
+        if (result.data) {
+          dispatch({
+            type: 'UPDATE_CREDIT_BALANCE',
+            payload: {
+              isIncrement: false,
+              amount: result.data.repayment?.amount || 0,
+              creditUsed: result.data.vendor?.creditUsed || 0, // Backend returns full vendor obj in verify
+            }
+          })
+          fetchDashboardData()
+        }
+        return result
+      })
+    },
+    [callApi, dispatch, fetchDashboardData]
+  )
+
   const submitRepayment = useCallback(
     (purchaseId, repaymentData) => {
       return callApi(vendorApi.submitRepayment, purchaseId, repaymentData).then((result) => {
@@ -371,6 +396,13 @@ export function useVendorApi() {
     confirmRepayment,
     getRepaymentHistory,
     getRepaymentRules,
+
+    // New Repayment (Phase 3)
+    calculateRepaymentAmount,
+    getRepaymentProjection,
+    initiateRepayment,
+    verifyRepayment,
+    submitRepayment,
     // Earnings
     getEarningsSummary,
     getEarningsHistory,

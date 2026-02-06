@@ -23,16 +23,19 @@ import {
     MoreVertical,
     Clock,
     CheckCircle2,
-    Package
+    Package,
+    Eye,
+    AlertCircle
 } from 'lucide-react'
 import { useAdminApi } from '../hooks/useAdminApi'
 import { useToast } from '../components/ToastNotification'
 import IncentiveForm from '../components/IncentiveForm'
 
 export function IncentiveConfigPage({ subRoute, navigate }) {
-    const [activeTab, setActiveTab] = useState('schemes') // 'schemes' | 'claims'
+    const [activeTab, setActiveTab] = useState('schemes') // 'schemes' | 'claims' | 'history'
     const [incentives, setIncentives] = useState([])
     const [claims, setClaims] = useState([])
+    const [history, setHistory] = useState([])
     const [isLoading, setIsLoading] = useState(true)
 
     const api = useAdminApi()
@@ -51,6 +54,11 @@ export function IncentiveConfigPage({ subRoute, navigate }) {
             } else if (activeTab === 'claims') {
                 const response = await api.getIncentiveHistory({ status: 'pending_approval' })
                 setClaims(response.data || [])
+            } else if (activeTab === 'history') {
+                const response = await api.getIncentiveHistory({})
+                // All non-pending records go to history
+                const filtered = (response.data || []).filter(c => c.status !== 'pending_approval')
+                setHistory(filtered)
             }
         } catch (error) {
             toast.error('Failed to load data: ' + (error.message || 'Error occurred'))
@@ -143,13 +151,23 @@ export function IncentiveConfigPage({ subRoute, navigate }) {
                         : 'border-transparent text-gray-600 hover:text-gray-900'
                         }`}
                 >
-                    <History className="w-4 h-4" />
+                    <Activity className="w-4 h-4" />
                     Active Claims
                     {claims.length > 0 && (
-                        <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                        <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full min-w-[20px] text-center ml-1">
                             {claims.length}
                         </span>
                     )}
+                </button>
+                <button
+                    onClick={() => setActiveTab('history')}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'history'
+                        ? 'border-purple-600 text-purple-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                        }`}
+                >
+                    <History className="w-4 h-4" />
+                    Claim History
                 </button>
             </div>
 
@@ -165,7 +183,7 @@ export function IncentiveConfigPage({ subRoute, navigate }) {
                     onDelete={handleDelete}
                     onToggleActive={handleToggleActive}
                 />
-            ) : (
+            ) : activeTab === 'claims' ? (
                 <ClaimsList
                     claims={claims}
                     onApprove={async (id) => {
@@ -179,6 +197,13 @@ export function IncentiveConfigPage({ subRoute, navigate }) {
                         loadData()
                     }}
                     onRefresh={loadData}
+                    navigate={navigate}
+                />
+            ) : (
+                <HistoryList
+                    history={history}
+                    onRefresh={loadData}
+                    navigate={navigate}
                 />
             )}
         </div>
@@ -195,7 +220,7 @@ function SchemesGrid({ incentives, onEdit, onDelete, onToggleActive }) {
                     Create your first scheme to start rewarding high-performing vendors.
                 </p>
                 <button
-                    onClick={() => window.location.reload()} // Placeholder for better button
+                    onClick={() => window.location.reload()}
                     className="mt-4 text-purple-600 font-medium hover:underline"
                 >
                     Refresh Page
@@ -279,7 +304,7 @@ function SchemesGrid({ incentives, onEdit, onDelete, onToggleActive }) {
     )
 }
 
-function ClaimsList({ claims, onApprove, onReject, onRefresh }) {
+function ClaimsList({ claims, onApprove, onReject, onRefresh, navigate }) {
     if (claims.length === 0) {
         return (
             <div className="text-center py-20 bg-white rounded-xl border border-gray-100">
@@ -310,9 +335,11 @@ function ClaimsList({ claims, onApprove, onReject, onRefresh }) {
                         {claims.map((claim) => (
                             <tr key={claim._id} className="hover:bg-gray-50/50 transition-colors group">
                                 <td className="px-6 py-4">
-                                    <div>
-                                        <div className="text-sm font-bold text-gray-900">{claim.vendorId?.name || 'Unknown Vendor'}</div>
-                                        <div className="text-xs text-gray-500">{claim.vendorId?.businessName}</div>
+                                    <div className="flex items-center gap-3">
+                                        <div>
+                                            <div className="text-sm font-bold text-gray-900">{claim.vendorId?.name || 'Unknown Vendor'}</div>
+                                            <div className="text-xs text-gray-500">{claim.vendorId?.businessName}</div>
+                                        </div>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
@@ -335,7 +362,14 @@ function ClaimsList({ claims, onApprove, onReject, onRefresh }) {
                                     <div className="text-[10px] text-gray-400">{new Date(claim.earnedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="flex items-center justify-end gap-2 opacity-100 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={() => navigate(`vendors/detail/${claim.vendorId?._id}`)}
+                                            className="p-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                                            title="View Vendor Details"
+                                        >
+                                            <Eye className="w-5 h-5" />
+                                        </button>
                                         <button
                                             onClick={() => onApprove(claim._id)}
                                             className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
@@ -364,5 +398,77 @@ function ClaimsList({ claims, onApprove, onReject, onRefresh }) {
     )
 }
 
-export default IncentiveConfigPage
+function HistoryList({ history, onRefresh, navigate }) {
+    if (history.length === 0) {
+        return (
+            <div className="text-center py-20 bg-white rounded-xl border border-gray-100">
+                <History className="w-16 h-16 text-gray-200 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">No history found</h3>
+                <p className="text-gray-500 mt-1">Processed claims will appear here.</p>
+                <button onClick={onRefresh} className="mt-6 px-6 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium">
+                    Refresh List
+                </button>
+            </div>
+        )
+    }
 
+    const getStatusStyles = (status) => {
+        switch (status) {
+            case 'approved': return 'bg-blue-50 text-blue-700 border-blue-100'
+            case 'claimed': return 'bg-green-50 text-green-700 border-green-100'
+            case 'rejected': return 'bg-red-50 text-red-700 border-red-100'
+            case 'expired': return 'bg-gray-100 text-gray-500 border-gray-200'
+            default: return 'bg-gray-50 text-gray-700'
+        }
+    }
+
+    return (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Vendor</th>
+                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Reward</th>
+                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Processed date</th>
+                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                        {history.map((record) => (
+                            <tr key={record._id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-6 py-4">
+                                    <div className="text-sm font-bold text-gray-900">{record.vendorId?.name || 'Deleted Vendor'}</div>
+                                    <div className="text-xs text-gray-500">{record.vendorId?.businessName}</div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <div className="text-sm font-semibold text-gray-900">{record.incentiveSnapshot?.title}</div>
+                                    <div className="text-xs text-purple-600 font-bold">{record.incentiveSnapshot?.rewardValue} {record.incentiveSnapshot?.rewardUnit}</div>
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wide ${getStatusStyles(record.status)}`}>
+                                        {record.status}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                    {new Date(record.updatedAt).toLocaleDateString()}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <button
+                                        onClick={() => navigate(`vendors/detail/${record.vendorId?._id}`)}
+                                        className="text-gray-400 hover:text-purple-600 transition-colors"
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    )
+}
+
+export default IncentiveConfigPage

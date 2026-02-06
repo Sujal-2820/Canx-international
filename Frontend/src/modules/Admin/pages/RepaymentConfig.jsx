@@ -12,7 +12,8 @@ import { useToast } from '../components/ToastNotification'
 import TierFormModal from '../components/TierFormModal'
 
 export function RepaymentConfigPage() {
-    const [activeTab, setActiveTab] = useState('discounts') // 'discounts' | 'interests' | 'status'
+    const [activeTab, setActiveTab] = useState('general') // Default to general for visibility
+    const [generalConfig, setGeneralConfig] = useState(null)
     const [discountTiers, setDiscountTiers] = useState([])
     const [interestTiers, setInterestTiers] = useState([])
     const [systemStatus, setSystemStatus] = useState(null)
@@ -39,6 +40,9 @@ export function RepaymentConfigPage() {
             } else if (activeTab === 'status') {
                 const response = await api.get('/repayment-config/status')
                 setSystemStatus(response.data || null)
+            } else if (activeTab === 'general') {
+                const response = await api.get('/repayment-config/general')
+                setGeneralConfig(response.data || {})
             }
         } catch (error) {
             toast.error('Failed to load data: ' + error.message)
@@ -47,24 +51,12 @@ export function RepaymentConfigPage() {
         }
     }
 
-    const handleDelete = async (id, type) => {
-        if (!confirm('Are you sure you want to delete this tier?')) return
+    // ... (existing handlers)
 
+    const handleUpdateGeneralConfig = async (newConfig) => {
         try {
-            await api.delete(`/repayment-config/${type}/${id}`)
-            toast.success('Tier deleted successfully')
-            loadData()
-        } catch (error) {
-            toast.error('Failed to delete: ' + error.message)
-        }
-    }
-
-    const handleToggleActive = async (tier, type) => {
-        try {
-            await api.put(`/repayment-config/${type}/${tier._id}`, {
-                isActive: !tier.isActive
-            })
-            toast.success(`Tier ${tier.isActive ? 'deactivated' : 'activated'}`)
+            await api.put('/repayment-config/general', newConfig)
+            toast.success('Configuration updated successfully')
             loadData()
         } catch (error) {
             toast.error('Failed to update: ' + error.message)
@@ -82,7 +74,7 @@ export function RepaymentConfigPage() {
                     </p>
                 </div>
 
-                {activeTab !== 'status' && (
+                {activeTab !== 'status' && activeTab !== 'general' && (
                     <button
                         onClick={() => {
                             setEditingTier(null)
@@ -98,6 +90,15 @@ export function RepaymentConfigPage() {
 
             {/* Tabs */}
             <div className="flex gap-2 border-b border-gray-200">
+                <button
+                    onClick={() => setActiveTab('general')}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${activeTab === 'general'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                        }`}
+                >
+                    General Settings
+                </button>
                 <button
                     onClick={() => setActiveTab('discounts')}
                     className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${activeTab === 'discounts'
@@ -132,6 +133,11 @@ export function RepaymentConfigPage() {
                 <div className="flex items-center justify-center py-12">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
+            ) : activeTab === 'general' ? (
+                <GeneralSettingsView
+                    config={generalConfig}
+                    onSave={handleUpdateGeneralConfig}
+                />
             ) : activeTab === 'discounts' ? (
                 <DiscountTiersView
                     tiers={discountTiers}
@@ -176,6 +182,71 @@ export function RepaymentConfigPage() {
         </div>
     )
 }
+
+// General Settings View Component
+function GeneralSettingsView({ config, onSave }) {
+    const [minPct, setMinPct] = useState(config?.minPartialPercentage || 5)
+
+    // Update local state when config loads
+    useEffect(() => {
+        if (config?.minPartialPercentage !== undefined) {
+            setMinPct(config.minPartialPercentage)
+        }
+    }, [config])
+
+    const handleSubmit = (e) => {
+        e.preventDefault()
+        onSave({ minPartialPercentage: Number(minPct) })
+    }
+
+    return (
+        <div className="bg-white rounded-lg border p-6 max-w-2xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">General Repayment Logic</h3>
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Minimum Partial Payment Percentage (%)
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                        Vendors must pay at least this percentage of the total amount when making a partial payment.
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={minPct}
+                            onChange={(e) => setMinPct(e.target.value)}
+                            className="block w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                        />
+                        <span className="text-gray-500">%</span>
+                    </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                    <button
+                        type="submit"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                    >
+                        Save Configuration
+                    </button>
+                </div>
+            </form>
+
+            <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-100 text-sm text-blue-800">
+                <h4 className="font-semibold mb-2 flex items-center gap-2">
+                    <Info className="w-4 h-4" /> Note:
+                </h4>
+                <p>
+                    Changes to this value apply immediately to all new repayment attempts.
+                    Vendors will see an error if they try to pay less than this percentage.
+                </p>
+            </div>
+        </div>
+    )
+}
+
 
 // Discount Tiers View Component
 function DiscountTiersView({ tiers, onEdit, onDelete, onToggleActive }) {

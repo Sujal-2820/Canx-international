@@ -36,9 +36,9 @@ const sendPushNotification = async (tokens, payload) => {
     }
 
     const tokenList = Array.isArray(tokens) ? tokens : [tokens];
-    const validTokens = tokenList.filter(t => t && typeof t === 'string' && t.length > 0);
+    const uniqueTokens = [...new Set(tokenList.filter(t => t && typeof t === 'string' && t.length > 0))];
 
-    if (validTokens.length === 0) {
+    if (uniqueTokens.length === 0) {
         return { success: false, error: 'No valid tokens provided' };
     }
 
@@ -49,7 +49,7 @@ const sendPushNotification = async (tokens, payload) => {
                 body: payload.body,
             },
             data: payload.data || {},
-            tokens: validTokens,
+            tokens: uniqueTokens,
         };
 
         // Add icon if provided
@@ -65,7 +65,7 @@ const sendPushNotification = async (tokens, payload) => {
         if (response.failureCount > 0) {
             response.responses.forEach((resp, idx) => {
                 if (!resp.success) {
-                    console.error(`Failure sending to token ${validTokens[idx]}:`, resp.error);
+                    console.error(`Failure sending to token ${uniqueTokens[idx]}:`, resp.error);
                 }
             });
         }

@@ -20,9 +20,10 @@ export function VendorCreditBalanceModal({ isOpen, onClose, vendor, creditData, 
     return `₹${value.toLocaleString('en-IN')}`
   }
 
+  // Calculate utilization - if limit is 0 but used > 0, show 100%
   const creditUtilization = creditData.creditLimit > 0
-    ? (creditData.usedCredit / creditData.creditLimit) * 100
-    : 0
+    ? Math.min((creditData.usedCredit / creditData.creditLimit) * 100, 100)
+    : (creditData.usedCredit > 0 ? 100 : 0)
 
   const overdueAmount = creditData.overdueAmount || 0
   const penaltyAmount = creditData.penaltyAmount || 0
@@ -56,11 +57,15 @@ export function VendorCreditBalanceModal({ isOpen, onClose, vendor, creditData, 
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
             <div className="flex items-center gap-2 text-xs text-blue-500 mb-2">
               <TrendingUp className="h-4 w-4" />
-              <span>Credit Limit</span>
+              <span>Available Credit</span>
             </div>
             <p className="text-xl font-bold text-blue-900">
-              {formatCurrency(creditData.creditLimit || 0)}
+              {formatCurrency(Math.max(0, (creditData.creditLimit || 0) - (creditData.usedCredit || 0)))}
             </p>
+            <div className="mt-1 flex items-center justify-between text-[10px] uppercase font-bold text-blue-400">
+              <span>Total Limit</span>
+              <span>{formatCurrency(creditData.creditLimit || 0)}</span>
+            </div>
           </div>
           <div className="rounded-xl border border-green-200 bg-green-50 p-4">
             <div className="flex items-center gap-2 text-xs text-green-500 mb-2">

@@ -1,6 +1,7 @@
 const PurchaseIncentive = require('../models/PurchaseIncentive');
 const VendorIncentiveHistory = require('../models/VendorIncentiveHistory');
 const Vendor = require('../models/Vendor');
+const VendorNotification = require('../models/VendorNotification');
 
 /**
  * Repayment Incentive Admin Controller
@@ -134,6 +135,17 @@ exports.approveClaim = async (req, res) => {
         }
 
         await history.approve(req.admin._id);
+
+        // Send Notification
+        await VendorNotification.createNotification({
+            vendorId: history.vendorId,
+            type: 'incentive_approved',
+            title: 'Incentive Claim Approved! 🎉',
+            message: `Your claim for "${history.incentiveSnapshot.title}" has been approved. You can now view it in your rewards.`,
+            relatedEntityType: 'none',
+            priority: 'high'
+        });
+
         res.status(200).json({ success: true, data: history });
     } catch (error) {
         res.status(500).json({ success: false, error: { message: error.message } });
@@ -157,6 +169,16 @@ exports.rejectClaim = async (req, res) => {
         }
 
         await history.reject(req.admin._id, reason);
+
+        // Send Notification
+        await VendorNotification.createNotification({
+            vendorId: history.vendorId,
+            type: 'incentive_rejected',
+            title: 'Update on your Incentive Claim',
+            message: `Your claim for "${history.incentiveSnapshot.title}" was not approved. Reason: ${reason || 'Criteria not met'}`,
+            priority: 'normal'
+        });
+
         res.status(200).json({ success: true, data: history });
     } catch (error) {
         res.status(500).json({ success: false, error: { message: error.message } });

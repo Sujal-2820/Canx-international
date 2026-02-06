@@ -40,8 +40,22 @@ router.get('/rules', authorizeVendor, vendorRepaymentController.getRepaymentRule
 // ============================================================================
 
 /**
+ * @route   POST /api/vendors/credit/repayment/:purchaseId/initiate
+ * @desc    Initiate online repayment (Get Razorpay Order)
+ * @access  Private (Vendor)
+ */
+router.post('/:purchaseId/initiate', authorizeVendor, vendorRepaymentController.initiateOnlineRepayment);
+
+/**
+ * @route   POST /api/vendors/credit/repayment/:purchaseId/verify
+ * @desc    Verify online repayment (Razorpay Signature)
+ * @access  Private (Vendor)
+ */
+router.post('/:purchaseId/verify', authorizeVendor, vendorRepaymentController.verifyOnlineRepayment);
+
+/**
  * @route   POST /api/vendors/credit/repayment/:purchaseId/submit
- * @desc    Submit credit repayment
+ * @desc    Submit credit repayment (Offline/Manual/Test)
  * @access  Private (Vendor)
  */
 router.post('/:purchaseId/submit', authorizeVendor, vendorRepaymentController.submitRepayment);

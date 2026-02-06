@@ -104,6 +104,18 @@ router.get('/status', authorizeAdmin, repaymentTierAdminController.getSystemStat
  * @desc    Validate tier configuration
  * @access  Private (Admin)
  */
-router.post('/validate', authorizeAdmin, repaymentTierAdminController.validateConfiguration);
+/**
+ * @route   GET /api/admin/repayment-config/general
+ * @desc    Get general repayment configuration
+ * @access  Private (Admin)
+ */
+router.get('/general', authorizeAdmin, repaymentTierAdminController.getRepaymentConfig);
+
+/**
+ * @route   PUT /api/admin/repayment-config/general
+ * @desc    Update general repayment configuration
+ * @access  Private (Admin)
+ */
+router.put('/general', authorizeAdmin, repaymentTierAdminController.updateRepaymentConfig);
 
 module.exports = router;

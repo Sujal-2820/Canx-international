@@ -75,7 +75,7 @@ async function createOrder(options) {
   console.log('🔍 [razorpayService.createOrder] RAZORPAY_KEY_SECRET:', process.env.RAZORPAY_KEY_SECRET ? 'Present' : 'Missing');
 
   // FORCE BYPASS FOR TESTING: Always use simulation logic if this flag is true
-  const FORCE_SIMULATION = true;
+  const FORCE_SIMULATION = false;
 
   // If Razorpay instance is not initialized (no keys) OR we are forcing simulation
   if (!razorpayInstance || FORCE_SIMULATION) {

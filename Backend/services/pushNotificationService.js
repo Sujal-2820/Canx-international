@@ -26,9 +26,11 @@ const sendToUser = async (userId, role, payload) => {
             return { success: false, error: 'User not found' };
         }
 
-        const tokens = [];
-        if (person.fcmTokenWeb) tokens.push(person.fcmTokenWeb);
-        if (person.fcmTokenApp) tokens.push(person.fcmTokenApp);
+        const tokenSet = new Set();
+        if (person.fcmTokenWeb) tokenSet.add(person.fcmTokenWeb);
+        if (person.fcmTokenApp) tokenSet.add(person.fcmTokenApp);
+
+        const tokens = Array.from(tokenSet);
 
         if (tokens.length === 0) {
             return { success: false, error: 'No FCM tokens found for user' };
@@ -73,11 +75,13 @@ const broadcastToRole = async (role, payload) => {
             ]
         });
 
-        const allTokens = [];
+        const tokenSet = new Set();
         users.forEach(u => {
-            if (u.fcmTokenWeb) allTokens.push(u.fcmTokenWeb);
-            if (u.fcmTokenApp) allTokens.push(u.fcmTokenApp);
+            if (u.fcmTokenWeb) tokenSet.add(u.fcmTokenWeb);
+            if (u.fcmTokenApp) tokenSet.add(u.fcmTokenApp);
         });
+
+        const allTokens = Array.from(tokenSet);
 
         if (allTokens.length === 0) return { success: true, message: 'No tokens found to broadcast' };
 

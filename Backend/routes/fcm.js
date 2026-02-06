@@ -5,7 +5,46 @@ const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const Seller = require('../models/Seller');
 const Admin = require('../models/Admin');
-const { broadcastToRole } = require('../services/pushNotificationService');
+const { broadcastToRole, sendToUser } = require('../services/pushNotificationService');
+const PushNotificationLog = require('../models/PushNotificationLog');
+
+/**
+ * @route   GET /api/fcm/history
+ * @desc    Get push notification history
+ * @access  Private (Admin)
+ */
+router.get('/history', authorizeAdmin, async (req, res) => {
+    try {
+        const { limit = 20, page = 1 } = req.query;
+        const skip = (page - 1) * limit;
+
+        const history = await PushNotificationLog.find()
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit))
+            .populate('sentBy', 'name email')
+            .populate('selectedVendorId', 'name');
+
+        const total = await PushNotificationLog.countDocuments();
+
+        res.status(200).json({
+            success: true,
+            data: history,
+            pagination: {
+                total,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                pages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        console.error('FCM History Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error fetching notification history'
+        });
+    }
+});
 
 /**
  * @route   POST /api/fcm/register
@@ -144,7 +183,7 @@ router.post('/remove', protect, async (req, res) => {
  */
 router.post('/broadcast', authorizeAdmin, async (req, res) => {
     try {
-        const { title, message, targetAudience, priority, imageUrl, data } = req.body;
+        const { title, message, targetAudience, selectedVendorId, priority, imageUrl, data } = req.body;
 
         if (!title || !message || !targetAudience) {
             return res.status(400).json({
@@ -153,19 +192,37 @@ router.post('/broadcast', authorizeAdmin, async (req, res) => {
             });
         }
 
+        // Create log entry first to get an ID for tracking
+        const logEntry = await PushNotificationLog.create({
+            title,
+            message,
+            targetAudience,
+            selectedVendorId: targetAudience === 'specific_vendor' ? selectedVendorId : null,
+            priority: priority || 'normal',
+            imageUrl,
+            status: 'pending',
+            sentBy: req.admin._id // authorizeAdmin ensures req.admin is populated
+        });
+
         const payload = {
             title,
             body: message,
             icon: imageUrl,
             data: {
                 ...data,
+                logId: logEntry._id.toString(),
                 type: 'broadcast',
                 priority: priority || 'normal'
             }
         };
 
         let result;
-        if (targetAudience === 'all') {
+
+        if (targetAudience === 'specific_vendor') {
+            // Send to specific vendor using service
+            result = await sendToUser(selectedVendorId, 'vendor', payload);
+
+        } else if (targetAudience === 'all') {
             // Send to all roles
             const results = await Promise.all([
                 broadcastToRole('user', payload),
@@ -179,10 +236,39 @@ router.post('/broadcast', authorizeAdmin, async (req, res) => {
             result = await broadcastToRole(roleMapped, payload);
         }
 
+        // Aggregate success and failure counts for the log
+        let deliveredCount = 0;
+        let failedCount = 0;
+
+        const processResult = (resObj) => {
+            if (!resObj) return;
+            if (Array.isArray(resObj)) {
+                resObj.forEach(processResult);
+            } else if (resObj.successCount !== undefined) {
+                deliveredCount += resObj.successCount;
+                failedCount += resObj.failureCount;
+            }
+        };
+
+        processResult(result);
+
+        // Update logarithmic entry with results
+        try {
+            await PushNotificationLog.findByIdAndUpdate(logEntry._id, {
+                deliveredCount,
+                failedCount,
+                status: deliveredCount > 0 ? 'delivered' : (failedCount > 0 ? 'failed' : 'pending'),
+                firebaseResponse: result
+            });
+        } catch (updateError) {
+            console.error('Failed to update push notification log:', updateError);
+        }
+
         res.status(200).json({
             success: true,
             message: 'Broadcast initiated',
-            result
+            result,
+            stats: { deliveredCount, failedCount }
         });
 
     } catch (error) {
@@ -192,6 +278,27 @@ router.post('/broadcast', authorizeAdmin, async (req, res) => {
             message: 'Server error during FCM broadcast',
             error: error.message
         });
+    }
+});
+
+/**
+ * @route   POST /api/fcm/track-click
+ * @desc    Track notification clicks/opens
+ * @access  Public (or semi-private)
+ */
+router.post('/track-click', async (req, res) => {
+    try {
+        const { logId } = req.body;
+        if (!logId) return res.status(400).json({ success: false });
+
+        await PushNotificationLog.findByIdAndUpdate(logId, {
+            $inc: { openedCount: 1 }
+        });
+
+        res.status(200).json({ success: true });
+    } catch (error) {
+        console.error('Track Click Error:', error);
+        res.status(500).json({ success: false });
     }
 });
 

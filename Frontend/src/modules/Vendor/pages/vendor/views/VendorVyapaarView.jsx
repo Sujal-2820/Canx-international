@@ -19,6 +19,7 @@ import { Trans } from '../../../../../components/Trans'
 import { TransText } from '../../../../../components/TransText'
 import CreditSummaryWidget from '../../../components/CreditSummaryWidget'
 import RepaymentCalculator from '../../../components/RepaymentCalculator'
+import * as vendorApi from '../../../services/vendorApi'
 
 export function VendorVyapaarView() {
     const { dashboard } = useVendorState()
@@ -193,7 +194,8 @@ export function VendorVyapaarView() {
                                         getPendingPurchases: async () => ({ data: { purchases: pendingPurchases } }),
                                         calculateRepayment: calculateRepaymentAmount,
                                         getRepaymentProjection,
-                                        submitRepayment
+                                        submitRepayment,
+                                        initiateRepayment: vendorApi.initiateRepayment
                                     }}
                                     onSuccess={() => {
                                         setRepaymentRefreshKey(prev => prev + 1)

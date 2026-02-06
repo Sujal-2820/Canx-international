@@ -1,6 +1,7 @@
 const PurchaseIncentive = require('../models/PurchaseIncentive');
 const VendorIncentiveHistory = require('../models/VendorIncentiveHistory');
 const CreditPurchase = require('../models/CreditPurchase');
+const VendorNotification = require('../models/VendorNotification');
 
 /**
  * Incentive Service
@@ -74,6 +75,16 @@ exports.processIncentivesForPurchase = async (purchaseId, vendorId, amount) => {
             });
 
             await history.save();
+
+            // Send Notification
+            await VendorNotification.createNotification({
+                vendorId,
+                type: 'incentive_earned',
+                title: 'New Reward Earned! ✨',
+                message: `Congratulations! Your purchase of ₹${amount.toLocaleString()} makes you eligible for "${incentive.title}".`,
+                relatedEntityType: 'none',
+                priority: 'normal'
+            });
 
             // 5. Update current redemptions on the scheme
             incentive.currentRedemptions += 1;

@@ -32,7 +32,9 @@ export function VendorOrdersView() {
         getPendingPurchases,
         calculateRepaymentAmount,
         getRepaymentProjection,
-        submitRepayment
+        submitRepayment,
+        initiateRepayment,
+        verifyRepayment
     } = useVendorApi()
     const { success, error } = useToast()
 
@@ -156,7 +158,13 @@ export function VendorOrdersView() {
 
             {/* Credit Status Widget - Integrated into the page */}
             <div className="px-4">
-                <CreditSummaryWidget creditData={creditInfo} />
+                <CreditSummaryWidget
+                    creditData={creditInfo}
+                    onNavigateToCalculator={() => {
+                        setActiveTab('repayment')
+                        // Optional: Scroll to top of list if needed, but tab switch typically resets view focus contextually
+                    }}
+                />
             </div>
 
             {/* Internal Tabs */}
@@ -194,7 +202,9 @@ export function VendorOrdersView() {
                                         getPendingPurchases,
                                         calculateRepayment: calculateRepaymentAmount,
                                         getRepaymentProjection,
-                                        submitRepayment
+                                        submitRepayment,
+                                        initiateRepayment,
+                                        verifyRepayment
                                     }}
                                     onSuccess={() => setRefreshKey(k => k + 1)}
                                 />

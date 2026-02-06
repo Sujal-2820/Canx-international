@@ -64,7 +64,7 @@ const creditPurchaseSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
+    enum: ['pending', 'approved', 'rejected', 'repaid', 'partially_repaid'],
     default: 'pending',
   },
   // Admin actions

@@ -497,4 +497,78 @@ exports.validateConfiguration = async (req, res, next) => {
     }
 };
 
+// ============================================================================
+// GENERAL REPAYMENT CONFIGURATION
+// ============================================================================
+
+/**
+ * @desc    Get general repayment configuration
+ * @route   GET /api/admin/repayment-config/general
+ * @access  Private (Admin)
+ */
+exports.getRepaymentConfig = async (req, res, next) => {
+    try {
+        const Settings = require('../models/Settings');
+        const config = await Settings.getSetting('VENDOR_REPAYMENT_CONFIG', {
+            minPartialPercentage: 5,
+            enablePartialPayments: true
+        });
+
+        res.status(200).json({
+            success: true,
+            data: config,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @desc    Update general repayment configuration
+ * @route   PUT /api/admin/repayment-config/general
+ * @access  Private (Admin)
+ */
+exports.updateRepaymentConfig = async (req, res, next) => {
+    try {
+        const { minPartialPercentage, enablePartialPayments } = req.body;
+
+        // Validation
+        if (minPartialPercentage !== undefined) {
+            const pct = Number(minPartialPercentage);
+            if (isNaN(pct) || pct < 0 || pct > 100) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'minPartialPercentage must be a number between 0 and 100'
+                });
+            }
+        }
+
+        const Settings = require('../models/Settings');
+
+        // Fetch existing to merge
+        const existing = await Settings.getSetting('VENDOR_REPAYMENT_CONFIG', {});
+
+        const newConfig = {
+            ...existing,
+            minPartialPercentage: minPartialPercentage !== undefined ? Number(minPartialPercentage) : existing.minPartialPercentage,
+            enablePartialPayments: enablePartialPayments !== undefined ? enablePartialPayments : existing.enablePartialPayments
+        };
+
+        const updated = await Settings.setSetting(
+            'VENDOR_REPAYMENT_CONFIG',
+            newConfig,
+            'General configuration for vendor repayment logic',
+            req.admin._id
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Repayment configuration updated successfully',
+            data: updated.value,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = exports;

@@ -35,8 +35,12 @@ const vendorNotificationSchema = new mongoose.Schema({
       'repayment_due_reminder',
       'repayment_overdue_alert',
       'repayment_success',
+      'repayment_partial',
       'withdrawal_approved',
       'withdrawal_rejected',
+      'incentive_earned',
+      'incentive_approved',
+      'incentive_rejected',
       'admin_announcement',
       'system_alert',
     ],
@@ -150,9 +154,9 @@ vendorNotificationSchema.statics.createNotification = async function (data) {
       title,
       body: message,
       data: {
-        type,
-        relatedEntityType,
-        relatedEntityId: relatedEntityId ? relatedEntityId.toString() : null
+        type: String(type),
+        relatedEntityType: String(relatedEntityType),
+        relatedEntityId: relatedEntityId ? String(relatedEntityId) : ''
       }
     }).catch(err => console.error('Push Notification Error (Vendor):', err.message));
   } catch (err) {

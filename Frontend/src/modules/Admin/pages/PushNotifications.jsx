@@ -8,10 +8,9 @@ import { useToast } from '../components/ToastNotification'
 /**
  * Push Notifications Management Page
  * 
- * This page is set up for future push notification implementation.
- * Currently provides UI scaffolding for:
+ * This page provides UI for:
  * - Creating custom push notifications for users, vendors, and sellers
- * - Managing push notification history
+ * - Managing push notification history with real delivery stats
  * - Targeting specific recipients
  */
 
@@ -52,47 +51,61 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
     const [formErrors, setFormErrors] = useState({})
     const [isSubmitting, setIsSubmitting] = useState(false)
 
-    // Mock history data (will be replaced with API data in future)
-    const [pushHistory, setPushHistory] = useState([
-        {
-            id: '1',
-            title: 'Welcome to Canx International!',
-            message: 'Thank you for joining our farming community.',
-            targetAudience: 'all',
-            sentAt: new Date(Date.now() - 86400000).toISOString(),
-            deliveredCount: 1234,
-            openedCount: 567,
-            status: 'delivered',
-        },
-        {
-            id: '2',
-            title: 'New Stock Available',
-            message: 'Fresh inventory has been added. Check your stock manager.',
-            targetAudience: 'vendors',
-            sentAt: new Date(Date.now() - 172800000).toISOString(),
-            deliveredCount: 89,
-            openedCount: 45,
-            status: 'delivered',
-        },
-    ])
+    const [pushHistory, setPushHistory] = useState([])
+    const [loadingHistory, setLoadingHistory] = useState(false)
 
-    // Fetch vendors on mount
+    // Fetch vendors and history on mount
+    const fetchHistory = useCallback(async () => {
+        setLoadingHistory(true)
+        try {
+            const authToken = localStorage.getItem('admin_token') || localStorage.getItem('token');
+            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+            const response = await fetch(`${API_BASE_URL}/fcm/history`, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            });
+            const result = await response.json();
+            if (result.success && Array.isArray(result.data)) {
+                setPushHistory(result.data)
+            }
+        } catch (err) {
+            console.error('Failed to fetch history:', err)
+        } finally {
+            setLoadingHistory(false)
+        }
+    }, [])
+
     useEffect(() => {
         const fetchVendors = async () => {
             setLoadingVendors(true)
             try {
-                const result = await getVendors({ status: 'approved', limit: 1000 })
-                if (result.data?.vendors) {
-                    setVendors(result.data.vendors)
+                // Fetch all vendors without status filter to ensure we get results
+                const result = await getVendors({ limit: 1000 })
+
+                if (result.success && result.data) {
+                    // Extract vendors array robustly (support both {vendors:[]} and [])
+                    const data = result.data
+                    const vendorList = (data && data.vendors) ? data.vendors : (Array.isArray(data) ? data : [])
+
+                    console.log(`Fetched ${vendorList.length} vendors for push notifications`)
+                    setVendors(vendorList)
+
+                    if (vendorList.length === 0) {
+                        info('No vendors found for specific selection')
+                    }
+                } else {
+                    console.error('API Error fetching vendors:', result.error)
+                    error(result.error?.message || 'Failed to load vendors list')
                 }
             } catch (err) {
-                console.error('Failed to fetch vendors:', err)
+                console.error('Component Error fetching vendors:', err)
             } finally {
                 setLoadingVendors(false)
             }
         }
+
         fetchVendors()
-    }, [getVendors])
+        fetchHistory()
+    }, [getVendors, fetchHistory])
 
     const handleFormChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }))
@@ -130,9 +143,10 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
 
         try {
             const authToken = localStorage.getItem('admin_token') || localStorage.getItem('token');
-            const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+            // Use VITE_API_BASE_URL to match other API calls
+            const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-            const response = await fetch(`${API_BASE_URL}/api/fcm/broadcast`, {
+            const response = await fetch(`${API_BASE_URL}/fcm/broadcast`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -144,25 +158,19 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
             const result = await response.json();
 
             if (response.ok && result.success) {
-                // Add to history
-                const newNotification = {
-                    id: Date.now().toString(),
-                    ...formData,
-                    sentAt: new Date().toISOString(),
-                    deliveredCount: 0,
-                    openedCount: 0,
-                    status: 'delivered',
-                }
-                setPushHistory(prev => [newNotification, ...prev])
-
                 success('Push notification broadcast initiated!')
                 setShowCreateForm(false)
+
+                // Refresh history after a short delay to allow background processing if any
+                setTimeout(fetchHistory, 500);
+
                 setFormData({
                     title: '',
                     message: '',
                     targetAudience: 'all',
                     targetMode: 'all',
                     targetRecipients: [],
+                    selectedVendorId: '',
                     priority: 'normal',
                     scheduledAt: null,
                     imageUrl: '',
@@ -205,9 +213,9 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
 
     const historyColumns = useMemo(() => [
         {
-            key: 'title',
-            header: 'Notification',
-            render: (row) => (
+            accessor: 'title',
+            Header: 'Notification',
+            Cell: (row) => (
                 <div className="max-w-xs">
                     <p className="font-semibold text-gray-900 truncate">{row.title}</p>
                     <p className="text-xs text-gray-500 truncate">{row.message}</p>
@@ -215,9 +223,9 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
             ),
         },
         {
-            key: 'targetAudience',
-            header: 'Audience',
-            render: (row) => {
+            accessor: 'targetAudience',
+            Header: 'Audience',
+            Cell: (row) => {
                 const Icon = getAudienceIcon(row.targetAudience)
                 return (
                     <div className="flex items-center gap-2">
@@ -228,9 +236,9 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
             },
         },
         {
-            key: 'sentAt',
-            header: 'Sent At',
-            render: (row) => (
+            accessor: 'sentAt',
+            Header: 'Sent At',
+            Cell: (row) => (
                 <span className="text-sm text-gray-600">
                     {new Date(row.sentAt).toLocaleDateString('en-IN', {
                         day: 'numeric',
@@ -243,9 +251,9 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
             ),
         },
         {
-            key: 'stats',
-            header: 'Delivery Stats',
-            render: (row) => (
+            accessor: 'stats',
+            Header: 'Delivery Stats',
+            Cell: (row) => (
                 <div className="text-sm">
                     <p className="text-gray-900">{row.deliveredCount.toLocaleString()} delivered</p>
                     <p className="text-xs text-gray-500">{row.openedCount.toLocaleString()} opened ({row.deliveredCount > 0 ? Math.round((row.openedCount / row.deliveredCount) * 100) : 0}%)</p>
@@ -253,9 +261,9 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
             ),
         },
         {
-            key: 'status',
-            header: 'Status',
-            render: (row) => getStatusBadge(row.status),
+            accessor: 'status',
+            Header: 'Status',
+            Cell: (row) => getStatusBadge(row.status),
         },
     ], [])
 
@@ -278,23 +286,6 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
                     <Send className="h-4 w-4" />
                     New Push Notification
                 </button>
-            </div>
-
-            {/* Coming Soon Notice */}
-            <div className="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50 p-4">
-                <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
-                        <Smartphone className="h-5 w-5 text-amber-600" />
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-amber-800">Push Notifications - Setup Complete</h3>
-                        <p className="text-sm text-amber-700 mt-1">
-                            The push notification system UI is ready. Integration with Firebase Cloud Messaging (FCM) or
-                            OneSignal will be added in a future update. For now, you can preview the interface and
-                            prepare notification templates.
-                        </p>
-                    </div>
-                </div>
             </div>
 
             {/* Tab Navigation */}
@@ -415,6 +406,42 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
                             </div>
                         </div>
 
+                        {/* Vendor Selection (shown when specific_vendor is selected) */}
+                        {formData.targetAudience === 'specific_vendor' && (
+                            <div>
+                                <label htmlFor="selectedVendorId" className="mb-2 block text-sm font-bold text-gray-900">
+                                    Select Vendor <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                    id="selectedVendorId"
+                                    value={formData.selectedVendorId}
+                                    onChange={(e) => handleFormChange('selectedVendorId', e.target.value)}
+                                    disabled={loadingVendors}
+                                    className={cn(
+                                        'w-full rounded-xl border px-4 py-3 text-sm font-semibold transition-all focus:outline-none focus:ring-2',
+                                        formErrors.selectedVendorId
+                                            ? 'border-red-300 bg-red-50 focus:ring-red-500/50'
+                                            : 'border-gray-300 bg-white focus:border-indigo-500 focus:ring-indigo-500/50',
+                                    )}
+                                >
+                                    <option value="">
+                                        {loadingVendors ? 'Loading vendors...' : 'Select a vendor'}
+                                    </option>
+                                    {vendors.map((vendor) => (
+                                        <option key={vendor._id || vendor.id} value={vendor._id || vendor.id}>
+                                            {vendor.name} - {vendor.phone || vendor.email}
+                                        </option>
+                                    ))}
+                                </select>
+                                {formErrors.selectedVendorId && (
+                                    <p className="mt-1 text-xs text-red-600">{formErrors.selectedVendorId}</p>
+                                )}
+                                <p className="mt-1 text-xs text-gray-500">
+                                    {vendors.length} vendor{vendors.length !== 1 ? 's' : ''} available
+                                </p>
+                            </div>
+                        )}
+
                         {/* Priority */}
                         <div>
                             <label htmlFor="priority" className="mb-2 block text-sm font-bold text-gray-900">
@@ -469,6 +496,7 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
                                         targetAudience: 'all',
                                         targetMode: 'all',
                                         targetRecipients: [],
+                                        selectedVendorId: '',
                                         priority: 'normal',
                                         scheduledAt: null,
                                         imageUrl: '',
@@ -514,8 +542,8 @@ export function PushNotificationsPage({ subRoute = null, navigate }) {
                     ) : (
                         <DataTable
                             columns={historyColumns}
-                            data={pushHistory}
-                            emptyMessage="No push notifications found"
+                            rows={pushHistory}
+                            emptyState="No push notifications found"
                         />
                     )}
                 </div>

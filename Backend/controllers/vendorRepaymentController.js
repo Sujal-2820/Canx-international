@@ -14,6 +14,8 @@ const CreditRepayment = require('../models/CreditRepayment');
 const RepaymentDiscount = require('../models/RepaymentDiscount');
 const RepaymentInterest = require('../models/RepaymentInterest');
 const RepaymentCalculationService = require('../services/repaymentCalculationService');
+const razorpayService = require('../services/razorpayService');
+const VendorNotification = require('../models/VendorNotification');
 const { generateUniqueId } = require('../utils/generateUniqueId');
 
 // ============================================================================
@@ -388,6 +390,370 @@ exports.submitRepayment = async (req, res, next) => {
         session.endSession();
     }
 };
+
+// ============================================================================
+// ONLINE REPAYMENT (RAZORPAY)
+// ============================================================================
+
+/**
+ * @desc    Initiate online repayment (create Razorpay order)
+ * @route   POST /api/vendors/credit/repayment/:purchaseId/initiate
+ * @access  Private (Vendor)
+ */
+exports.initiateOnlineRepayment = async (req, res, next) => {
+    try {
+        const { purchaseId } = req.params;
+        const amount = req.body.amount || req.query.amount; // Helper: Check body then query
+
+        console.log(`[initiateOnlineRepayment] Request for Purchase ${purchaseId}`);
+        console.log(`[initiateOnlineRepayment] Body:`, req.body);
+        console.log(`[initiateOnlineRepayment] Query:`, req.query);
+        console.log(`[initiateOnlineRepayment] Partial Amount Requested: ${amount}`);
+
+        // Find the credit purchase
+        const purchase = await CreditPurchase.findById(purchaseId);
+
+        if (!purchase) {
+            return res.status(404).json({
+                success: false,
+                message: 'Credit purchase not found',
+            });
+        }
+
+        // Verify ownership
+        if (purchase.vendorId.toString() !== req.vendor._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Unauthorized - not your purchase',
+            });
+        }
+
+        // Check if already repaid
+        if (purchase.status === 'repaid' || (purchase.outstandingAmount <= 1 && purchase.status !== 'pending')) {
+            return res.status(400).json({
+                success: false,
+                message: 'This purchase has already been fully repaid',
+            });
+        }
+
+        // Check Day 0 Restriction
+        const currentDate = new Date();
+        const purchaseDate = new Date(purchase.createdAt);
+        const purchaseDateOnly = new Date(purchaseDate.getFullYear(), purchaseDate.getMonth(), purchaseDate.getDate());
+        const currentDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+
+        const daysSincePurchase = Math.floor((currentDateOnly - purchaseDateOnly) / (1000 * 60 * 60 * 24));
+
+        if (daysSincePurchase === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Repayment cannot be processed on Day 0.',
+                isDay0: true,
+                earliestRepaymentDate: new Date(purchaseDateOnly.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            });
+        }
+
+        // Fetch System Settings (Default 5%)
+        const Settings = require('../models/Settings');
+        const repaymentConfig = await Settings.getSetting('VENDOR_REPAYMENT_CONFIG', { minPartialPercentage: 5 });
+        const minPercentage = repaymentConfig.minPartialPercentage || 5;
+
+        // Calculate current full payable amount for reference
+        const calculation = await RepaymentCalculationService.calculateRepaymentAmount(
+            purchase,
+            currentDate
+        );
+
+        let amountToPay = calculation.finalPayable;
+        let isPartial = false;
+        const minAllowedAmount = Math.ceil((calculation.finalPayable * minPercentage) / 100);
+
+        console.log(`[initiateOnlineRepayment] Full Payable: ${amountToPay}`);
+
+        // Custom Amount / Partial Payment Logic
+        if (amount && Number(amount) > 0) {
+            const requestedAmount = Number(amount);
+
+            console.log(`[initiateOnlineRepayment] Processing Partial: Requested ${requestedAmount} vs Due ${amountToPay}`);
+
+            // 1. Check Minimum Constraint (5%)
+            if (requestedAmount < minAllowedAmount) {
+                // REJECT if less than 5% (unless paying off small remaining balance completely)
+                if (requestedAmount < amountToPay - 1) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Partial payment must be at least ${minPercentage}% of the total payable amount (Minimum ₹${minAllowedAmount})`
+                    });
+                }
+            }
+
+            if (requestedAmount >= amountToPay - 1) {
+                // Full Payment Snap
+                console.log(`[initiateOnlineRepayment] Snap to Full.`);
+                amountToPay = calculation.finalPayable;
+                isPartial = false;
+            } else {
+                // Genuine Partial
+                amountToPay = requestedAmount;
+                isPartial = true;
+                console.log(`[initiateOnlineRepayment] Partial Accepted. New Payable: ${amountToPay}`);
+            }
+        } else {
+            console.log(`[initiateOnlineRepayment] No valid partial amount in request. Defaulting to Full.`);
+        }
+
+        // Generate a temporary repayment ID for tracking
+        const dateStr = currentDate.toISOString().slice(0, 10).replace(/-/g, '');
+        const tempId = `TEMP-REP-${dateStr}-${Date.now().toString().slice(-6)}`;
+
+        // ========================================================================
+        // CRITICAL LOGGING: Track exact amount being sent to Razorpay
+        // ========================================================================
+        console.log(`\n========== RAZORPAY ORDER CREATION ==========`);
+        console.log(`[initiateOnlineRepayment] Purchase ID: ${purchase._id}`);
+        console.log(`[initiateOnlineRepayment] Vendor ID: ${req.vendor._id}`);
+        console.log(`[initiateOnlineRepayment] Full Due Amount: ₹${calculation.finalPayable}`);
+        console.log(`[initiateOnlineRepayment] Amount to Send to Razorpay: ₹${amountToPay}`);
+        console.log(`[initiateOnlineRepayment] Amount in Paise (Razorpay): ${Math.round(amountToPay * 100)}`);
+        console.log(`[initiateOnlineRepayment] Is Partial Payment: ${isPartial}`);
+        console.log(`[initiateOnlineRepayment] Receipt ID: ${tempId}`);
+        console.log(`=============================================\n`);
+
+        // Create Razorpay Order
+        const razorpayOrder = await razorpayService.createOrder({
+            amount: amountToPay,
+            currency: 'INR',
+            receipt: tempId,
+            notes: {
+                purchaseId: purchase._id.toString(),
+                vendorId: req.vendor._id.toString(),
+                type: 'credit_repayment_phase3',
+                isPartial: isPartial ? 'true' : 'false',
+                fullDueAtInitiation: calculation.finalPayable.toString()
+            }
+        });
+
+        // Log what Razorpay actually returned
+        console.log(`\n========== RAZORPAY ORDER CREATED ==========`);
+        console.log(`[initiateOnlineRepayment] Razorpay Order ID: ${razorpayOrder.id}`);
+        console.log(`[initiateOnlineRepayment] Razorpay Amount (paise): ${razorpayOrder.amount}`);
+        console.log(`[initiateOnlineRepayment] Razorpay Amount (rupees): ₹${razorpayOrder.amount / 100}`);
+        console.log(`[initiateOnlineRepayment] Expected Amount: ₹${amountToPay}`);
+        console.log(`[initiateOnlineRepayment] Match: ${razorpayOrder.amount === Math.round(amountToPay * 100) ? '✓ YES' : '✗ NO - MISMATCH!'}`);
+        console.log(`=============================================\n`);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                razorpayOrder: {
+                    id: razorpayOrder.id,
+                    amount: razorpayOrder.amount, // Amount in paise
+                    currency: razorpayOrder.currency,
+                    key: process.env.RAZORPAY_KEY_ID
+                },
+                calculation: {
+                    ...calculation,
+                    finalPayable: amountToPay, // Override final info for frontend display
+                    isPartial
+                },
+                tempId
+            }
+        });
+
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @desc    Verify online repayment and finalize
+ * @route   POST /api/vendors/credit/repayment/:purchaseId/verify
+ * @access  Private (Vendor)
+ */
+exports.verifyOnlineRepayment = async (req, res, next) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const { purchaseId } = req.params;
+        const { razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
+
+        if (!razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
+            await session.abortTransaction();
+            return res.status(400).json({ success: false, message: 'Missing payment details' });
+        }
+
+        // Verify Signature
+        const isValid = razorpayService.verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
+        if (!isValid) {
+            await session.abortTransaction();
+            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+        }
+
+        // Find Purchase
+        const purchase = await CreditPurchase.findById(purchaseId).session(session);
+        if (!purchase) {
+            await session.abortTransaction();
+            return res.status(404).json({ success: false, message: 'Purchase not found' });
+        }
+
+        const currentDate = new Date();
+        const calculation = await RepaymentCalculationService.calculateRepaymentAmount(purchase, currentDate);
+
+        // Fetch payment details to confirm ACTUAL amount paid
+        const paymentDetails = await razorpayService.fetchPayment(razorpayPaymentId);
+        const amountPaid = paymentDetails.amount / 100; // Razorpay returns paise
+
+        // Determine if Partial or Full
+        // We use a small tolerance for float comparison
+        const fullDueAmount = calculation.finalPayable;
+        const isFullPayment = amountPaid >= (fullDueAmount - 1);
+
+        // Update Vendor
+        const vendor = await Vendor.findById(req.vendor._id).session(session);
+        if (!vendor) throw new Error('Vendor not found');
+
+        // Generate ID
+        const repaymentId = await generateUniqueId(CreditRepayment, 'REP', 'repaymentId', 1001);
+
+        // Calculate proportional impact
+        // Ratio = Base Amount / Final Payable (e.g., 100/90 = 1.11 for a 10% discount)
+        // This ensures that paying ₹X cash reduces the "Payable" by exactly ₹X.
+        let settlementRatio = 1;
+        if (calculation.finalPayable > 0) {
+            settlementRatio = calculation.baseAmount / calculation.finalPayable;
+        }
+
+        // Calculate Principal Settled by this payment
+        // (Cap at remaining outstanding)
+        let principalSettled = amountPaid * settlementRatio;
+
+        // Safety: don't settle more than outstanding
+        if (principalSettled > purchase.outstandingAmount) {
+            principalSettled = purchase.outstandingAmount;
+        }
+
+        // Update Repayment Record
+        const repayment = await CreditRepayment.create([{
+            repaymentId,
+            vendorId: vendor._id,
+            purchaseOrderId: purchase._id,
+            purchaseDate: purchase.createdAt,
+            dueDate: new Date(purchase.createdAt.getTime() + (30 * 24 * 60 * 60 * 1000)),
+            repaymentDate: currentDate,
+            daysElapsed: calculation.daysElapsed,
+
+            amount: principalSettled, // Principal component settled
+            originalAmount: calculation.baseAmount, // Snapshot of full base
+            adjustedAmount: amountPaid, // Actual cash paid
+            totalAmount: amountPaid,
+
+            // Scale logs for partial
+            financialBreakdown: {
+                baseAmount: calculation.baseAmount,
+                discountDeduction: calculation.discountAmount,
+                interestAddition: calculation.interestAmount,
+                finalPayable: amountPaid, // What they paid now
+            },
+
+            discountApplied: calculation.tierType === 'discount' ? {
+                tierName: calculation.tierApplied,
+                tierId: calculation.tierId,
+                discountRate: calculation.discountRate,
+                discountAmount: calculation.discountAmount * (amountPaid / fullDueAmount)
+            } : undefined,
+            interestApplied: calculation.tierType === 'interest' ? {
+                tierName: calculation.tierApplied,
+                tierId: calculation.tierId,
+                interestRate: calculation.interestRate,
+                interestAmount: calculation.interestAmount * (amountPaid / fullDueAmount)
+            } : undefined,
+
+            calculationMethod: 'tiered_discount_interest',
+            calculatedAt: currentDate,
+
+            creditUsedBefore: vendor.creditUsed,
+            creditUsedAfter: Math.max(0, vendor.creditUsed - principalSettled),
+
+            paymentMode: 'online',
+            transactionId: razorpayPaymentId,
+            gatewayResponse: paymentDetails,
+
+            status: 'completed',
+            paidAt: currentDate,
+            notes: isFullPayment ? 'Full Repayment' : `Partial Repayment (Settled approx. ₹${Math.round(principalSettled)})`
+        }], { session });
+
+        // Update Vendor Credit
+        vendor.creditUsed = Math.max(0, vendor.creditUsed - principalSettled);
+
+        // Scale calculation for credit history to reflect actual partial payment
+        // totalRepaid should receive 'amountPaid', totalCreditTaken should receive 'principalSettled'
+        const scaledCalculationForHistory = {
+            ...calculation,
+            baseAmount: principalSettled,
+            finalPayable: amountPaid,
+            savingsFromEarlyPayment: (calculation.tierType === 'discount') ? (principalSettled - amountPaid) : 0,
+            penaltyFromLatePayment: (calculation.tierType === 'interest') ? (amountPaid - principalSettled) : 0,
+            repaymentDate: currentDate
+        };
+
+        vendor.creditHistory = RepaymentCalculationService.updateVendorCreditHistory(vendor, scaledCalculationForHistory);
+        await vendor.save({ session });
+
+        // Update Purchase
+        purchase.totalRepaid = (purchase.totalRepaid || 0) + amountPaid;
+        purchase.outstandingAmount = Math.max(0, purchase.outstandingAmount - principalSettled);
+
+        if (purchase.outstandingAmount < 1) { // Tolerance for rounding
+            purchase.status = 'repaid';
+            purchase.deliveredAt = currentDate; // Set delivered/completed date
+            purchase.outstandingAmount = 0;
+            purchase.cycleStatus = 'fully_paid';
+        } else {
+            // For partial payments, keep status as 'approved'
+            // The pre-save hook in CreditPurchase.js will automatically update cycleStatus to 'partially_paid'
+            purchase.cycleStatus = 'partially_paid';
+            purchase.repaymentStatus = 'in_progress';
+        }
+
+        await purchase.save({ session });
+
+        // Send Notification
+        await VendorNotification.createNotification({
+            vendorId: vendor._id,
+            type: isFullPayment ? 'repayment_success' : 'repayment_partial',
+            title: isFullPayment ? 'Repayment Successful' : 'Partial Repayment Received',
+            message: isFullPayment
+                ? `Repayment of ₹${amountPaid.toLocaleString()} for Purchase #${purchase.creditPurchaseId || purchase._id} was successful.`
+                : `Partial repayment of ₹${amountPaid.toLocaleString()} received for Purchase #${purchase.creditPurchaseId || purchase._id}.`,
+            metadata: {
+                repaymentId: repaymentId,
+                purchaseId: purchase._id,
+                amount: amountPaid
+            }
+        });
+
+        await session.commitTransaction();
+
+        res.status(200).json({
+            success: true,
+            data: {
+                repayment: repayment[0],
+                vendor: { creditUsed: vendor.creditUsed },
+                purchaseStatus: purchase.status
+            }
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        next(error);
+    } finally {
+        session.endSession();
+    }
+};
+
+
 
 // ============================================================================
 // REPAYMENT HISTORY

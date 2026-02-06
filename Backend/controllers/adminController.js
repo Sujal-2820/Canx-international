@@ -4147,16 +4147,40 @@ exports.getVendorRankings = async (req, res, next) => {
     const vendors = await Vendor.aggregate([
       {
         $match: {
-          status: 'approved', // Only rank approved vendors
+          status: 'approved',
           isDeleted: { $ne: true }
         }
       },
+      // Lookup Purchases
       {
         $lookup: {
-          from: 'creditpurchases', // Collection name for CreditPurchase model
+          from: 'creditpurchases',
           localField: '_id',
           foreignField: 'vendorId',
           as: 'purchases'
+        }
+      },
+      // Lookup SUCCESSFUL Repayments
+      {
+        $lookup: {
+          from: 'creditrepayments',
+          let: { vId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$vendorId', '$$vId'] },
+                status: 'completed'
+              }
+            }
+          ],
+          as: 'repayments'
+        }
+      },
+      {
+        $addFields: {
+          orderCount: { $size: '$purchases' },
+          repaymentFrequency: { $size: '$repayments' },
+          repaidAmountTotal: { $sum: '$repayments.totalAmount' }
         }
       },
       {
@@ -4168,9 +4192,14 @@ exports.getVendorRankings = async (req, res, next) => {
           shopName: 1,
           'location.city': 1,
           'location.state': 1,
-          creditHistory: 1,
+          creditHistory: {
+            creditScore: '$creditHistory.creditScore',
+            // Map our calculated fields to the expected keys
+            totalRepaid: '$repaidAmountTotal',
+            totalRepaymentCount: '$repaymentFrequency'
+          },
           performanceTier: 1,
-          orderCount: { $size: '$purchases' }, // Count total purchases for "Order Frequency"
+          orderCount: 1,
         }
       },
       { $sort: sortStage },
@@ -7522,9 +7551,18 @@ exports.getVendorCreditHistory = async (req, res, next) => {
       .select('-__v')
       .limit(limitNum);
 
+    // Get modern repayments (CreditRepayment system)
+    const creditRepayments = await CreditRepayment.find({
+      vendorId: vendor._id,
+      status: 'completed'
+    })
+      .sort({ createdAt: -1 })
+      .limit(limitNum)
+      .select('-gatewayResponse -__v');
+
     const totalPurchases = await CreditPurchase.countDocuments(query);
 
-    // Transform credit purchases to history format
+    // Transform items to shared history format
     const history = [
       ...creditPurchases.map(purchase => ({
         id: purchase._id,
@@ -7544,10 +7582,18 @@ exports.getVendorCreditHistory = async (req, res, next) => {
         type: 'repayment',
         amount: payment.amount,
         date: payment.createdAt,
-        description: `Repayment for Order ${payment.orderId?.orderNumber || 'N/A'}`,
+        description: `Order Payment (${payment.orderId?.orderNumber || 'N/A'})`,
         status: payment.status === 'fully_paid' ? 'completed' : payment.status,
         orderNumber: payment.orderId?.orderNumber,
       })),
+      ...creditRepayments.map(repayment => ({
+        id: repayment._id,
+        type: 'repayment',
+        amount: repayment.totalAmount,
+        date: repayment.paidAt || repayment.createdAt,
+        description: `Credit Repayment (${repayment.repaymentId})`,
+        status: repayment.status,
+      }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     res.status(200).json({
@@ -7557,9 +7603,9 @@ exports.getVendorCreditHistory = async (req, res, next) => {
           id: vendor._id,
           name: vendor.name,
           phone: vendor.phone,
-          creditLimit: vendor.creditPolicy.limit,
-          creditUsed: vendor.creditUsed,
-          creditRemaining: vendor.creditPolicy.limit - vendor.creditUsed,
+          creditLimit: vendor.creditLimit || 0,
+          creditUsed: vendor.creditUsed || 0,
+          creditRemaining: (vendor.creditLimit || 0) - (vendor.creditUsed || 0),
         },
         history: history.slice(0, limitNum),
         pagination: {
@@ -8860,9 +8906,11 @@ exports.getRepayments = async (req, res, next) => {
         $group: {
           _id: '$status',
           count: { $sum: 1 },
-          totalAmount: { $sum: '$amount' },
-          totalPenalty: { $sum: '$penaltyAmount' },
-          totalPaid: { $sum: '$totalAmount' },
+          totalPrincipalSettled: { $sum: '$amount' },
+          totalPenalty: {
+            $sum: { $add: [{ $ifNull: ['$financialBreakdown.interestAddition', 0] }, { $ifNull: ['$penaltyAmount', 0] }] }
+          },
+          totalCashPaid: { $sum: '$totalAmount' },
         },
       },
     ]);
@@ -8877,8 +8925,18 @@ exports.getRepayments = async (req, res, next) => {
           totalCompleted: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
           totalPending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
           totalFailed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
-          totalRepaid: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$amount', 0] } },
-          totalPenaltyPaid: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$penaltyAmount', 0] } },
+          // Use totalAmount for actual cash received (the true 'Repaid Amount')
+          totalRepaid: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$totalAmount', 0] } },
+          // Sum interest from new financial breakdown plus legacy penaltyAmount
+          totalPenaltyPaid: {
+            $sum: {
+              $cond: [
+                { $eq: ['$status', 'completed'] },
+                { $add: [{ $ifNull: ['$financialBreakdown.interestAddition', 0] }, { $ifNull: ['$penaltyAmount', 0] }] },
+                0
+              ]
+            }
+          },
         },
       },
     ]);
@@ -9010,7 +9068,7 @@ exports.getVendorRepayments = async (req, res, next) => {
           name: vendor.name,
           phone: vendor.phone,
           creditUsed: vendor.creditUsed,
-          creditLimit: vendor.creditPolicy?.limit || 0,
+          creditLimit: vendor.creditLimit || 0,
         },
         repayments,
         summary: summary[0] || {
