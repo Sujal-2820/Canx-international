@@ -36,7 +36,6 @@ const app = express();
 app.use(helmet()); // Security headers
 
 // CORS configuration - Environment-aware
-// CORS configuration - Environment-aware
 const defaultOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
@@ -45,29 +44,42 @@ const defaultOrigins = [
   'https://iraagritech.com'
 ];
 
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? [...process.env.CORS_ORIGINS.split(',').map(origin => origin.trim()), ...defaultOrigins]
-  : defaultOrigins;
+// Clean up environment origins (remove trailing slashes)
+const envOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim().replace(/\/$/, ''))
+  : [];
+
+const allowedOrigins = [...envOrigins, ...defaultOrigins];
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
-    // In development, allow localhost origins even if not in CORS_ORIGINS
+    // Normalize incoming origin (remove trailing slash just in case)
+    const normalizedOrigin = origin.replace(/\/$/, '');
+
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.some(allowed => {
+      const normalizedAllowed = allowed.replace(/\/$/, '');
+      return normalizedOrigin === normalizedAllowed;
+    });
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+
+    // In development, allow localhost origins
     if (process.env.NODE_ENV !== 'production') {
-      const isLocalhost = origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:');
-      if (isLocalhost || allowedOrigins.indexOf(origin) !== -1) {
+      const isLocalhost = normalizedOrigin.startsWith('http://localhost:') || normalizedOrigin.startsWith('http://127.0.0.1:');
+      if (isLocalhost) {
         return callback(null, true);
       }
     }
 
-    // In production, only allow origins from CORS_ORIGINS
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    // If not allowed, log and reject
+    console.warn(`Blocked by CORS: ${normalizedOrigin}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true
 })); // Enable CORS
