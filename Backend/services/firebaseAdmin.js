@@ -11,6 +11,10 @@ try {
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
         try {
             serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+            // Essential fix for Render/Heroku environment variables
+            if (serviceAccount && serviceAccount.private_key) {
+                serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+            }
             console.log('✅ Firebase credentials loaded from environment variable');
         } catch (parseError) {
             console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT env var:', parseError.message);
