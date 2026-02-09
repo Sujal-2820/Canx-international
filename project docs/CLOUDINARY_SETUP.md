@@ -1,162 +1,362 @@
-# Cloudinary Image Upload Setup Guide
+# 🖼️ Cloudinary Setup - Canx International
 
-This guide explains how to set up Cloudinary for product image uploads in the Admin Dashboard.
+## ✅ Your Cloudinary Credentials
 
-## Prerequisites
-
-Cloudinary credentials are now configured via environment variables (.env):
-- **Cloud Name**: `dhmtagkyz`
-- **API Key**: `883114994776468`
-- **API Secret**: `VOc-g-Ag-dGh7Jj4YbilWJpzaUA`
-
-## Step 1: Create Unsigned Upload Preset
-
-To enable image uploads from the frontend, you need to create an unsigned upload preset in your Cloudinary dashboard:
-
-1. Go to [Cloudinary Dashboard](https://cloudinary.com/console)
-2. Navigate to **Settings** → **Upload**
-3. Scroll down to **Upload presets** section
-4. Click **Add upload preset**
-5. Configure the preset:
-   - **Preset name**: `ira-sathi-products`
-   - **Signing mode**: Select **Unsigned**
-   - **Folder**: `ira-sathi/products`
-   - **Use filename**: ✅ Enable
-   - **Unique filename**: ✅ Enable
-   - **Overwrite**: ❌ Disable (to prevent overwriting existing images)
-   
-6. Under **Incoming transformation**, click **Edit** and add:
-   - **Width**: `800`
-   - **Height**: `800`
-   - **Crop mode**: `Limit` (maintains aspect ratio, fits within dimensions)
-   - **Quality**: `Auto: Good` (optimizes file size while maintaining quality)
-   - **Format**: `Auto` (serves WebP when supported, falls back to original)
-
-7. Click **Save**
-
-## Step 2: Verify Configuration
-
-The configuration file is located at:
 ```
-FarmCommerce/Frontend/src/modules/Admin/config/cloudinary.js
+Cloud Name: dh1k427cx
+API Key: 347177322749219
+API Secret: dv0U0bF7w32GHx-xzvYgLK7nUMk
 ```
 
-Ensure the `uploadPreset` matches the preset name you created:
+---
+
+## 🚀 Setup Steps
+
+### 1. Create Upload Presets
+
+You need **TWO** upload presets:
+
+#### A. For Images (Products, Categories, etc.)
+1. Go to: https://cloudinary.com/console/settings/upload
+2. Scroll to **"Upload presets"**
+3. Click **"Add upload preset"**
+
+**Settings:**
+```
+Preset name: canx-international-products
+Signing mode: Unsigned ✅
+Asset folder: canx-products
+Allowed formats: jpg, png, webp, gif
+Max file size: 10 MB
+Image transformations:
+  - Max width: 2000px
+  - Max height: 2000px
+  - Quality: Auto
+  - Format: Auto
+```
+
+4. Click **"Save"**
+
+---
+
+#### B. For PDFs (Vendor Documents)
+1. Click **"Add upload preset"** again
+
+**Settings:**
+```
+Preset name: canx-international-documents
+Signing mode: Unsigned ✅
+Asset folder: canx-documents
+Resource type: Auto ✅ (IMPORTANT for PDFs!)
+Allowed formats: pdf
+Max file size: 10 MB
+```
+
+**Additional Settings (scroll down):**
+- **Access mode:** Public
+- **Delivery type:** Upload
+- **Use filename:** Yes (helps identify documents)
+
+2. Click **"Save"**
+
+---
+
+### 2. Enable PDF Preview (IMPORTANT!)
+
+Cloudinary can generate preview images of PDFs:
+
+1. Go to **Settings** → **Upload**
+2. Find **"Eager transformations"** section
+3. For the `canx-international-documents` preset, add:
+
+**Eager transformation:**
+```
+Format: jpg
+Page: 1 (first page preview)
+Width: 800
+Quality: Auto
+```
+
+This creates a thumbnail of the first page!
+
+---
+
+### 3. Update Environment Variables
+
+#### Backend (.env):
+```env
+CLOUDINARY_CLOUD_NAME=dh1k427cx
+CLOUDINARY_API_KEY=347177322749219
+CLOUDINARY_API_SECRET=dv0U0bF7w32GHx-xzvYgLK7nUMk
+CLOUDINARY_URL=cloudinary://347177322749219:dv0U0bF7w32GHx-xzvYgLK7nUMk@dh1k427cx
+```
+
+#### Frontend (.env):
+```env
+VITE_CLOUDINARY_CLOUD_NAME=dh1k427cx
+VITE_CLOUDINARY_API_KEY=347177322749219
+VITE_CLOUDINARY_UPLOAD_PRESET=canx-international-products
+VITE_CLOUDINARY_UPLOAD_PRESET_DOCUMENTS=canx-international-documents
+```
+
+---
+
+## 📄 PDF Upload & Viewing
+
+### How PDFs Work in Cloudinary
+
+#### Upload URL:
+```
+https://api.cloudinary.com/v1_1/dh1k427cx/auto/upload
+```
+
+#### View PDF URL (after upload):
+```
+https://res.cloudinary.com/dh1k427cx/image/upload/canx-documents/document.pdf
+```
+
+#### PDF Preview (first page as image):
+```
+https://res.cloudinary.com/dh1k427cx/image/upload/pg_1,w_800,f_jpg/canx-documents/document.pdf
+```
+
+### PDF Transformations
+
+Cloudinary supports these PDF transformations:
+
+1. **Get specific page:**
+   ```
+   pg_2 - Get page 2
+   ```
+
+2. **Convert to image:**
+   ```
+   f_jpg - Convert to JPG
+   f_png - Convert to PNG
+   ```
+
+3. **Resize:**
+   ```
+   w_800,h_1000 - Resize to 800x1000
+   ```
+
+4. **Quality:**
+   ```
+   q_auto - Auto quality
+   ```
+
+**Example:**
+```
+https://res.cloudinary.com/dh1k427cx/image/upload/pg_1,w_600,f_jpg,q_auto/canx-documents/vendor-license.pdf
+```
+
+---
+
+## 🔧 Frontend Implementation
+
+### Upload PDF (Vendor Registration)
+
 ```javascript
-uploadPreset: 'ira-sathi-products'
+const uploadPDF = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', 'canx-international-documents');
+  formData.append('folder', 'canx-documents');
+  
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/dh1k427cx/auto/upload`,
+    {
+      method: 'POST',
+      body: formData
+    }
+  );
+  
+  const data = await response.json();
+  return data.secure_url; // Save this URL in database
+};
 ```
 
-## How It Works
+### Display PDF
 
-### Image Upload Flow
+**Option 1: Embed PDF Viewer**
+```jsx
+<iframe 
+  src={pdfUrl}
+  width="100%"
+  height="600px"
+  title="Vendor Document"
+/>
+```
 
-1. **Frontend Upload**: Admin selects images in the Product Form
-2. **Cloudinary Upload Widget**: Opens a modal for image selection and upload
-3. **Cloudinary Processing**: Images are automatically optimized and stored
-4. **URL Returned**: Cloudinary returns the optimized image URL and public ID
-5. **Form Submission**: Image URLs and metadata are included with product data
-6. **Backend Storage**: URLs are saved to MongoDB in the product's `images` array
+**Option 2: Show Preview + Download**
+```jsx
+<div>
+  {/* Preview (first page as image) */}
+  <img 
+    src={`https://res.cloudinary.com/dh1k427cx/image/upload/pg_1,w_600,f_jpg/${publicId}.pdf`}
+    alt="Document Preview"
+  />
+  
+  {/* Download button */}
+  <a href={pdfUrl} download>
+    Download PDF
+  </a>
+</div>
+```
 
-### Image Limits
+---
 
-- **Maximum Images**: 4 images per product
-- **Maximum File Size**: 5MB per image
-- **Supported Formats**: JPG, JPEG, PNG, WebP
-- **Image Dimensions**: Automatically optimized to max 800x800px
+## 📋 Cloudinary Dashboard Settings
 
-### Image Structure
+### 1. Create Folders (for organization)
 
-Images are stored in the database with the following structure:
+Go to **Media Library** → Create folders:
+- `canx-products` - Product images
+- `canx-documents` - Vendor PDFs
+- `canx-categories` - Category images
+- `canx-users` - User avatars
+
+### 2. Security Settings
+
+**Settings** → **Security**:
+
+- **Allowed fetch domains:**
+  - `localhost`
+  - `your-vercel-domain.vercel.app`
+  
+- **Restricted media types:** (optional)
+  - Allow: `image`, `raw` (for PDFs)
+
+### 3. Usage Alerts
+
+**Settings** → **Account**:
+- Set alert at 80% of free tier
+
+---
+
+## 🧪 Test Upload
+
+### Test Image Upload:
+```bash
+curl -X POST \
+  https://api.cloudinary.com/v1_1/dh1k427cx/image/upload \
+  -F "file=@test-image.jpg" \
+  -F "upload_preset=canx-international-products"
+```
+
+### Test PDF Upload:
+```bash
+curl -X POST \
+  https://api.cloudinary.com/v1_1/dh1k427cx/auto/upload \
+  -F "file=@test-document.pdf" \
+  -F "upload_preset=canx-international-documents"
+```
+
+---
+
+## 📊 URL Patterns
+
+### Images:
+```
+Original: https://res.cloudinary.com/dh1k427cx/image/upload/v1234567890/canx-products/product.jpg
+
+Optimized: https://res.cloudinary.com/dh1k427cx/image/upload/w_500,q_auto,f_auto/v1234567890/canx-products/product.jpg
+```
+
+### PDFs:
+```
+Original PDF: https://res.cloudinary.com/dh1k427cx/image/upload/v1234567890/canx-documents/license.pdf
+
+Preview (page 1): https://res.cloudinary.com/dh1k427cx/image/upload/pg_1,w_800,f_jpg/v1234567890/canx-documents/license.pdf
+
+Download: https://res.cloudinary.com/dh1k427cx/image/upload/fl_attachment/v1234567890/canx-documents/license.pdf
+```
+
+---
+
+## ✅ Configuration Checklist
+
+- [ ] Created `canx-international-products` preset (unsigned)
+- [ ] Created `canx-international-documents` preset (unsigned)
+- [ ] Enabled PDF preview transformations
+- [ ] Updated Backend `.env`
+- [ ] Updated Frontend `.env`
+- [ ] Created folders in Media Library
+- [ ] Configured security settings
+- [ ] Tested image upload
+- [ ] Tested PDF upload
+
+---
+
+## 🔑 Environment Variables Summary
+
+### Backend (Render):
+```env
+CLOUDINARY_CLOUD_NAME=dh1k427cx
+CLOUDINARY_API_KEY=347177322749219
+CLOUDINARY_API_SECRET=dv0U0bF7w32GHx-xzvYgLK7nUMk
+CLOUDINARY_URL=cloudinary://347177322749219:dv0U0bF7w32GHx-xzvYgLK7nUMk@dh1k427cx
+```
+
+### Frontend (Vercel):
+```env
+VITE_CLOUDINARY_CLOUD_NAME=dh1k427cx
+VITE_CLOUDINARY_API_KEY=347177322749219
+VITE_CLOUDINARY_UPLOAD_PRESET=canx-international-products
+VITE_CLOUDINARY_UPLOAD_PRESET_DOCUMENTS=canx-international-documents
+```
+
+---
+
+## 💡 Pro Tips
+
+### 1. PDF Security
+Add password protection:
+```
+https://res.cloudinary.com/dh1k427cx/image/upload/fl_attachment:vendor-license/canx-documents/license.pdf
+```
+
+### 2. PDF Thumbnails
+Generate multiple page previews:
 ```javascript
-{
-  url: "https://res.cloudinary.com/.../image.jpg",
-  publicId: "ira-sathi/products/abc123",
-  isPrimary: true,  // First image is always primary
-  order: 0         // Display order (0-3)
-}
+// Page 1
+https://res.cloudinary.com/dh1k427cx/image/upload/pg_1,w_200,f_jpg/doc.pdf
+
+// Page 2
+https://res.cloudinary.com/dh1k427cx/image/upload/pg_2,w_200,f_jpg/doc.pdf
 ```
 
-### Primary Image
+### 3. Watermark PDFs
+Add watermark to preview:
+```
+https://res.cloudinary.com/dh1k427cx/image/upload/l_text:Arial_40:CONFIDENTIAL,o_30/pg_1/doc.pdf
+```
 
-The first uploaded image is automatically set as the primary image. This is typically used as the product thumbnail.
+---
 
-## Image Optimization
+## 🐛 Troubleshooting
 
-Cloudinary automatically optimizes images during upload:
+### PDF not uploading
+- ✅ Check preset is set to **"Auto"** resource type
+- ✅ Verify PDF is under 10MB
+- ✅ Check preset is **"Unsigned"**
 
-- **Format**: Auto-converts to WebP when supported by the browser
-- **Quality**: Auto-adjusts to maintain visual quality while reducing file size
-- **Dimensions**: Limits to 800x800px while maintaining aspect ratio
-- **Compression**: Applies smart compression algorithms
+### PDF not displaying
+- ✅ Use `/auto/upload` endpoint (not `/image/upload`)
+- ✅ Check URL is correct
+- ✅ Verify file was uploaded successfully
 
-This ensures:
-- ✅ Faster page load times
-- ✅ Reduced bandwidth usage
-- ✅ Better mobile experience
-- ✅ Optimal storage efficiency
+### Preview not generating
+- ✅ Enable eager transformations in preset
+- ✅ Wait a few seconds after upload
+- ✅ Check Cloudinary dashboard for errors
 
-## Troubleshooting
+---
 
-### Upload Widget Not Loading
+**Setup Complete!** 🎉
 
-If the upload widget doesn't appear:
-1. Check browser console for errors
-2. Verify internet connection
-3. Ensure Cloudinary script is loading: Check Network tab for `upload-widget.cloudinary.com`
-
-### Upload Preset Not Found
-
-If you see "Upload preset not found":
-1. Verify preset name matches: `ira-sathi-products`
-2. Ensure preset is set to **Unsigned** mode
-3. Check preset is saved in Cloudinary dashboard
-
-### Images Not Saving
-
-If images upload but don't save to database:
-1. Check browser console for API errors
-2. Verify backend endpoint is receiving image data
-3. Check MongoDB to see if images array is being saved
-
-### Image Quality Issues
-
-If images appear pixelated or low quality:
-1. Check Cloudinary transformation settings
-2. Verify quality is set to `Auto: Good` or higher
-3. Ensure source images are high enough resolution
-
-## Testing
-
-To test the image upload functionality:
-
-1. **Create Product**:
-   - Go to Admin Dashboard → Products
-   - Click "Add Product"
-   - Fill in required fields
-   - Upload 1-4 images
-   - Submit the form
-
-2. **Edit Product**:
-   - Select an existing product
-   - Click "Edit"
-   - Add/remove images
-   - Save changes
-
-3. **Verify**:
-   - Check that images appear in the product list
-   - Verify images are saved in database
-   - Confirm image URLs are valid Cloudinary URLs
-
-## Security Notes
-
-- ✅ Unsigned upload presets are safe for public use
-- ✅ Upload widget validates file types and sizes
-- ✅ Images are stored in organized folders
-- ✅ No sensitive credentials exposed in frontend code
-
-## Support
-
-For Cloudinary-specific issues, refer to:
-- [Cloudinary Documentation](https://cloudinary.com/documentation)
-- [Upload Widget Documentation](https://cloudinary.com/documentation/upload_widget)
-
+Your Cloudinary is now ready for:
+- ✅ Product images
+- ✅ Vendor PDF documents
+- ✅ PDF previews
+- ✅ Optimized delivery

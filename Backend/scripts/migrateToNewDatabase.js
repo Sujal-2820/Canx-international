@@ -18,8 +18,8 @@
 const mongoose = require('mongoose');
 
 // Database URLs
-const OLD_DB_URL = 'mongodb+srv://yash007patidar_db_user:XNJIg0oR0Fz6mqyj@cluster0.bjmsiqo.mongodb.net/irasathi?retryWrites=true&w=majority&appName=Cluster0';
-const NEW_DB_URL = 'mongodb+srv://agarwaldeeksha03:YvsvnVCtrP8rYX2R@ecomm-satpura.3fa8s.mongodb.net/?retryWrites=true&w=majority&appName=ecomm-satpura';
+const OLD_DB_URL = 'mongodb+srv://agarwaldeeksha03:YvsvnVCtrP8rYX2R@ecomm-satpura.3fa8s.mongodb.net/Canx_international?retryWrites=true&w=majority&appName=ecomm-satpura';
+const NEW_DB_URL = 'mongodb+srv://sujal99ds_db_user:DvEHC8z9ApZteyDI@clustercanx.bcazxvt.mongodb.net/?retryWrites=true&w=majority&appName=ClusterCanx';
 
 // Color codes for console output
 const colors = {
@@ -52,14 +52,14 @@ async function connectToDatabases() {
         const oldDbConnection = await mongoose.createConnection(OLD_DB_URL, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
-        });
+        }).asPromise();
         log('✅ Connected to OLD database', 'green');
 
         log('📡 Connecting to NEW database (target)...', 'cyan');
         const newDbConnection = await mongoose.createConnection(NEW_DB_URL, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
-        });
+        }).asPromise();
         log('✅ Connected to NEW database', 'green');
 
         return { oldDbConnection, newDbConnection };
@@ -208,18 +208,18 @@ async function generateEnvironmentFile() {
 
     log('📝 Update your .env file with the new database URL:', 'cyan');
     log('\nOLD:', 'yellow');
-    log('MONGO_URI=mongodb+srv://yash007patidar_db_user:XNJIg0oR0Fz6mqyj@cluster0.bjmsiqo.mongodb.net/irasathi?retryWrites=true&w=majority&appName=Cluster0', 'red');
+    log('MONGO_URI=mongodb+srv://agarwaldeeksha03:YvsvnVCtrP8rYX2R@ecomm-satpura.3fa8s.mongodb.net/Canx_international?retryWrites=true&w=majority&appName=ecomm-satpura', 'red');
     log('\nNEW:', 'yellow');
-    log('MONGO_URI=mongodb+srv://agarwaldeeksha03:YvsvnVCtrP8rYX2R@ecomm-satpura.3fa8s.mongodb.net/?retryWrites=true&w=majority&appName=ecomm-satpura', 'green');
+    log('MONGO_URI=mongodb+srv://sujal99ds_db_user:DvEHC8z9ApZteyDI@clustercanx.bcazxvt.mongodb.net/?retryWrites=true&w=majority&appName=ClusterCanx', 'green');
     log('\n⚠️  Remember to update this manually in your .env file!', 'yellow');
 }
 
 async function main() {
     console.clear();
-    logSection('🚀 DATABASE MIGRATION SCRIPT - Satpura Bio');
+    logSection('🚀 DATABASE MIGRATION SCRIPT - Canx International');
 
-    log('Source Database: irasathi (OLD)', 'cyan');
-    log('Target Database: ecomm-satpura (NEW)', 'magenta');
+    log('Source Database: Canx_international @ ecomm-satpura (OLD)', 'cyan');
+    log('Target Database: ClusterCanx (NEW)', 'magenta');
     log('\n⚠️  WARNING: This will DROP ALL collections in the target database!', 'red');
     log('⚠️  Source database will NOT be modified.', 'yellow');
 

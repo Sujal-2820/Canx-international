@@ -5,19 +5,38 @@ const fs = require('fs');
 let firebaseApp = null;
 
 try {
-    const serviceAccountPath = path.join(__dirname, '../config/firebase-service-account.json');
+    let serviceAccount = null;
 
-    if (fs.existsSync(serviceAccountPath)) {
-        const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+    // Try to load from environment variable first (for Render deployment)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        try {
+            serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+            console.log('✅ Firebase credentials loaded from environment variable');
+        } catch (parseError) {
+            console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT env var:', parseError.message);
+        }
+    }
 
+    // Fallback to file-based approach (for local development)
+    if (!serviceAccount) {
+        const serviceAccountPath = path.join(__dirname, '../config/firebase-service-account.json');
+
+        if (fs.existsSync(serviceAccountPath)) {
+            serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+            console.log('✅ Firebase credentials loaded from file');
+        } else {
+            console.warn('⚠️ Firebase service account file not found. Push notifications will be disabled.');
+            console.warn('Expected path:', serviceAccountPath);
+        }
+    }
+
+    // Initialize Firebase if credentials are available
+    if (serviceAccount) {
         firebaseApp = admin.initializeApp({
             credential: admin.credential.cert(serviceAccount)
         });
 
         console.log('✅ Firebase Admin SDK initialized successfully');
-    } else {
-        console.warn('⚠️ Firebase service account file not found. Push notifications will be disabled.');
-        console.warn('Expected path:', serviceAccountPath);
     }
 } catch (error) {
     console.error('❌ Failed to initialize Firebase Admin SDK:', error.message);

@@ -23,7 +23,10 @@
     "test-endpoints": "node scripts/testAllEndpoints.js",
     "test-e2e": "node scripts/comprehensiveE2ETest.js",
     "test-e2e-full": "node scripts/runE2ETestsWithServer.js",
-    "clear-all-data": "node scripts/clearAllData.js"
+    "clear-all-data": "node scripts/clearAllData.js",
+    "verify-deployment": "node scripts/verifyDeploymentReadiness.js",
+    "build": "echo 'No build step required for Node.js backend'",
+    "postinstall": "echo 'Dependencies installed successfully'"
   },
   "keywords": [
     "fertilizer",
