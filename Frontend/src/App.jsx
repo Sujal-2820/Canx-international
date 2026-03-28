@@ -118,9 +118,7 @@ function App() {
     <TranslationProvider>
       <BrowserRouter>
         <Routes>
-          {/* Home route redirects to vendor dashboard (was user dashboard) */}
-          <Route path="/" element={<Navigate to="/vendor/dashboard/home" replace />} />
-          {/* Console/Admin Routes - Specific paths first */}
+          {/* Home route allows catch-all to website routes (formerly forced vendor dashboard) */}
           <Route path="/console" element={<Home />} />
           <Route path="/admin/login" element={<AdminLoginRoute />} />
           <Route path="/admin/dashboard" element={<AdminDashboardRoute />} />
