@@ -216,7 +216,7 @@ export async function websiteLogout() {
  * @returns {Promise<Array>} - Array of categories
  */
 export async function getCategories() {
-  return apiRequest('/users/products/categories')
+  return apiRequest('/catalog/products/categories')
 }
 
 /**
@@ -228,7 +228,7 @@ export async function getCategories() {
  */
 export async function getProducts(params = {}) {
   const queryParams = new URLSearchParams(params).toString()
-  return apiRequest(`/users/products?${queryParams}`)
+  return apiRequest(`/catalog/products?${queryParams}`)
 }
 
 /**
@@ -239,7 +239,7 @@ export async function getProducts(params = {}) {
  * @returns {Promise<Object>} - Product details with stock, delivery timeline, vendor info
  */
 export async function getProductDetails(productId) {
-  return apiRequest(`/users/products/${productId}`)
+  return apiRequest(`/catalog/products/${productId}`)
 }
 
 /**
@@ -251,7 +251,7 @@ export async function getProductDetails(productId) {
  */
 export async function getPopularProducts(params = {}) {
   const queryParams = new URLSearchParams(params).toString()
-  return apiRequest(`/users/products/popular?${queryParams}`)
+  return apiRequest(`/catalog/products?${queryParams}&sort=popular`)
 }
 
 /**
@@ -261,7 +261,7 @@ export async function getPopularProducts(params = {}) {
  * @returns {Promise<Object>} - { carousels: Array, specialOffers: Array }
  */
 export async function getOffers() {
-  return apiRequest('/users/offers')
+  return apiRequest('/catalog/offers')
 }
 
 /**
@@ -273,7 +273,7 @@ export async function getOffers() {
  */
 export async function searchProducts(params = {}) {
   const queryParams = new URLSearchParams(params).toString()
-  return apiRequest(`/users/products/search?${queryParams}`)
+  return apiRequest(`/catalog/products?${queryParams}`)
 }
 
 // ============================================================================

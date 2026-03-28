@@ -125,4 +125,23 @@ router.get('/offers', async (req, res, next) => {
     }
 });
 
+/**
+ * @route   GET /api/catalog/products/categories
+ * @desc    Get all product categories (public)
+ * @access  Public
+ */
+router.get('/products/categories', async (req, res, next) => {
+    try {
+        const Category = require('../models/Category');
+        const categories = await Category.find({ isActive: true }).sort({ name: 1 });
+        
+        res.status(200).json({
+            success: true,
+            data: categories
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;
