@@ -40,6 +40,7 @@ const defaultOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
+  'https://canx-international.vercel.app',
   'https://www.iraagritech.com',
   'https://iraagritech.com'
 ];
@@ -135,43 +136,46 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-// Connect to MongoDB
-connectDB()
-  .then(() => {
-    // Start HTTP server
-    const server = app.listen(PORT, HOST, () => {
-      console.log(`🚀 Canx International Backend Server running on http://${HOST}:${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🔗 MongoDB: ${process.env.MONGO_URI ? 'Connected' : 'Not configured'}`);
-    });
+// Start server only if this is the main module
+if (require.main === module) {
+  // Connect to MongoDB
+  connectDB()
+    .then(() => {
+      // Start HTTP server
+      const server = app.listen(PORT, HOST, () => {
+        console.log(`🚀 Canx International Backend Server running on http://${HOST}:${PORT}`);
+        console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`🔗 MongoDB: ${process.env.MONGO_URI ? 'Connected' : 'Not configured'}`);
+      });
 
-    // Initialize real-time server (WebSocket/SSE) for push notifications
-    // This will be implemented when push notifications are added
-    initializeRealtimeServer(server);
+      // Initialize real-time server (WebSocket/SSE) for push notifications
+      // This will be implemented when push notifications are added
+      initializeRealtimeServer(server);
 
-    // Initialize credit notification scheduler
-    CreditNotificationScheduler.initializeScheduledJobs();
-    console.log('✅ Credit notification scheduler initialized');
+      // Initialize credit notification scheduler
+      CreditNotificationScheduler.initializeScheduledJobs();
+      console.log('✅ Credit notification scheduler initialized');
 
-    // Graceful shutdown
-    process.on('SIGTERM', () => {
-      console.log('SIGTERM received, shutting down gracefully...');
+      // Graceful shutdown
+      process.on('SIGTERM', () => {
+        console.log('SIGTERM received, shutting down gracefully...');
 
-      // Stop scheduled jobs
-      CreditNotificationScheduler.stopAllJobs();
+        // Stop scheduled jobs
+        CreditNotificationScheduler.stopAllJobs();
 
-      server.close(() => {
-        console.log('HTTP server closed');
-        mongoose.connection.close(false, () => {
-          console.log('MongoDB connection closed');
-          process.exit(0);
+        server.close(() => {
+          console.log('HTTP server closed');
+          mongoose.connection.close(false, () => {
+            console.log('MongoDB connection closed');
+            process.exit(0);
+          });
         });
       });
+    })
+    .catch((error) => {
+      console.error('Failed to start server:', error);
+      process.exit(1);
     });
-  })
-  .catch((error) => {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  });
+}
 
 module.exports = app;

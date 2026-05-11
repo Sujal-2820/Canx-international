@@ -5,7 +5,6 @@ import { cn } from '../../../lib/cn'
 export function CreditPolicyForm({ vendor, onSubmit, onCancel, loading = false }) {
   const [formData, setFormData] = useState({
     repaymentDays: '',
-    repaymentDays: '',
     creditLimit: '',
     overrideGlobalTiers: false,
     customDiscountTiers: [],
@@ -48,9 +47,6 @@ export function CreditPolicyForm({ vendor, onSubmit, onCancel, loading = false }
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
     // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: '' }))
-    }
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }))
     }

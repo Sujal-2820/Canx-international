@@ -2830,112 +2830,119 @@ export async function getVendorRepayments(vendorId, params = {}) {
  *   orderTrends: Array
  * }
  */
-export async function getAnalyticsData(params = {}) {
-  try {
-    const queryParams = new URLSearchParams()
-    if (params.period) {
-      // Convert period string to days if needed
-      const periodDays = typeof params.period === 'number'
-        ? params.period
-        : params.period === 'day' ? 1
-          : params.period === 'week' ? 7
-            : params.period === 'month' ? 30
-              : params.period === 'year' ? 365
-                : 30
-      queryParams.append('period', periodDays.toString())
-    } else {
-      queryParams.append('period', '30') // Default 30 days
+/**
+ * Get Sales Analytics
+ * @param {Object} params - { period, region }
+ */
+export async function getSalesAnalytics(params = {}) {
+  const result = await getAnalyticsData(params);
+  if (!result.success) return result;
+
+  const data = result.data;
+  // Calculate specific sales summary metrics
+  const totalRevenue = data.revenueTrends?.reduce((sum, d) => sum + (d.revenue || 0), 0) || 0;
+  const totalOrders = data.orderTrends?.reduce((sum, d) => sum + (d.count || 0), 0) || 0;
+  const deliveredOrders = data.orderTrends?.reduce((sum, d) => sum + (d.delivered || 0), 0) || 0;
+  const cancelledOrders = data.orderTrends?.reduce((sum, d) => sum + (d.cancelled || 0), 0) || 0;
+  
+  return {
+    success: true,
+    data: {
+      summary: {
+        totalRevenue,
+        totalOrders,
+        deliveredOrders,
+        cancelledOrders,
+        averageOrderValue: totalOrders > 0 ? totalRevenue / totalOrders : 0,
+        fulfillmentRate: totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0,
+      },
+      topProducts: data.topProducts || [],
     }
+  };
+}
 
-    const queryString = queryParams.toString()
-    const response = await apiRequest(`/admin/analytics${queryString ? `?${queryString}` : ''}`)
-
-    // Transform backend response to frontend format
-    if (response.success && response.data?.analytics) {
-      const analytics = response.data.analytics
-
-      // Calculate highlights from analytics data
-      const totalOrders = analytics.orderTrends?.reduce((sum, day) => sum + (day.count || 0), 0) || 0
-      const totalRevenue = analytics.revenueTrends?.reduce((sum, day) => sum + (day.revenue || 0), 0) || 0
-      const topVendor = analytics.topVendors?.[0]
-      const topSeller = analytics.topSellers?.[0]
-
-      // Calculate region-wise data (simplified - would need region aggregation in backend)
-      // For now, using mock data structure but placeholder for future enhancement
-      const regionWise = [] // TODO: Backend needs to provide region-wise aggregation
-
-      // Build highlights
-      const highlights = [
-        {
-          label: 'Total Orders',
-          value: totalOrders.toLocaleString('en-IN'),
-          change: '+12%', // TODO: Calculate change from previous period
-        },
-        {
-          label: 'Total Revenue',
-          value: `₹${(totalRevenue / 10000000).toFixed(1)} Cr`,
-          change: '+9.6%', // TODO: Calculate change from previous period
-        },
-        {
-          label: 'Top Region',
-          value: 'N/A', // TODO: Calculate from region-wise data
-          change: 'N/A',
-        },
-        {
-          label: 'Top Vendor',
-          value: topVendor?.vendorName || 'N/A',
-          change: `₹${((topVendor?.revenue || 0) / 10000000).toFixed(1)} Cr`,
-        },
-      ]
-
-      // Build timeline (simplified - would need actual event tracking)
-      const timeline = [
-        // TODO: Add actual timeline events when backend provides them
-        {
-          id: 'event-1',
-          title: 'Analytics updated',
-          timestamp: 'Just now',
-          description: 'Analytics data refreshed for the selected period.',
-          status: 'completed',
-        },
-      ]
-
-      // Transform top vendors
-      const topVendors = analytics.topVendors?.map(vendor => ({
-        name: vendor.vendorName || vendor.name,
-        revenue: vendor.revenue || 0,
-        change: '+0%', // TODO: Calculate change from previous period
-        orderCount: vendor.orderCount || 0,
-      })) || []
-
-      // Transform top sellers
-      const topSellers = analytics.topSellers?.map(seller => ({
-        name: seller.sellerId || 'Unknown Seller',
-        sales: seller.revenue || 0,
-        referrals: seller.referralCount || 0,
-        orderCount: seller.orderCount || 0,
-      })) || []
-
-      return {
-        success: true,
-        data: {
-          highlights,
-          timeline,
-          regionWise,
-          topVendors,
-          topSellers,
-          revenueTrends: analytics.revenueTrends || [],
-          orderTrends: analytics.orderTrends || [],
-          topProducts: analytics.topProducts || [],
-          period: response.data.period || 30,
-        },
-      }
+/**
+ * Get User Analytics
+ * @param {Object} params - { period }
+ */
+export async function getUserAnalytics(params = {}) {
+  // Mocking user analytics as user module was removed
+  return {
+    success: true,
+    data: {
+      summary: {
+        totalUsers: 0,
+        activeUsers: 0,
+        newUsersInPeriod: 0,
+        activeUsersInPeriod: 0,
+        averageOrdersPerUser: 0,
+        usersWithSellerId: 0,
+      },
+      usersByState: [],
     }
+  };
+}
 
-    return response
-  } catch (error) {
-    throw error
-  }
+/**
+ * Get Vendor Analytics
+ * @param {Object} params - { period }
+ */
+export async function getVendorAnalytics(params = {}) {
+  const result = await getAnalyticsData(params);
+  if (!result.success) return result;
+
+  const data = result.data;
+  // Map back to expected frontend format
+  return {
+    success: true,
+    data: {
+      summary: {
+        totalVendors: data.topVendors?.length || 0,
+        approvedVendors: data.topVendors?.length || 0,
+        totalVendorRevenue: data.highlights?.find(h => h.label === 'Total Revenue')?.value || 0,
+        creditUtilization: 0, // Would need finance data
+        totalCreditUsed: 0,
+        totalCreditLimit: 0,
+        totalEscalations: 0,
+        vendorsWithEscalations: 0,
+      },
+      topVendors: data.topVendors || [],
+    }
+  };
+}
+
+/**
+ * Get Order Analytics
+ * @param {Object} params - { period }
+ */
+export async function getOrderAnalytics(params = {}) {
+  const result = await getAnalyticsData(params);
+  if (!result.success) return result;
+
+  const data = result.data;
+  const totalOrders = data.orderTrends?.reduce((sum, d) => sum + (d.count || 0), 0) || 0;
+  const deliveredOrders = data.orderTrends?.reduce((sum, d) => sum + (d.delivered || 0), 0) || 0;
+  const cancelledOrders = data.orderTrends?.reduce((sum, d) => sum + (d.cancelled || 0), 0) || 0;
+
+  return {
+    success: true,
+    data: {
+      summary: {
+        totalOrders,
+        ordersInPeriod: totalOrders,
+        deliveredOrders,
+        cancelledOrders,
+        escalatedOrders: 0,
+        averageOrderValue: totalOrders > 0 ? (data.highlights?.find(h => h.label === 'Total Revenue')?.value || 0) / totalOrders : 0,
+        fulfillmentRate: totalOrders > 0 ? (deliveredOrders / totalOrders) * 100 : 0,
+      },
+      statusBreakdown: [
+        { status: 'delivered', count: deliveredOrders },
+        { status: 'cancelled', count: cancelledOrders },
+        { status: 'pending', count: totalOrders - deliveredOrders - cancelledOrders },
+      ],
+    }
+  };
 }
 
 /**
